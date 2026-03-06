@@ -8,7 +8,24 @@ import type {
   BuildSummary,
   ChatSession,
   ChatMessage,
+  BoilerplateSummary,
+  LeaderboardEntry,
+  TokenLaunch,
+  WarRoom,
+  WarRoomWithTasks,
 } from "./types";
+
+// ── Auth token helper ────────────────────────────────────────────────────────
+
+let getAuthTokenFn: (() => Promise<string | null>) | null = null;
+
+/**
+ * Called once from the PrivyProvider to register a function that returns
+ * the current Privy auth token. This avoids importing Privy in the API module.
+ */
+export function registerAuthTokenGetter(fn: () => Promise<string | null>) {
+  getAuthTokenFn = fn;
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -16,12 +33,26 @@ async function apiFetch<T>(
   path: string,
   init?: RequestInit
 ): Promise<T> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(init?.headers as Record<string, string>),
+  };
+
+  // Attach Privy auth token if available
+  if (getAuthTokenFn) {
+    try {
+      const token = await getAuthTokenFn();
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+    } catch {
+      // Continue without auth token
+    }
+  }
+
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...init?.headers,
-    },
+    headers,
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -42,12 +73,65 @@ export async function getGame(name: string): Promise<GameWithBuild> {
 
 export async function createGame(
   name: string,
-  description?: string
+  description?: string,
+  userId?: string,
+  genre?: string
 ): Promise<Game> {
   return apiFetch("/games", {
     method: "POST",
-    body: JSON.stringify({ name, description }),
+    body: JSON.stringify({ name, description, user_id: userId, genre }),
   });
+}
+
+// ── Publishing ───────────────────────────────────────────────────────────────
+
+export async function publishGame(
+  gameName: string,
+  slug: string
+): Promise<Game> {
+  return apiFetch(`/games/${encodeURIComponent(gameName)}/publish`, {
+    method: "POST",
+    body: JSON.stringify({ slug }),
+  });
+}
+
+export async function unpublishGame(gameName: string): Promise<Game> {
+  return apiFetch(`/games/${encodeURIComponent(gameName)}/unpublish`, {
+    method: "POST",
+  });
+}
+
+export async function getPublishedGame(slug: string): Promise<GameWithBuild> {
+  return apiFetch(`/public/games/${encodeURIComponent(slug)}`);
+}
+
+// ── Boilerplates ─────────────────────────────────────────────────────────────
+
+export async function listBoilerplates(): Promise<BoilerplateSummary[]> {
+  return apiFetch("/boilerplates");
+}
+
+// ── Scores & Leaderboard ─────────────────────────────────────────────────────
+
+export async function submitScore(
+  gameName: string,
+  score: number,
+  userId?: string,
+  playerName?: string
+): Promise<void> {
+  await apiFetch(`/games/${encodeURIComponent(gameName)}/scores`, {
+    method: "POST",
+    body: JSON.stringify({ score, user_id: userId, player_name: playerName }),
+  });
+}
+
+export async function getLeaderboard(
+  gameName: string,
+  limit = 20
+): Promise<LeaderboardEntry[]> {
+  return apiFetch(
+    `/games/${encodeURIComponent(gameName)}/leaderboard?limit=${limit}`
+  );
 }
 
 // ── Atoms ─────────────────────────────────────────────────────────────────────
@@ -174,4 +258,70 @@ export async function saveChatMessages(
       body: JSON.stringify({ messages }),
     }
   );
+}
+
+// ── War Rooms ───────────────────────────────────────────────────────────────
+
+export async function createWarRoom(
+  gameName: string,
+  prompt: string,
+  userId?: string,
+  genre?: string
+): Promise<WarRoomWithTasks> {
+  return apiFetch(`/games/${encodeURIComponent(gameName)}/warrooms`, {
+    method: "POST",
+    body: JSON.stringify({ prompt, user_id: userId, genre }),
+  });
+}
+
+export async function getWarRoom(
+  gameName: string,
+  warRoomId: string
+): Promise<WarRoomWithTasks> {
+  return apiFetch(
+    `/games/${encodeURIComponent(gameName)}/warrooms/${warRoomId}`
+  );
+}
+
+export async function listWarRooms(
+  gameName: string,
+  limit = 20
+): Promise<WarRoom[]> {
+  return apiFetch(
+    `/games/${encodeURIComponent(gameName)}/warrooms?limit=${limit}`
+  );
+}
+
+// ── Token Launches ──────────────────────────────────────────────────────────
+
+export async function getTokenLaunch(
+  gameName: string
+): Promise<TokenLaunch | null> {
+  try {
+    return await apiFetch(`/games/${encodeURIComponent(gameName)}/token`);
+  } catch {
+    return null;
+  }
+}
+
+export async function upsertTokenLaunch(
+  gameName: string,
+  creatorId: string,
+  tokenName: string,
+  tokenSymbol: string,
+  opts?: {
+    chain_id?: string;
+    total_supply?: number;
+    leaderboard_allocation_pct?: number;
+  }
+): Promise<TokenLaunch> {
+  return apiFetch(`/games/${encodeURIComponent(gameName)}/token`, {
+    method: "PUT",
+    body: JSON.stringify({
+      creator_id: creatorId,
+      token_name: tokenName,
+      token_symbol: tokenSymbol,
+      ...opts,
+    }),
+  });
 }

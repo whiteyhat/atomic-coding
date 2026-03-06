@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { CreateGameDialog } from "./create-game-dialog";
+import { UserMenu } from "@/components/auth/user-menu";
 
 export function GamesHeader() {
   const router = useRouter();
@@ -9,12 +10,17 @@ export function GamesHeader() {
   return (
     <div className="flex items-center justify-between">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Atomic Coding</h1>
+        <h1 className="text-3xl font-bold tracking-tight">
+          Buu AI Game Maker
+        </h1>
         <p className="text-muted-foreground mt-1">
-          AI-powered game development with atoms
+          Build Three.js games with AI agents
         </p>
       </div>
-      <CreateGameDialog onCreated={() => router.refresh()} />
+      <div className="flex items-center gap-3">
+        <CreateGameDialog onCreated={() => router.refresh()} />
+        <UserMenu />
+      </div>
     </div>
   );
 }

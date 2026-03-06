@@ -13,7 +13,7 @@ export function GameCard({ game }: GameCardProps) {
 
   return (
     <Link href={`/games/${encodeURIComponent(game.name)}`}>
-      <Card className="hover:border-primary/30 transition-colors cursor-pointer h-full">
+      <Card className="glass-panel shadow-buu-muted hover:border-primary/30 transition-all cursor-pointer h-full">
         <CardHeader>
           <div className="flex items-start justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
@@ -29,9 +29,16 @@ export function GameCard({ game }: GameCardProps) {
               {game.description}
             </CardDescription>
           )}
-          <p className="text-xs text-muted-foreground mt-2">
-            Created {new Date(game.created_at).toLocaleDateString()}
-          </p>
+          <div className="flex items-center gap-2 mt-2">
+            {game.genre && (
+              <Badge variant="outline" className="text-xs">
+                {game.genre.replace(/-/g, " ")}
+              </Badge>
+            )}
+            <p className="text-xs text-muted-foreground">
+              Created {new Date(game.created_at).toLocaleDateString()}
+            </p>
+          </div>
         </CardHeader>
       </Card>
     </Link>

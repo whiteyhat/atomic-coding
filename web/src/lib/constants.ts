@@ -9,6 +9,15 @@ export const SUPABASE_ANON_KEY =
 
 export const API_BASE = `${SUPABASE_URL}/functions/v1/api`;
 
+// ── Auth ──────────────────────────────────────────────────────────────────────
+
+export const PRIVY_APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID ?? "";
+
+// ── OpenClaw ─────────────────────────────────────────────────────────────────
+
+export const OPENCLAW_GATEWAY_URL = process.env.OPENCLAW_GATEWAY_URL ?? "";
+export const OPENCLAW_GATEWAY_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN ?? "";
+
 // ── Models ────────────────────────────────────────────────────────────────────
 
 export interface ModelOption {

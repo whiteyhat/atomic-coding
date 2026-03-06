@@ -36,8 +36,11 @@ import {
   createChatSession,
   getChatMessages,
   saveChatMessages,
+  createWarRoom,
 } from "@/lib/api";
-import { MessageSquare, Plus } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { usePrivy } from "@privy-io/react-auth";
+import { MessageSquare, Plus, Swords } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -48,12 +51,17 @@ import {
 interface ChatPanelProps {
   gameId: string;
   gameName: string;
+  onWarRoomCreated?: (warRoomId: string) => void;
 }
 
-export function ChatPanel({ gameId, gameName }: ChatPanelProps) {
+export function ChatPanel({ gameId, gameName, onWarRoomCreated }: ChatPanelProps) {
+  const { getAccessToken } = usePrivy();
   const [model, setModel] = useState(DEFAULT_MODEL);
   const modelRef = useRef(model);
   modelRef.current = model;
+
+  const [warRoomMode, setWarRoomMode] = useState(false);
+  const [isCreatingWarRoom, setIsCreatingWarRoom] = useState(false);
 
   const [sessionId, setSessionId] = useState<string | null>(null);
   const sessionIdRef = useRef(sessionId);
@@ -114,6 +122,10 @@ export function ChatPanel({ gameId, gameName }: ChatPanelProps) {
     transport: new DefaultChatTransport({
       api: "/api/chat",
       body: () => ({ model: modelRef.current, gameId, gameName, sessionId: sessionIdRef.current }),
+      headers: async (): Promise<Record<string, string>> => {
+        const token = await getAccessToken();
+        return token ? { Authorization: `Bearer ${token}` } : {};
+      },
     }),
     onFinish: () => {
       // Save new messages after each assistant response
@@ -161,8 +173,27 @@ export function ChatPanel({ gameId, gameName }: ChatPanelProps) {
     [sessionId, gameName]
   );
 
-  const handleSubmit = (message: PromptInputMessage) => {
+  const handleSubmit = async (message: PromptInputMessage) => {
     if (!message.text?.trim()) return;
+
+    if (warRoomMode) {
+      setIsCreatingWarRoom(true);
+      try {
+        const warRoom = await createWarRoom(
+          gameName,
+          message.text.trim()
+        );
+        setWarRoomMode(false);
+        onWarRoomCreated?.(warRoom.id);
+      } catch (err) {
+        console.error("[chat] War room creation failed:", err);
+        throw err; // Re-throw so PromptInput preserves input text
+      } finally {
+        setIsCreatingWarRoom(false);
+      }
+      return;
+    }
+
     sendMessage({ text: message.text });
   };
 
@@ -226,7 +257,10 @@ export function ChatPanel({ gameId, gameName }: ChatPanelProps) {
         <ConversationScrollButton />
       </Conversation>
 
-      <div className="p-3 border-t shrink-0">
+      <div className={cn(
+        "p-3 border-t shrink-0",
+        warRoomMode ? "border-amber-500/50 bg-amber-500/5" : "border-buu bg-buu-50"
+      )}>
         <PromptInput onSubmit={handleSubmit}>
           <PromptInputBody>
             <PromptInputTextarea placeholder="Describe what to build..." />
@@ -257,6 +291,25 @@ export function ChatPanel({ gameId, gameName }: ChatPanelProps) {
                   <Button
                     variant="ghost"
                     size="icon"
+                    className={cn(
+                      "size-7",
+                      warRoomMode && "text-amber-400 bg-amber-400/10"
+                    )}
+                    onClick={() => setWarRoomMode((prev) => !prev)}
+                    disabled={isCreatingWarRoom}
+                  >
+                    <Swords className="size-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {warRoomMode ? "War Room mode (active)" : "War Room mode"}
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
                     className="size-7"
                     onClick={handleNewSession}
                   >
@@ -266,7 +319,7 @@ export function ChatPanel({ gameId, gameName }: ChatPanelProps) {
                 <TooltipContent>New session</TooltipContent>
               </Tooltip>
             </PromptInputTools>
-            <PromptInputSubmit status={status} />
+            <PromptInputSubmit status={isCreatingWarRoom ? "submitted" : status} />
           </PromptInputFooter>
         </PromptInput>
       </div>

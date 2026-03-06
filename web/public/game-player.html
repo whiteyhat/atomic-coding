@@ -35,6 +35,97 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 
+  <!-- Game runtime: input, time, canvas -->
+  <script>
+    (function() {
+      var gameCanvas = document.getElementById('game-canvas');
+
+      window.GAME = {
+        inputs: { keys: {}, justPressed: {}, justReleased: {} },
+        mouse: { x: 0, y: 0, normX: 0, normY: 0, buttons: 0, justDown: false, justUp: false },
+        time: { delta: 0, elapsed: 0, frame: 0, _last: 0 },
+        canvas: gameCanvas,
+        _activeFrames: new Set(),
+
+        tick: function() {
+          var inp = window.GAME.inputs;
+          for (var k in inp.justPressed) delete inp.justPressed[k];
+          for (var k in inp.justReleased) delete inp.justReleased[k];
+          window.GAME.mouse.justDown = false;
+          window.GAME.mouse.justUp = false;
+          var now = performance.now();
+          var t = window.GAME.time;
+          if (t._last === 0) t._last = now;
+          t.delta = Math.min((now - t._last) / 1000, 0.1);
+          t._last = now;
+          t.elapsed += t.delta;
+          t.frame++;
+        },
+
+        stopLoop: function() {
+          window.GAME._activeFrames.forEach(function(id) { _originalCAF.call(window, id); });
+          window.GAME._activeFrames.clear();
+        },
+
+        isKeyDown: function(key) { return !!window.GAME.inputs.keys[key]; },
+        isKeyJustPressed: function(key) { return !!window.GAME.inputs.justPressed[key]; },
+        isKeyJustReleased: function(key) { return !!window.GAME.inputs.justReleased[key]; },
+      };
+
+      // --- Keyboard listeners ---
+      document.addEventListener('keydown', function(e) {
+        var key = e.code;
+        if (!window.GAME.inputs.keys[key]) window.GAME.inputs.justPressed[key] = true;
+        window.GAME.inputs.keys[key] = true;
+        if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].indexOf(e.code) !== -1) e.preventDefault();
+      });
+      document.addEventListener('keyup', function(e) {
+        delete window.GAME.inputs.keys[e.code];
+        window.GAME.inputs.justReleased[e.code] = true;
+      });
+      window.addEventListener('blur', function() {
+        var keys = window.GAME.inputs.keys;
+        for (var k in keys) { window.GAME.inputs.justReleased[k] = true; delete keys[k]; }
+      });
+
+      // --- Mouse listeners ---
+      gameCanvas.addEventListener('mousemove', function(e) {
+        var rect = gameCanvas.getBoundingClientRect();
+        window.GAME.mouse.x = e.clientX - rect.left;
+        window.GAME.mouse.y = e.clientY - rect.top;
+        window.GAME.mouse.normX = (window.GAME.mouse.x / rect.width) * 2 - 1;
+        window.GAME.mouse.normY = -(window.GAME.mouse.y / rect.height) * 2 + 1;
+      });
+      gameCanvas.addEventListener('mousedown', function(e) {
+        window.GAME.mouse.buttons = e.buttons;
+        window.GAME.mouse.justDown = true;
+      });
+      gameCanvas.addEventListener('mouseup', function(e) {
+        window.GAME.mouse.buttons = e.buttons;
+        window.GAME.mouse.justUp = true;
+      });
+      gameCanvas.addEventListener('contextmenu', function(e) { e.preventDefault(); });
+
+      // --- Monkey-patch requestAnimationFrame for loop tracking ---
+      var _originalRAF = window.requestAnimationFrame;
+      var _originalCAF = window.cancelAnimationFrame;
+
+      window.requestAnimationFrame = function(callback) {
+        var id = _originalRAF.call(window, function(timestamp) {
+          window.GAME._activeFrames.delete(id);
+          callback(timestamp);
+        });
+        window.GAME._activeFrames.add(id);
+        return id;
+      };
+
+      window.cancelAnimationFrame = function(id) {
+        window.GAME._activeFrames.delete(id);
+        _originalCAF.call(window, id);
+      };
+    })();
+  </script>
+
   <script>
     // Read config from URL params
     const params = new URLSearchParams(window.location.search);
@@ -128,6 +219,16 @@
 
     async function loadBundle() {
       setStatus('loading', 'Loading bundle...');
+      // Clean up previous bundle's animation loops and per-frame state
+      window.GAME.stopLoop();
+      window.GAME.time._last = 0;
+      window.GAME.time.frame = 0;
+      window.GAME.time.elapsed = 0;
+      window.GAME.time.delta = 0;
+      for (var k in window.GAME.inputs.justPressed) delete window.GAME.inputs.justPressed[k];
+      for (var k in window.GAME.inputs.justReleased) delete window.GAME.inputs.justReleased[k];
+      window.GAME.mouse.justDown = false;
+      window.GAME.mouse.justUp = false;
       if (currentScript) { currentScript.remove(); currentScript = null; }
       try {
         const manifestRes = await fetch(`${MANIFEST_URL}?t=${Date.now()}`);

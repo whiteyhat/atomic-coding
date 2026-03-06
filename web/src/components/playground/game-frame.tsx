@@ -1,6 +1,7 @@
 "use client";
 
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/constants";
+import { ScoreListener } from "./score-listener";
 
 interface GameFrameProps {
   gameName: string;
@@ -11,6 +12,7 @@ export function GameFrame({ gameName }: GameFrameProps) {
 
   return (
     <div className="h-full w-full bg-black">
+      <ScoreListener gameName={gameName} />
       <iframe
         src={iframeSrc}
         className="h-full w-full border-0"

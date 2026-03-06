@@ -104,15 +104,17 @@ function game_loop() {
   const { scene, camera, renderer } = create_scene();
   const cube = create_cube(1, 0.2, 0.5, 1.0);
   scene.add(cube);
-  
+
   const light = new THREE.DirectionalLight(0xffffff, 1);
   light.position.set(5, 5, 5);
   scene.add(light);
 
   function animate() {
     requestAnimationFrame(animate);
-    cube.rotation.x += 0.01;
-    cube.rotation.y += 0.01;
+    window.GAME.tick(); // Required: updates delta time and clears per-frame input
+    const dt = window.GAME.time.delta;
+    cube.rotation.x += 1.0 * dt;
+    cube.rotation.y += 1.0 * dt;
     renderer.render(scene, camera);
   }
   animate();

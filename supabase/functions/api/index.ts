@@ -7,6 +7,10 @@ import * as atoms from "../_shared/services/atoms.ts";
 import * as builds from "../_shared/services/builds.ts";
 import * as externals from "../_shared/services/externals.ts";
 import * as chat from "../_shared/services/chat.ts";
+import * as users from "../_shared/services/users.ts";
+import * as boilerplates from "../_shared/services/boilerplates.ts";
+import * as scores from "../_shared/services/scores.ts";
+import * as tokens from "../_shared/services/tokens.ts";
 
 // =============================================================================
 // App
@@ -52,18 +56,85 @@ app.use("*", async (c, next) => {
 // =============================================================================
 
 app.get("/", (c) =>
-  c.json({ status: "ok", server: "atomic-coding-api", version: "2.0.0" }),
+  c.json({ status: "ok", server: "buu-ai-game-maker-api", version: "3.0.0" }),
 );
+
+// =============================================================================
+// User Profiles
+// =============================================================================
+
+/** POST /users/profile -- upsert user profile (called on login) */
+app.post("/users/profile", async (c) => {
+  try {
+    const body = await c.req.json();
+    if (!body.id) return c.json({ error: "id is required" }, 400);
+    const profile = await users.upsertUserProfile(body);
+    return c.json(profile);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 400);
+  }
+});
+
+/** GET /users/profile/:id -- get user profile */
+app.get("/users/profile/:id", async (c) => {
+  try {
+    const profile = await users.getUserProfile(c.req.param("id"));
+    if (!profile) return c.json({ error: "User not found" }, 404);
+    return c.json(profile);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 500);
+  }
+});
+
+// =============================================================================
+// Boilerplates
+// =============================================================================
+
+/** GET /boilerplates -- list all genre boilerplates */
+app.get("/boilerplates", async (c) => {
+  try {
+    const list = await boilerplates.listBoilerplates();
+    return c.json(list);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 500);
+  }
+});
+
+/** GET /boilerplates/:slug -- get a single boilerplate */
+app.get("/boilerplates/:slug", async (c) => {
+  try {
+    const bp = await boilerplates.getBoilerplate(c.req.param("slug"));
+    if (!bp) return c.json({ error: "Boilerplate not found" }, 404);
+    return c.json(bp);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 500);
+  }
+});
 
 // =============================================================================
 // Games
 // =============================================================================
 
-/** POST /games -- create a game */
+/** POST /games -- create a game (optionally seed from a genre boilerplate) */
 app.post("/games", async (c) => {
   try {
     const body = await c.req.json();
-    const game = await games.createGame(body.name, body.description);
+    const game = await games.createGame(body.name, body.description, body.user_id, body.genre);
+
+    // Seed atoms and externals from boilerplate if genre is specified
+    if (body.genre) {
+      try {
+        await boilerplates.seedGameFromBoilerplate(game.id, body.genre);
+        atoms.triggerRebuild(game.id);
+      } catch (seedErr) {
+        log("error", "Failed to seed boilerplate", {
+          gameId: game.id,
+          genre: body.genre,
+          error: (seedErr as Error).message,
+        });
+      }
+    }
+
     return c.json(game, 201);
   } catch (err) {
     return c.json({ error: (err as Error).message }, 400);
@@ -84,6 +155,32 @@ app.get("/games", async (c) => {
 app.get("/games/:name", async (c) => {
   try {
     const game = await games.getGame(c.req.param("name"));
+    if (!game) return c.json({ error: "Game not found" }, 404);
+    return c.json(game);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 500);
+  }
+});
+
+// =============================================================================
+// Public Games (no auth needed)
+// =============================================================================
+
+/** GET /public/games -- list published games */
+app.get("/public/games", async (c) => {
+  try {
+    const limit = parseInt(c.req.query("limit") || "50", 10);
+    const list = await games.listPublishedGames(limit);
+    return c.json(list);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 500);
+  }
+});
+
+/** GET /public/games/:slug -- get a published game by slug */
+app.get("/public/games/:slug", async (c) => {
+  try {
+    const game = await games.getPublishedGame(c.req.param("slug"));
     if (!game) return c.json({ error: "Game not found" }, 404);
     return c.json(game);
   } catch (err) {
@@ -276,6 +373,121 @@ app.post("/games/:name/builds/:id/rollback", async (c) => {
     return c.json(result);
   } catch (err) {
     return c.json({ error: (err as Error).message }, 400);
+  }
+});
+
+// =============================================================================
+// Publishing (scoped to game)
+// =============================================================================
+
+/** POST /games/:name/publish -- publish a game with a slug */
+app.post("/games/:name/publish", async (c) => {
+  try {
+    const gameId = c.get("gameId") as string;
+    const body = await c.req.json();
+    if (!body.slug || typeof body.slug !== "string") {
+      return c.json({ error: "slug is required" }, 400);
+    }
+    const game = await games.publishGame(gameId, body.slug.trim().toLowerCase());
+    return c.json(game);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 400);
+  }
+});
+
+/** POST /games/:name/unpublish -- unpublish a game */
+app.post("/games/:name/unpublish", async (c) => {
+  try {
+    const gameId = c.get("gameId") as string;
+    const game = await games.unpublishGame(gameId);
+    return c.json(game);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 400);
+  }
+});
+
+// =============================================================================
+// Scores & Leaderboard (scoped to game)
+// =============================================================================
+
+/** POST /games/:name/scores -- submit a score */
+app.post("/games/:name/scores", async (c) => {
+  try {
+    const gameId = c.get("gameId") as string;
+    const body = await c.req.json();
+    if (typeof body.score !== "number") {
+      return c.json({ error: "score is required and must be a number" }, 400);
+    }
+    const result = await scores.submitScore(
+      gameId,
+      body.score,
+      body.user_id,
+      body.player_name,
+      body.metadata,
+    );
+    return c.json(result, 201);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 400);
+  }
+});
+
+/** GET /games/:name/leaderboard -- get top scores */
+app.get("/games/:name/leaderboard", async (c) => {
+  try {
+    const gameId = c.get("gameId") as string;
+    const limit = parseInt(c.req.query("limit") || "20", 10);
+    const leaderboard = await scores.getLeaderboard(gameId, limit);
+    return c.json(leaderboard);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 500);
+  }
+});
+
+// =============================================================================
+// Token Launches (scoped to game)
+// =============================================================================
+
+/** PUT /games/:name/token -- create or update token launch */
+app.put("/games/:name/token", async (c) => {
+  try {
+    const gameId = c.get("gameId") as string;
+    const body = await c.req.json();
+    if (!body.token_name || !body.token_symbol || !body.creator_id) {
+      return c.json({ error: "token_name, token_symbol, and creator_id are required" }, 400);
+    }
+    const launch = await tokens.upsertTokenLaunch(gameId, body.creator_id, body.token_name, body.token_symbol, {
+      chainId: body.chain_id,
+      totalSupply: body.total_supply,
+      leaderboardAllocationPct: body.leaderboard_allocation_pct,
+    });
+    return c.json(launch);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 400);
+  }
+});
+
+/** GET /games/:name/token -- get token launch for a game */
+app.get("/games/:name/token", async (c) => {
+  try {
+    const gameId = c.get("gameId") as string;
+    const launch = await tokens.getTokenLaunch(gameId);
+    if (!launch) return c.json({ error: "No token launch found" }, 404);
+    return c.json(launch);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 500);
+  }
+});
+
+/** GET /games/:name/token/distributions -- get distributions for a game's token */
+app.get("/games/:name/token/distributions", async (c) => {
+  try {
+    const gameId = c.get("gameId") as string;
+    const launch = await tokens.getTokenLaunch(gameId);
+    if (!launch) return c.json({ error: "No token launch found" }, 404);
+    const distributions = await tokens.getDistributions(launch.id);
+    return c.json(distributions);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 500);
   }
 });
 

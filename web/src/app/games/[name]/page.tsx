@@ -19,5 +19,12 @@ export default async function GamePage({ params }: GamePageProps) {
     notFound();
   }
 
-  return <GameWorkspace gameId={game.id} gameName={game.name} />;
+  return (
+    <GameWorkspace
+      gameId={game.id}
+      gameName={game.name}
+      isPublished={game.is_published}
+      publicSlug={game.public_slug}
+    />
+  );
 }

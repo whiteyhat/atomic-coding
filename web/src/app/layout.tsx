@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { PrivyProvider } from "@/lib/privy-provider";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -14,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Atomic Coding",
-  description: "AI-powered game development with atoms",
+  title: "Buu AI Game Maker",
+  description: "Build Three.js games with AI agents",
 };
 
 export default function RootLayout({
@@ -28,7 +29,9 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}
       >
-        <TooltipProvider delayDuration={200}>{children}</TooltipProvider>
+        <PrivyProvider>
+          <TooltipProvider delayDuration={200}>{children}</TooltipProvider>
+        </PrivyProvider>
       </body>
     </html>
   );
