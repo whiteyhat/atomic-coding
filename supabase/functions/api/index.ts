@@ -11,6 +11,7 @@ import * as users from "../_shared/services/users.ts";
 import * as boilerplates from "../_shared/services/boilerplates.ts";
 import * as scores from "../_shared/services/scores.ts";
 import * as tokens from "../_shared/services/tokens.ts";
+import * as warrooms from "../_shared/services/warrooms.ts";
 
 // =============================================================================
 // App
@@ -559,6 +560,207 @@ app.post("/games/:name/chat/sessions/:sessionId/messages", async (c) => {
     }
 
     return c.json({ saved: body.messages.length });
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 400);
+  }
+});
+
+// =============================================================================
+// War Rooms (scoped to game)
+// =============================================================================
+
+/** Fire-and-forget: trigger the warroom-orchestrator Edge Function. */
+function triggerOrchestrator(warRoomId: string): void {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!supabaseUrl || !serviceKey) {
+    log("warn", "triggerOrchestrator: missing env vars, skipping");
+    return;
+  }
+  fetch(`${supabaseUrl}/functions/v1/warroom-orchestrator`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${serviceKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ war_room_id: warRoomId }),
+  })
+    .then((res) => log("info", "triggerOrchestrator: response", { warRoomId, status: res.status }))
+    .catch((err) => log("error", "triggerOrchestrator: failed", { error: (err as Error).message }));
+}
+
+/** POST /games/:name/warrooms -- create a war room (+ 12 pipeline tasks) */
+app.post("/games/:name/warrooms", async (c) => {
+  try {
+    const gameId = c.get("gameId") as string;
+    const body = await c.req.json();
+    if (!body.prompt || typeof body.prompt !== "string") {
+      return c.json({ error: "prompt is required" }, 400);
+    }
+    const room = await warrooms.createWarRoom(
+      gameId,
+      body.user_id || null,
+      body.prompt,
+      body.genre || null,
+    );
+
+    // Fire-and-forget: trigger orchestrator pipeline
+    triggerOrchestrator(room.id);
+
+    return c.json(room, 201);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 400);
+  }
+});
+
+/** GET /games/:name/warrooms -- list war rooms */
+app.get("/games/:name/warrooms", async (c) => {
+  try {
+    const gameId = c.get("gameId") as string;
+    const limit = parseInt(c.req.query("limit") || "20", 10);
+    const list = await warrooms.listWarRooms(gameId, limit);
+    return c.json(list);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 500);
+  }
+});
+
+/** GET /games/:name/warrooms/:id -- get war room with tasks */
+app.get("/games/:name/warrooms/:id", async (c) => {
+  try {
+    const room = await warrooms.getWarRoom(c.req.param("id"));
+    if (!room) return c.json({ error: "War room not found" }, 404);
+    return c.json(room);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 500);
+  }
+});
+
+/** GET /games/:name/warrooms/:id/events -- SSE event stream */
+app.get("/games/:name/warrooms/:id/events", async (c) => {
+  const warRoomId = c.req.param("id");
+  const lastEventId = c.req.header("Last-Event-ID") || c.req.query("since");
+
+  // Verify war room exists
+  const room = await warrooms.getWarRoom(warRoomId);
+  if (!room) return c.json({ error: "War room not found" }, 404);
+
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      // 1. Send existing events (hydration on connect / reconnect)
+      try {
+        const existing = await warrooms.getEvents(warRoomId, lastEventId);
+        for (const evt of existing) {
+          const data = JSON.stringify(evt);
+          controller.enqueue(
+            encoder.encode(`id: ${evt.id}\nevent: ${evt.event_type}\ndata: ${data}\n\n`),
+          );
+        }
+      } catch {
+        // Continue even if hydration fails
+      }
+
+      // 2. Poll for new events every 2s (Supabase Realtime not available in Edge Functions)
+      let lastSeen = lastEventId || "";
+      const interval = setInterval(async () => {
+        try {
+          const newEvents = await warrooms.getEvents(warRoomId, lastSeen || undefined);
+          for (const evt of newEvents) {
+            const data = JSON.stringify(evt);
+            controller.enqueue(
+              encoder.encode(`id: ${evt.id}\nevent: ${evt.event_type}\ndata: ${data}\n\n`),
+            );
+            lastSeen = evt.id;
+          }
+
+          // Also send heartbeats as SSE
+          const heartbeats = await warrooms.getHeartbeats(warRoomId);
+          if (heartbeats.length > 0) {
+            controller.enqueue(
+              encoder.encode(
+                `event: heartbeats\ndata: ${JSON.stringify(heartbeats)}\n\n`,
+              ),
+            );
+          }
+
+          // Check if war room is complete — close stream
+          const current = await warrooms.getWarRoom(warRoomId);
+          if (
+            current &&
+            (current.status === "completed" ||
+              current.status === "failed" ||
+              current.status === "cancelled")
+          ) {
+            controller.enqueue(
+              encoder.encode(
+                `event: done\ndata: ${JSON.stringify({ status: current.status })}\n\n`,
+              ),
+            );
+            clearInterval(interval);
+            controller.close();
+          }
+        } catch {
+          // Keep stream alive on transient errors
+          controller.enqueue(encoder.encode(": keepalive\n\n"));
+        }
+      }, 2000);
+
+      // Keepalive comment every 15s to prevent proxy timeouts
+      const keepalive = setInterval(() => {
+        try {
+          controller.enqueue(encoder.encode(": keepalive\n\n"));
+        } catch {
+          clearInterval(keepalive);
+        }
+      }, 15000);
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    },
+  });
+});
+
+/** POST /games/:name/warrooms/:id/heartbeat -- agent heartbeat */
+app.post("/games/:name/warrooms/:id/heartbeat", async (c) => {
+  try {
+    const warRoomId = c.req.param("id");
+    const body = await c.req.json();
+    if (!body.agent) return c.json({ error: "agent is required" }, 400);
+    const hb = await warrooms.upsertHeartbeat(
+      warRoomId,
+      body.agent,
+      body.status || "working",
+      body.metadata,
+    );
+    return c.json(hb);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 400);
+  }
+});
+
+/** POST /games/:name/warrooms/:id/tasks/:num/status -- update task status */
+app.post("/games/:name/warrooms/:id/tasks/:num/status", async (c) => {
+  try {
+    const warRoomId = c.req.param("id");
+    const taskNumber = parseInt(c.req.param("num"), 10);
+    if (isNaN(taskNumber) || taskNumber < 1 || taskNumber > 12) {
+      return c.json({ error: "task number must be 1-12" }, 400);
+    }
+    const body = await c.req.json();
+    if (!body.status) return c.json({ error: "status is required" }, 400);
+    const task = await warrooms.updateTaskStatus(
+      warRoomId,
+      taskNumber,
+      body.status,
+      body.output,
+    );
+    return c.json(task);
   } catch (err) {
     return c.json({ error: (err as Error).message }, 400);
   }
