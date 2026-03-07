@@ -13,10 +13,9 @@ export const API_BASE = `${SUPABASE_URL}/functions/v1/api`;
 
 export const PRIVY_APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID ?? "";
 
-// ── OpenClaw ─────────────────────────────────────────────────────────────────
+// ── Mastra ───────────────────────────────────────────────────────────────────
 
-export const OPENCLAW_GATEWAY_URL = process.env.OPENCLAW_GATEWAY_URL ?? "";
-export const OPENCLAW_GATEWAY_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN ?? "";
+export const MASTRA_SERVER_URL = process.env.MASTRA_SERVER_URL ?? "";
 
 // ── Models ────────────────────────────────────────────────────────────────────
 

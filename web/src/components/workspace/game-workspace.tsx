@@ -6,6 +6,7 @@ import { ChatPanel } from "@/components/chat/chat-panel";
 import { GameFrame } from "@/components/playground/game-frame";
 import { ActionsConsole } from "@/components/console/actions-console";
 import { WarRoomPanel } from "@/components/warroom/war-room-panel";
+import { WarRoomList } from "@/components/warroom/war-room-list";
 import Link from "next/link";
 import { ArrowLeft, MessageSquare, Settings, Swords } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -81,23 +82,21 @@ export function GameWorkspace({ gameId, gameName, isPublished, publicSlug }: Gam
                 <span className="absolute bottom-0 inset-x-2 h-0.5 rounded-full bg-foreground" />
               )}
             </button>
-            {activeWarRoomId && (
-              <button
-                onClick={() => setTab("warroom")}
-                className={cn(
-                  "relative flex items-center gap-1.5 px-4 text-xs font-medium transition-colors",
-                  tab === "warroom"
-                    ? "text-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <Swords className="size-3.5" />
-                War Room
-                {tab === "warroom" && (
-                  <span className="absolute bottom-0 inset-x-2 h-0.5 rounded-full bg-foreground" />
-                )}
-              </button>
-            )}
+            <button
+              onClick={() => setTab("warroom")}
+              className={cn(
+                "relative flex items-center gap-1.5 px-4 text-xs font-medium transition-colors",
+                tab === "warroom"
+                  ? "text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Swords className="size-3.5" />
+              War Room
+              {tab === "warroom" && (
+                <span className="absolute bottom-0 inset-x-2 h-0.5 rounded-full bg-foreground" />
+              )}
+            </button>
             <button
               onClick={() => setTab("config")}
               className={cn(
@@ -123,15 +122,21 @@ export function GameWorkspace({ gameId, gameName, isPublished, publicSlug }: Gam
               onWarRoomCreated={handleWarRoomCreated}
             />
           </div>
-          {activeWarRoomId && (
-            <div className={cn("flex-1 min-h-0", tab !== "warroom" && "hidden")}>
+          <div className={cn("flex-1 min-h-0", tab !== "warroom" && "hidden")}>
+            {activeWarRoomId ? (
               <WarRoomPanel
                 gameName={gameName}
                 warRoomId={activeWarRoomId}
+                onBack={() => setActiveWarRoomId(null)}
                 onSuggestedPrompt={handleSuggestedPrompt}
               />
-            </div>
-          )}
+            ) : (
+              <WarRoomList
+                gameName={gameName}
+                onSelect={(id) => setActiveWarRoomId(id)}
+              />
+            )}
+          </div>
           <div className={cn("flex-1 min-h-0", tab !== "config" && "hidden")}>
             <ActionsConsole gameName={gameName} />
           </div>

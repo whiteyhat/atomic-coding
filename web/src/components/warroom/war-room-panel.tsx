@@ -2,55 +2,24 @@
 
 import { useWarRoom } from "@/lib/use-war-room";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Badge } from "@/components/ui/badge";
-import { Loader2, CheckCircle2, XCircle, Swords } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Loader2, Swords, ArrowLeft } from "lucide-react";
 import { TaskCard } from "./task-card";
 import { AgentHealthBar } from "./agent-health-bar";
 import { SuggestedPrompts } from "./suggested-prompts";
-import type { WarRoomStatus } from "@/lib/types";
-
-function StatusBadge({ status }: { status: WarRoomStatus }) {
-  switch (status) {
-    case "running":
-    case "planning":
-      return (
-        <Badge variant="secondary" className="gap-1 text-xs animate-pulse">
-          <Loader2 className="size-3 animate-spin" />
-          {status === "planning" ? "Planning" : "Running"}
-        </Badge>
-      );
-    case "completed":
-      return (
-        <Badge className="gap-1 text-xs bg-green-500/15 text-green-400 border-green-500/30">
-          <CheckCircle2 className="size-3" />
-          Completed
-        </Badge>
-      );
-    case "failed":
-      return (
-        <Badge variant="destructive" className="gap-1 text-xs">
-          <XCircle className="size-3" />
-          Failed
-        </Badge>
-      );
-    default:
-      return (
-        <Badge variant="outline" className="text-xs">
-          {status}
-        </Badge>
-      );
-  }
-}
+import { StatusBadge } from "./status-badge";
 
 interface WarRoomPanelProps {
   gameName: string;
   warRoomId: string;
+  onBack?: () => void;
   onSuggestedPrompt?: (prompt: string) => void;
 }
 
 export function WarRoomPanel({
   gameName,
   warRoomId,
+  onBack,
   onSuggestedPrompt,
 }: WarRoomPanelProps) {
   const {
@@ -89,6 +58,11 @@ export function WarRoomPanel({
       <div className="px-3 py-3 border-b border-zinc-800 space-y-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
+            {onBack && (
+              <Button variant="ghost" size="icon" className="size-6" onClick={onBack}>
+                <ArrowLeft className="size-3.5" />
+              </Button>
+            )}
             <Swords className="size-4 text-zinc-400" />
             <span className="text-sm font-medium text-zinc-200">
               War Room

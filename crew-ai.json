@@ -1,0 +1,46 @@
+[
+    {
+        "id": "A_TDtYL002",
+        "entity_type": "agent",
+        "data": {
+            "created_at": "2026-03-07T14:31:42.099141",
+            "role": "Senior Researcher",
+            "backstory": "Driven by curiosity, you're at the forefront of innovation, eager to explore and share knowledge that could change the world.",
+            "goal": "Uncover groundbreaking technologies in AI",
+            "allow_delegation": false,
+            "verbose": false,
+            "cache": true,
+            "llm_provider_model": "OpenAI: gpt-4.1-mini",
+            "temperature": 0.1,
+            "max_iter": 25,
+            "tool_ids": [],
+            "knowledge_source_ids": []
+        }
+    },
+    {
+        "id": "JpVO208t",
+        "entity_type": "tool",
+        "data": {
+            "name": "CustomApiTool",
+            "description": "A tool that can be used to make API calls with customizable parameters.",
+            "parameters": {
+                "base_url": null,
+                "headers": null,
+                "query_params": null
+            }
+        }
+    },
+    {
+        "id": "LK3XVCOR",
+        "entity_type": "tool",
+        "data": {
+            "name": "CustomApiTool",
+            "description": "A tool that can be used to make API calls with customizable parameters.",
+            "parameters": {
+                "base_url": null,
+                "headers": null,
+                "query_params": null
+            }
+        }
+    }
+]

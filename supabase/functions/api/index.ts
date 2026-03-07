@@ -569,20 +569,16 @@ app.post("/games/:name/chat/sessions/:sessionId/messages", async (c) => {
 // War Rooms (scoped to game)
 // =============================================================================
 
-/** Fire-and-forget: trigger the warroom-orchestrator Edge Function. */
+/** Fire-and-forget: trigger the Mastra pipeline orchestrator. */
 function triggerOrchestrator(warRoomId: string): void {
-  const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (!supabaseUrl || !serviceKey) {
-    log("warn", "triggerOrchestrator: missing env vars, skipping");
+  const mastraUrl = Deno.env.get("MASTRA_SERVER_URL");
+  if (!mastraUrl) {
+    log("warn", "triggerOrchestrator: MASTRA_SERVER_URL not set, skipping");
     return;
   }
-  fetch(`${supabaseUrl}/functions/v1/warroom-orchestrator`, {
+  fetch(`${mastraUrl}/pipeline/run`, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${serviceKey}`,
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ war_room_id: warRoomId }),
   })
     .then((res) => log("info", "triggerOrchestrator: response", { warRoomId, status: res.status }))
@@ -722,6 +718,7 @@ app.get("/games/:name/warrooms/:id/events", async (c) => {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
       Connection: "keep-alive",
+      "Access-Control-Allow-Origin": "*",
     },
   });
 });

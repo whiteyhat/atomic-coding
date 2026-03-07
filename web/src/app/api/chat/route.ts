@@ -5,10 +5,10 @@ import { DEFAULT_MODEL } from "@/lib/constants";
 import { getChatMessages, getGame, createWarRoom } from "@/lib/api";
 import { verifyAuthToken } from "@/lib/auth";
 import {
-  streamOpenClawChat,
-  isOpenClawConfigured,
-  type OpenClawMessage,
-} from "@/lib/openclaw-client";
+  streamMastraChat,
+  isMastraConfigured,
+  type MastraMessage,
+} from "@/lib/mastra-client";
 import { SYSTEM_PROMPT, getGenreContext } from "@/lib/system-prompt";
 
 export const maxDuration = 120;
@@ -34,7 +34,7 @@ export async function POST(req: Request) {
     sessionId,
     userId: authUser.userId,
     clientMessageCount: messages?.length ?? 0,
-    useOpenClaw: isOpenClawConfigured(),
+    useMastra: isMastraConfigured(),
   });
 
   // Fetch game to get genre for system prompt context
@@ -51,15 +51,15 @@ export async function POST(req: Request) {
   // ── War Room Mode ─────────────────────────────────────────────────────────
   // When explicitly requested via war_room flag, create a war room and return
   // its ID so the frontend can switch to the war room view.
-  if (body.war_room && isOpenClawConfigured() && body.gameName) {
+  if (body.war_room && isMastraConfigured() && body.gameName) {
     return handleWarRoomCreation(body, gameId, genre, authUser.userId);
   }
 
-  // ── OpenClaw Gateway Mode ──────────────────────────────────────────────────
-  // When the OpenClaw gateway is configured, proxy through it for multi-agent.
+  // ── Mastra Gateway Mode ────────────────────────────────────────────────────
+  // When the Mastra server is configured, proxy through it for multi-agent.
   // Otherwise, fall back to the local Vercel AI SDK agent.
-  if (isOpenClawConfigured()) {
-    return handleOpenClawProxy(body, gameId, genre, sessionId);
+  if (isMastraConfigured()) {
+    return handleMastraProxy(body, gameId, genre, sessionId);
   }
 
   // ── Local Agent Mode (fallback) ────────────────────────────────────────────
@@ -131,10 +131,10 @@ export async function POST(req: Request) {
 }
 
 /**
- * Proxy the chat request through the OpenClaw gateway.
- * Converts UI messages to OpenAI-compatible format and streams back.
+ * Proxy the chat request through the Mastra server.
+ * Converts UI messages to plain-text format and streams back.
  */
-async function handleOpenClawProxy(
+async function handleMastraProxy(
   body: Record<string, unknown>,
   gameId: string,
   genre: string | null,
@@ -142,8 +142,8 @@ async function handleOpenClawProxy(
 ): Promise<Response> {
   const messages = body.messages as UIMessage[] | undefined;
 
-  // Convert UIMessage parts to plain text for OpenAI-compatible format
-  const openClawMessages: OpenClawMessage[] = [
+  // Convert UIMessage parts to plain text for the Mastra server
+  const mastraMessages: MastraMessage[] = [
     {
       role: "system",
       content: SYSTEM_PROMPT + getGenreContext(genre),
@@ -157,22 +157,22 @@ async function handleOpenClawProxy(
       .join("\n");
 
     if (textParts) {
-      openClawMessages.push({
+      mastraMessages.push({
         role: msg.role as "user" | "assistant",
         content: textParts,
       });
     }
   }
 
-  console.log("[chat:openclaw] Proxying to gateway", {
-    messageCount: openClawMessages.length,
+  console.log("[chat:mastra] Proxying to Mastra server", {
+    messageCount: mastraMessages.length,
     gameId,
     genre,
   });
 
   try {
-    const stream = await streamOpenClawChat({
-      messages: openClawMessages,
+    const stream = await streamMastraChat({
+      messages: mastraMessages,
       gameId,
       gameName: (body.gameName as string) ?? "",
       genre,
@@ -187,10 +187,10 @@ async function handleOpenClawProxy(
       },
     });
   } catch (err) {
-    console.error("[chat:openclaw] Gateway error:", err);
+    console.error("[chat:mastra] Server error:", err);
     return new Response(
       JSON.stringify({
-        error: err instanceof Error ? err.message : "OpenClaw gateway error",
+        error: err instanceof Error ? err.message : "Mastra server error",
       }),
       {
         status: 502,

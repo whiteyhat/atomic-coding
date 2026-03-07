@@ -1,5 +1,5 @@
 /**
- * Agent status types and parsing for OpenClaw multi-agent streaming.
+ * Agent status types and parsing for multi-agent streaming.
  * The Jarvis agent emits status markers like [AGENT:forge:working] in
  * its text stream. The frontend parses these to show agent activity.
  */
