@@ -12,6 +12,7 @@ import * as boilerplates from "../_shared/services/boilerplates.ts";
 import * as scores from "../_shared/services/scores.ts";
 import * as tokens from "../_shared/services/tokens.ts";
 import * as warrooms from "../_shared/services/warrooms.ts";
+import { verifyAuthToken } from "../_shared/auth.ts";
 
 // =============================================================================
 // App
@@ -414,6 +415,9 @@ app.post("/games/:name/unpublish", async (c) => {
 /** POST /games/:name/scores -- submit a score */
 app.post("/games/:name/scores", async (c) => {
   try {
+    const authUser = await verifyAuthToken(c.req.raw);
+    if (!authUser) return c.json({ error: "Unauthorized" }, 401);
+
     const gameId = c.get("gameId") as string;
     const body = await c.req.json();
     if (typeof body.score !== "number") {
@@ -422,8 +426,7 @@ app.post("/games/:name/scores", async (c) => {
     const result = await scores.submitScore(
       gameId,
       body.score,
-      body.user_id,
-      body.player_name,
+      authUser.userId,
       body.metadata,
     );
     return c.json(result, 201);
@@ -436,8 +439,12 @@ app.post("/games/:name/scores", async (c) => {
 app.get("/games/:name/leaderboard", async (c) => {
   try {
     const gameId = c.get("gameId") as string;
-    const limit = parseInt(c.req.query("limit") || "20", 10);
-    const leaderboard = await scores.getLeaderboard(gameId, limit);
+    const limit = parseInt(c.req.query("limit") || "10", 10);
+    const period = (c.req.query("period") || "lifetime") as scores.LeaderboardPeriod;
+    if (!["day", "week", "lifetime"].includes(period)) {
+      return c.json({ error: "period must be one of: day, week, lifetime" }, 400);
+    }
+    const leaderboard = await scores.getLeaderboard(gameId, period, limit);
     return c.json(leaderboard);
   } catch (err) {
     return c.json({ error: (err as Error).message }, 500);

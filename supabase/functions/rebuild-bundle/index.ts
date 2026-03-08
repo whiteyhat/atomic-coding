@@ -3,6 +3,7 @@ import { topologicalSort } from "../_shared/topological-sort.ts";
 import { log } from "../_shared/logger.ts";
 import { snapshotCurrentAtoms } from "../_shared/services/builds.ts";
 import { getInstalledExternals } from "../_shared/services/externals.ts";
+import { validateScoreSystemRules } from "../../../mastra/src/shared/atom-validation.ts";
 
 /**
  * Rebuild Bundle Edge Function
@@ -65,6 +66,10 @@ Deno.serve(async (req: Request) => {
 
     // 2. Create atom snapshot BEFORE bundling (for rollback support)
     const atomSnapshot = await snapshotCurrentAtoms(gameId);
+    const scoreSystemReport = validateScoreSystemRules(
+      atomSnapshot.atoms,
+      atomSnapshot.dependencies,
+    );
 
     // 3. Fetch all atoms for this game
     const { data: atoms, error: atomsError } = await supabase
@@ -83,6 +88,9 @@ Deno.serve(async (req: Request) => {
           build_log: [],
           bundle_url: null,
           atom_snapshot: atomSnapshot,
+          score_system_ready: scoreSystemReport.passed,
+          score_system_report: scoreSystemReport,
+          score_system_checked_at: scoreSystemReport.checked_at,
         })
         .eq("id", buildId);
 
@@ -206,6 +214,9 @@ Deno.serve(async (req: Request) => {
         build_log: sortedNames,
         bundle_url: bundleUrl,
         atom_snapshot: atomSnapshot,
+        score_system_ready: scoreSystemReport.passed,
+        score_system_report: scoreSystemReport,
+        score_system_checked_at: scoreSystemReport.checked_at,
       })
       .eq("id", buildId);
 

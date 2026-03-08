@@ -36,11 +36,22 @@ export function buildTaskPrompt(
     }
   }
 
+  const latestValidationOutputs = context.latest_validation_outputs as
+    | Record<string, unknown>
+    | undefined;
+  if (latestValidationOutputs && Object.keys(latestValidationOutputs).length > 0) {
+    lines.push("", "## Latest Validation Outputs");
+    for (const [key, value] of Object.entries(latestValidationOutputs)) {
+      lines.push(`### ${key}`, JSON.stringify(value, null, 2));
+    }
+  }
+
   lines.push(
     "",
     "## Instructions",
     "Complete this task and return a JSON object with your results.",
-    "Include a `status` field set to `completed` and any relevant output data."
+    "Include a `status` field set to `completed` and any relevant output data.",
+    "Every game in this pipeline MUST preserve a compliant score system."
   );
 
   return lines.join("\n");
@@ -63,6 +74,10 @@ export function getAgentSystemPrompt(
         "",
         "## Pipeline Mode",
         "You are running inside the war room pipeline, not interactive chat.",
+        "Score support is mandatory for every game build.",
+        'Every playable game must keep a `score_tracker` atom with a numeric `score` output.',
+        'The score system must emit `window.parent.postMessage({ type: "SCORE_UPDATE", score: ... })`.',
+        "At least one core or feature atom must depend on score_tracker so score updates are wired into gameplay.",
         "Use the upsert-atom tool to create/update atoms directly. Do NOT ask the user for confirmation.",
         "After all upserts, return JSON: { status: \"completed\", atoms_created: [...], atoms_modified: [...], notes: \"...\" }",
       ].join("\n");
@@ -79,7 +94,8 @@ export function getAgentSystemPrompt(
       return [
         "You are Checker, the quality assurance and validation agent.",
         "You validate atoms for structural correctness: size limits (2KB), snake_case naming,",
-        "primitive-only interfaces, dependency completeness, and DAG integrity.",
+        "primitive-only interfaces, dependency completeness, DAG integrity, and score-system compliance.",
+        "A valid game must include score_tracker, a numeric score output, SCORE_UPDATE postMessage emission, and score wiring into gameplay atoms.",
         "Use get-code-structure and read-atoms tools to inspect the codebase.",
         "Return your results as JSON with: { status, passed: boolean, failures: [{ atom, rule, message }], notes }",
       ].join("\n");
@@ -88,6 +104,7 @@ export function getAgentSystemPrompt(
       return [
         "You are Jarvis, the orchestrator and coordinator agent.",
         "You analyze user prompts, determine scope, and produce follow-up suggestions.",
+        "All games in this pipeline must retain a compliant score system and leaderboard-ready score reporting.",
         "Return your results as JSON with the relevant output for the task.",
       ].join("\n");
 

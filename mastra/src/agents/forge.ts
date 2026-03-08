@@ -11,6 +11,7 @@ export const forge = new Agent({
     "You create Three.js game code as atoms (max 2KB each, snake_case, primitives-only interfaces).",
     "Use the get-code-structure, read-atoms, and upsert-atom tools to read existing code and create/update atoms.",
     "Always read existing atoms before modifying. Follow dependency order: utils → features → core.",
+    "Every game must preserve a compliant score system via score_tracker and SCORE_UPDATE postMessage emission.",
     "Return your results as JSON with: { status, atoms_created, atoms_modified, notes }",
   ].join("\n"),
   model: "openrouter/anthropic/claude-sonnet-4.6",

@@ -1,5 +1,7 @@
 import { getSupabaseClient } from "../supabase-client.ts";
 import { log } from "../logger.ts";
+import { ensureBuildScoreSystemReport } from "./builds.ts";
+import type { ValidationReport } from "../../../../mastra/src/shared/atom-validation.ts";
 
 // =============================================================================
 // Types
@@ -195,12 +197,30 @@ export async function publishGame(
   if (fetchErr || !game) throw new Error("Game not found");
   if (!game.active_build_id) throw new Error("Game has no active build to publish");
 
-  // Get the bundle URL from the active build
-  const { data: build } = await supabase
+  const { data: build, error: buildError } = await supabase
     .from("builds")
-    .select("bundle_url")
+    .select("id, status, bundle_url, score_system_ready, score_system_report")
     .eq("id", game.active_build_id)
     .single();
+
+  if (buildError || !build) throw new Error("Active build not found");
+  if (build.status !== "success") {
+    throw new Error("Game can only be published from a successful active build");
+  }
+
+  let scoreReport = build.score_system_report as ValidationReport | null;
+  if (!scoreReport) {
+    scoreReport = await ensureBuildScoreSystemReport(build.id);
+  }
+
+  if (!scoreReport.passed) {
+    const reasons = scoreReport.failures.map((failure) => failure.message).join("; ");
+    throw new Error(
+      reasons
+        ? `Active build is missing required score-system support: ${reasons}`
+        : "Active build is missing required score-system support",
+    );
+  }
 
   const { data, error } = await supabase
     .from("games")

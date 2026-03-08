@@ -1,4 +1,11 @@
 import { mastra } from "../mastra.js";
+import { getSupabaseClient } from "../lib/supabase.js";
+import {
+  mergeValidationReports,
+  validateScoreSystemRules,
+  validateStructuralRules,
+  type ValidationReport,
+} from "../shared/atom-validation.js";
 import * as warrooms from "./warrooms.js";
 import { buildTaskPrompt, getAgentSystemPrompt } from "./prompts.js";
 import type { WarRoomTask, DispatchResult } from "./types.js";
@@ -7,13 +14,13 @@ const MAX_RETRY_CYCLES = 3;
 
 /** Find tasks whose dependencies are all completed. */
 export function getNextRunnableTasks(tasks: WarRoomTask[]): WarRoomTask[] {
-  const completedNumbers = new Set(
-    tasks.filter((t) => t.status === "completed").map((t) => t.task_number)
-  );
+  const tasksByNumber = new Map(tasks.map((task) => [task.task_number, task]));
 
   return tasks.filter((t) => {
     if (t.status !== "pending" && t.status !== "assigned") return false;
-    return t.depends_on.every((dep) => completedNumbers.has(dep));
+    return t.depends_on.every((dep) =>
+      isDependencySatisfied(t.task_number, dep, tasksByNumber)
+    );
   });
 }
 
@@ -37,6 +44,64 @@ function gatherDependencyOutputs(
     }
   }
   return outputs;
+}
+
+function isDependencySatisfied(
+  taskNumber: number,
+  dependencyNumber: number,
+  tasksByNumber: Map<number, WarRoomTask>
+): boolean {
+  const dependency = tasksByNumber.get(dependencyNumber);
+  if (!dependency) return false;
+  if (dependency.status === "completed") return true;
+
+  return (
+    taskNumber === 10 &&
+    dependencyNumber === 9 &&
+    dependency.status === "failed"
+  );
+}
+
+function getLatestValidationOutputs(
+  tasks: WarRoomTask[]
+): Record<string, unknown> {
+  const outputs: Record<string, unknown> = {};
+
+  for (const taskNumber of [11, 9]) {
+    const task = tasks.find((candidate) => candidate.task_number === taskNumber);
+    if (task?.output) {
+      outputs[`task_${taskNumber}_latest_validation`] = task.output;
+    }
+  }
+
+  return outputs;
+}
+
+async function runDeterministicValidation(
+  gameId: string
+): Promise<ValidationReport> {
+  const supabase = getSupabaseClient();
+
+  const { data: atoms, error: atomsError } = await supabase
+    .from("atoms")
+    .select("name, type, code, description, inputs, outputs")
+    .eq("game_id", gameId);
+  if (atomsError) {
+    throw new Error(`Failed to fetch atoms for validation: ${atomsError.message}`);
+  }
+
+  const { data: deps, error: depsError } = await supabase
+    .from("atom_dependencies")
+    .select("atom_name, depends_on")
+    .eq("game_id", gameId);
+  if (depsError) {
+    throw new Error(`Failed to fetch dependencies for validation: ${depsError.message}`);
+  }
+
+  const structuralReport = validateStructuralRules(atoms || [], deps || []);
+  const scoreReport = validateScoreSystemRules(atoms || [], deps || []);
+
+  return mergeValidationReports(structuralReport, scoreReport);
 }
 
 /**
@@ -99,6 +164,36 @@ export async function runPipeline(warRoomId: string): Promise<void> {
   });
 
   let retryCycles = 0;
+
+  const scheduleValidationRetry = async (
+    failedTaskNumber: number,
+    output: Record<string, unknown>
+  ): Promise<boolean> => {
+    if (retryCycles >= MAX_RETRY_CYCLES) {
+      return false;
+    }
+
+    retryCycles++;
+    console.log("[orchestrator] retrying validation fix cycle", {
+      warRoomId,
+      cycle: retryCycles,
+      failedTaskNumber,
+    });
+
+    await warrooms.updateTaskStatus(warRoomId, 10, "pending");
+    if (failedTaskNumber === 11) {
+      await warrooms.updateTaskStatus(warRoomId, 11, "pending");
+    }
+
+    await warrooms.recordEvent(warRoomId, "retry_cycle", "jarvis", 10, {
+      cycle: retryCycles,
+      max: MAX_RETRY_CYCLES,
+      failed_task: failedTaskNumber,
+      validation_output: output,
+    });
+
+    return true;
+  };
 
   try {
     while (true) {
@@ -163,18 +258,79 @@ export async function runPipeline(warRoomId: string): Promise<void> {
           scope: room.scope,
           dependency_outputs: depOutputs,
         };
+        const latestValidationOutputs =
+          task.task_number === 10 ? getLatestValidationOutputs(tasks) : {};
+        if (Object.keys(latestValidationOutputs).length > 0) {
+          context.latest_validation_outputs = latestValidationOutputs;
+        }
 
         // Dispatch to Mastra agent
         const result = await dispatchToAgent(task, context);
 
         if (result.success) {
-          await warrooms.updateTaskStatus(
-            warRoomId,
-            task.task_number,
-            "completed",
-            result.output
-          );
-          await warrooms.upsertHeartbeat(warRoomId, agent, "idle");
+          if (task.task_number === 9 || task.task_number === 11) {
+            const deterministicValidation = await runDeterministicValidation(
+              room.game_id
+            );
+            const agentPassed = result.output?.passed !== false;
+            const combinedOutput = {
+              ...result.output,
+              passed: agentPassed && deterministicValidation.passed,
+              deterministic_validation: deterministicValidation,
+            };
+
+            if (agentPassed && deterministicValidation.passed) {
+              await warrooms.updateTaskStatus(
+                warRoomId,
+                task.task_number,
+                "completed",
+                combinedOutput
+              );
+              await warrooms.upsertHeartbeat(warRoomId, agent, "idle");
+            } else {
+              await warrooms.updateTaskStatus(
+                warRoomId,
+                task.task_number,
+                "failed",
+                combinedOutput
+              );
+
+              const retryScheduled = await scheduleValidationRetry(
+                task.task_number,
+                combinedOutput
+              );
+
+              if (!retryScheduled && task.task_number === 9) {
+                await warrooms.updateTaskStatus(warRoomId, 10, "blocked", {
+                  error: "Retry limit reached before fix cycle could run",
+                });
+              }
+
+              await warrooms.upsertHeartbeat(
+                warRoomId,
+                agent,
+                retryScheduled ? "idle" : "error",
+                retryScheduled
+                  ? {
+                      task_number: task.task_number,
+                      retry_scheduled: true,
+                    }
+                  : {
+                      task_number: task.task_number,
+                      validation_failed: true,
+                      failures: deterministicValidation.failures,
+                    }
+              );
+            }
+          } else {
+            await warrooms.updateTaskStatus(
+              warRoomId,
+              task.task_number,
+              "completed",
+              result.output
+            );
+            await warrooms.upsertHeartbeat(warRoomId, agent, "idle");
+          }
         } else {
           // Special handling for task 10 (fix failures) — retry loop
           if (task.task_number === 10 && retryCycles < MAX_RETRY_CYCLES) {
@@ -216,7 +372,14 @@ export async function runPipeline(warRoomId: string): Promise<void> {
 
     // Pipeline complete — determine final status
     const finalTasks = await warrooms.getTasks(warRoomId);
-    const allPassed = finalTasks.every((t) => t.status === "completed");
+    const task11Completed =
+      finalTasks.find((task) => task.task_number === 11)?.status === "completed";
+    const allPassed = finalTasks.every((task) => {
+      if (task.task_number === 9) {
+        return task.status === "completed" || (task.status === "failed" && task11Completed);
+      }
+      return task.status === "completed";
+    });
 
     if (allPassed) {
       // Trigger a final rebuild to ensure the game bundle is up-to-date

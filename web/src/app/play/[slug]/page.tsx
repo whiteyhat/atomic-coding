@@ -1,9 +1,9 @@
 import { getPublishedGame } from "@/lib/api";
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/constants";
 import { notFound } from "next/navigation";
 import { Trophy } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { GameFrame } from "@/components/playground/game-frame";
 
 interface PlayPageProps {
   params: Promise<{ slug: string }>;
@@ -20,8 +20,6 @@ export default async function PlayPage({ params }: PlayPageProps) {
   }
 
   if (!game) notFound();
-
-  const iframeSrc = `/game-player.html?game=${encodeURIComponent(game.name)}&supabaseUrl=${encodeURIComponent(SUPABASE_URL)}&supabaseKey=${encodeURIComponent(SUPABASE_ANON_KEY)}`;
 
   return (
     <div className="min-h-screen bg-black flex flex-col">
@@ -47,12 +45,7 @@ export default async function PlayPage({ params }: PlayPageProps) {
 
       {/* Full-screen game */}
       <main className="flex-1 min-h-0">
-        <iframe
-          src={iframeSrc}
-          className="w-full h-full border-0"
-          title={`Play: ${game.name}`}
-          allow="autoplay; fullscreen"
-        />
+        <GameFrame gameName={game.name} showScoreLoginPrompt />
       </main>
     </div>
   );

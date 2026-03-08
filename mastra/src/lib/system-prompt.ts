@@ -103,6 +103,16 @@ Execute the upsert list in order. Function name must match atom name. If any ups
 - **No classes**. Every atom is a plain function.
 - **Bottom-up creation**: utils first, then features, then core.
 
+## Required Score System
+
+Every game must remain leaderboard-ready.
+
+- A \`score_tracker\` atom is required.
+- \`score_tracker\` must expose a numeric output named \`score\`.
+- \`score_tracker\` must emit \`window.parent.postMessage({ type: "SCORE_UPDATE", score: ... })\`.
+- At least one \`core\` or \`feature\` atom must depend on \`score_tracker\` so score reporting is wired into gameplay.
+- Do not remove or bypass score reporting when modifying atoms.
+
 ## Atom Types
 
 - core: system/entry points (game_loop, main, create_scene)

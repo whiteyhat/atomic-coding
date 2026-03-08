@@ -114,6 +114,8 @@ export interface LeaderboardEntry {
   created_at: string;
 }
 
+export type LeaderboardPeriod = "day" | "week" | "lifetime";
+
 // ── Token Launches ──────────────────────────────────────────────────────────
 
 export interface TokenLaunch {

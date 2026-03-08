@@ -6,14 +6,18 @@ import { usePrivy } from "@privy-io/react-auth";
 
 interface ScoreListenerProps {
   gameName: string;
+  requireAuth?: boolean;
 }
 
 /**
  * Listens for postMessage SCORE_UPDATE events from the game iframe,
  * debounces them, and submits to the API.
  */
-export function ScoreListener({ gameName }: ScoreListenerProps) {
-  const { user } = usePrivy();
+export function ScoreListener({
+  gameName,
+  requireAuth = true,
+}: ScoreListenerProps) {
+  const { user, authenticated, ready } = usePrivy();
   const lastSubmitRef = useRef(0);
   const pendingScoreRef = useRef<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -22,13 +26,18 @@ export function ScoreListener({ gameName }: ScoreListenerProps) {
     const score = pendingScoreRef.current;
     if (score === null) return;
 
+    if (requireAuth && (!ready || !authenticated || !user?.id)) {
+      pendingScoreRef.current = null;
+      return;
+    }
+
     pendingScoreRef.current = null;
     lastSubmitRef.current = Date.now();
 
-    submitScore(gameName, score, user?.id).catch((err) => {
+    submitScore(gameName, score).catch((err) => {
       console.warn("[score-listener] Failed to submit score:", err);
     });
-  }, [gameName, user?.id]);
+  }, [authenticated, gameName, ready, requireAuth, user?.id]);
 
   useEffect(() => {
     function handleMessage(event: MessageEvent) {

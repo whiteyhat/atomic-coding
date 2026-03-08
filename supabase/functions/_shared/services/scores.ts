@@ -25,6 +25,8 @@ export interface LeaderboardEntry {
   created_at: string;
 }
 
+export type LeaderboardPeriod = "day" | "week" | "lifetime";
+
 // =============================================================================
 // Rate limiting (in-memory, per-instance)
 // =============================================================================
@@ -47,12 +49,11 @@ function isRateLimited(key: string, intervalMs: number = 1000): boolean {
 export async function submitScore(
   gameId: string,
   score: number,
-  userId?: string,
-  playerName?: string,
+  userId: string,
   metadata?: Record<string, unknown>,
 ): Promise<Score> {
   // Rate limit: 1 score per second per user/game
-  const rateLimitKey = `${gameId}:${userId ?? "anon"}`;
+  const rateLimitKey = `${gameId}:${userId}`;
   if (isRateLimited(rateLimitKey)) {
     throw new Error("Rate limited: max 1 score per second");
   }
@@ -68,8 +69,7 @@ export async function submitScore(
     .from("scores")
     .insert({
       game_id: gameId,
-      user_id: userId || null,
-      player_name: playerName || null,
+      user_id: userId,
       score,
       metadata: metadata || {},
     })
@@ -85,16 +85,17 @@ export async function submitScore(
 /** Get leaderboard for a game (top scores, one per user) */
 export async function getLeaderboard(
   gameId: string,
-  limit: number = 20,
+  period: LeaderboardPeriod = "lifetime",
+  limit: number = 10,
 ): Promise<LeaderboardEntry[]> {
   const supabase = getSupabaseClient();
+  const safeLimit = Math.max(1, Math.min(limit, 10));
 
-  const { data, error } = await supabase
-    .from("leaderboard")
-    .select("*")
-    .eq("game_id", gameId)
-    .order("score", { ascending: false })
-    .limit(limit);
+  const { data, error } = await supabase.rpc("get_game_leaderboard", {
+    p_game_id: gameId,
+    p_period: period,
+    p_limit: safeLimit,
+  });
 
   if (error) throw new Error(`Failed to get leaderboard: ${error.message}`);
   return (data || []) as LeaderboardEntry[];

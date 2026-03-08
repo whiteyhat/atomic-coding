@@ -2,9 +2,10 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { getLeaderboard } from "@/lib/api";
-import type { LeaderboardEntry } from "@/lib/types";
+import type { LeaderboardEntry, LeaderboardPeriod } from "@/lib/types";
 import { Trophy, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ButtonGroup } from "@/components/ui/button-group";
 
 interface LeaderboardPanelProps {
   gameName: string;
@@ -12,20 +13,22 @@ interface LeaderboardPanelProps {
 
 export function LeaderboardPanel({ gameName }: LeaderboardPanelProps) {
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
+  const [period, setPeriod] = useState<LeaderboardPeriod>("lifetime");
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     try {
-      const data = await getLeaderboard(gameName);
+      const data = await getLeaderboard(gameName, period, 10);
       setEntries(data);
     } catch (err) {
       console.warn("[leaderboard] Failed to load:", err);
     } finally {
       setLoading(false);
     }
-  }, [gameName]);
+  }, [gameName, period]);
 
   useEffect(() => {
+    setLoading(true);
     refresh();
     // Auto-refresh every 10 seconds
     const interval = setInterval(refresh, 10000);
@@ -45,7 +48,7 @@ export function LeaderboardPanel({ gameName }: LeaderboardPanelProps) {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Trophy className="size-4 text-yellow-500" />
-          <h3 className="text-sm font-medium">Leaderboard</h3>
+          <h3 className="text-sm font-medium">Top 10 Leaderboard</h3>
         </div>
         <Button
           variant="ghost"
@@ -57,9 +60,27 @@ export function LeaderboardPanel({ gameName }: LeaderboardPanelProps) {
         </Button>
       </div>
 
+      <ButtonGroup className="w-full">
+        {([
+          ["day", "Day"],
+          ["week", "Week"],
+          ["lifetime", "Lifetime"],
+        ] as const).map(([value, label]) => (
+          <Button
+            key={value}
+            variant={period === value ? "default" : "outline"}
+            size="xs"
+            className="flex-1"
+            onClick={() => setPeriod(value)}
+          >
+            {label}
+          </Button>
+        ))}
+      </ButtonGroup>
+
       {entries.length === 0 ? (
         <p className="text-sm text-muted-foreground text-center py-4">
-          No scores yet. Play the game to get on the board!
+          No scores yet for this period. Play the game to get on the board!
         </p>
       ) : (
         <div className="space-y-1">

@@ -1,6 +1,10 @@
 import { getSupabaseClient } from "../supabase-client.ts";
 import { generateEmbedding } from "../openai.ts";
 import { log } from "../logger.ts";
+import {
+  validateScoreSystemRules,
+  type ValidationReport,
+} from "../../../../mastra/src/shared/atom-validation.ts";
 
 // =============================================================================
 // Types
@@ -15,6 +19,9 @@ export interface Build {
   error_message: string | null;
   build_log: unknown;
   atom_snapshot: AtomSnapshot | null;
+  score_system_ready: boolean;
+  score_system_report: ValidationReport | null;
+  score_system_checked_at: string | null;
   created_at: string;
 }
 
@@ -24,6 +31,8 @@ export interface BuildSummary {
   bundle_url: string | null;
   atom_count: number | null;
   error_message: string | null;
+  score_system_ready: boolean;
+  score_system_checked_at: string | null;
   created_at: string;
 }
 
@@ -37,13 +46,18 @@ interface SnapshotAtom {
   type: string;
   code: string;
   description: string | null;
-  inputs: unknown[];
-  outputs: unknown[];
+  inputs: SnapshotPort[];
+  outputs: SnapshotPort[];
 }
 
 interface SnapshotDep {
   atom_name: string;
   depends_on: string;
+}
+
+interface SnapshotPort {
+  name: string;
+  type: string;
 }
 
 // =============================================================================
@@ -59,7 +73,7 @@ export async function listBuilds(
 
   const { data, error } = await supabase
     .from("builds")
-    .select("id, status, bundle_url, atom_count, error_message, created_at")
+    .select("id, status, bundle_url, atom_count, error_message, score_system_ready, score_system_checked_at, created_at")
     .eq("game_id", gameId)
     .order("created_at", { ascending: false })
     .limit(limit);
@@ -260,4 +274,46 @@ export async function rollbackBuild(
     checkpointBuildId: checkpointBuild.id,
     restoredAtomCount: snapshot.atoms.length,
   };
+}
+
+export async function ensureBuildScoreSystemReport(
+  buildId: string,
+): Promise<ValidationReport> {
+  const supabase = getSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("builds")
+    .select("id, atom_snapshot, score_system_report")
+    .eq("id", buildId)
+    .single();
+
+  if (error || !data) {
+    throw new Error(`Build "${buildId}" not found.`);
+  }
+
+  if (data.score_system_report) {
+    return data.score_system_report as ValidationReport;
+  }
+
+  const snapshot = data.atom_snapshot as AtomSnapshot | null;
+  if (!snapshot) {
+    throw new Error(`Build "${buildId}" cannot be validated because it has no atom snapshot.`);
+  }
+
+  const report = validateScoreSystemRules(snapshot.atoms, snapshot.dependencies);
+
+  const { error: updateError } = await supabase
+    .from("builds")
+    .update({
+      score_system_ready: report.passed,
+      score_system_report: report,
+      score_system_checked_at: report.checked_at,
+    })
+    .eq("id", buildId);
+
+  if (updateError) {
+    throw new Error(`Failed to persist build score-system report: ${updateError.message}`);
+  }
+
+  return report;
 }

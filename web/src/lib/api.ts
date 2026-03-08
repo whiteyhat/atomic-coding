@@ -10,6 +10,7 @@ import type {
   ChatMessage,
   BoilerplateSummary,
   LeaderboardEntry,
+  LeaderboardPeriod,
   TokenLaunch,
   WarRoom,
   WarRoomWithTasks,
@@ -115,22 +116,21 @@ export async function listBoilerplates(): Promise<BoilerplateSummary[]> {
 
 export async function submitScore(
   gameName: string,
-  score: number,
-  userId?: string,
-  playerName?: string
+  score: number
 ): Promise<void> {
   await apiFetch(`/games/${encodeURIComponent(gameName)}/scores`, {
     method: "POST",
-    body: JSON.stringify({ score, user_id: userId, player_name: playerName }),
+    body: JSON.stringify({ score }),
   });
 }
 
 export async function getLeaderboard(
   gameName: string,
-  limit = 20
+  period: LeaderboardPeriod = "lifetime",
+  limit = 10
 ): Promise<LeaderboardEntry[]> {
   return apiFetch(
-    `/games/${encodeURIComponent(gameName)}/leaderboard?limit=${limit}`
+    `/games/${encodeURIComponent(gameName)}/leaderboard?period=${period}&limit=${limit}`
   );
 }
 
