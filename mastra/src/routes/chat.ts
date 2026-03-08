@@ -1,4 +1,6 @@
 import { Hono } from "hono";
+import { createUIMessageStream, createUIMessageStreamResponse } from "ai";
+import { toAISdkStream } from "@mastra/ai-sdk";
 import { mastra } from "../mastra.js";
 import {
   SYSTEM_PROMPT,
@@ -23,17 +25,21 @@ const app = new Hono();
  */
 app.post("/stream", async (c) => {
   const body = await c.req.json().catch(() => ({}));
-  const { messages, genre } = body;
+  const { messages, gameId, gameName, genre } = body;
 
   if (!messages || !Array.isArray(messages)) {
     return c.json({ error: "messages array is required" }, 400);
   }
 
   const jarvis = mastra.getAgent("jarvis");
-  const instructions = SYSTEM_PROMPT + getGenreContext(genre ?? null);
+  const gameContext = gameId
+    ? `\n\n## Current Game\n- **Game ID (UUID)**: \`${gameId}\`\n- **Game Name**: \`${gameName ?? "unknown"}\`\nAlways use the Game ID above when calling tools (get-code-structure, read-atoms, upsert-atom).`
+    : "";
+  const instructions = SYSTEM_PROMPT + getGenreContext(genre ?? null) + gameContext;
 
   console.log("[chat] streaming with jarvis", {
     messageCount: messages.length,
+    gameId,
     genre,
   });
 
@@ -43,14 +49,18 @@ app.post("/stream", async (c) => {
       maxSteps: 30,
     });
 
-    // Return the text stream as SSE
-    return new Response(stream.textStream as ReadableStream, {
-      headers: {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        Connection: "keep-alive",
+    // Convert Mastra stream to AI SDK UI message stream protocol.
+    // This preserves tool calls, tool results, and step boundaries.
+    const uiMessageStream = createUIMessageStream({
+      originalMessages: messages,
+      execute: async ({ writer }) => {
+        for await (const part of toAISdkStream(stream, { from: "agent" })) {
+          writer.write(part as Parameters<typeof writer.write>[0]);
+        }
       },
     });
+
+    return createUIMessageStreamResponse({ stream: uiMessageStream });
   } catch (err) {
     console.error("[chat] stream error:", err);
     return c.json(

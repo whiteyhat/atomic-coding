@@ -201,6 +201,34 @@ export interface AgentHeartbeat {
   metadata: Record<string, unknown>;
 }
 
+// ── 3D Model Assets ─────────────────────────────────────────────────────────
+
+export interface AssetMedia {
+  url: string;
+  alt?: string;
+  type?: string;
+}
+
+export interface AssetModel {
+  _id: string;
+  prompt: string;
+  style: string | null;
+  image: AssetMedia;
+  createdAt: string;
+  isPublic: boolean;
+}
+
+export interface AssetModelPage {
+  items: AssetModel[];
+  metadata: {
+    limit: number;
+    offset: number;
+    numElements: number;
+    page: number;
+    pages: number;
+  };
+}
+
 // ── Builds ────────────────────────────────────────────────────────────────────
 
 export type BuildStatus = "building" | "success" | "error";

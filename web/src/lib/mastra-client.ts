@@ -17,6 +17,7 @@ export interface MastraRequestOptions {
   gameName: string;
   genre?: string | null;
   sessionId?: string | null;
+  assetModelIds?: string[];
 }
 
 /**
@@ -25,8 +26,8 @@ export interface MastraRequestOptions {
  */
 export async function streamMastraChat(
   options: MastraRequestOptions
-): Promise<ReadableStream<Uint8Array>> {
-  const { messages, gameId, gameName, genre, sessionId } = options;
+): Promise<Response> {
+  const { messages, gameId, gameName, genre, sessionId, assetModelIds } = options;
 
   if (!MASTRA_SERVER_URL) {
     throw new Error("MASTRA_SERVER_URL is not configured");
@@ -43,6 +44,7 @@ export async function streamMastraChat(
       gameName,
       genre: genre ?? undefined,
       sessionId: sessionId ?? undefined,
+      ...(assetModelIds?.length ? { assetModelIds } : {}),
     }),
   });
 
@@ -53,11 +55,7 @@ export async function streamMastraChat(
     );
   }
 
-  if (!response.body) {
-    throw new Error("No response body from Mastra server");
-  }
-
-  return response.body;
+  return response;
 }
 
 /**

@@ -24,7 +24,7 @@ export async function POST(req: Request) {
   }
 
   const body = await req.json();
-  const { messages, model, gameId, sessionId } = body;
+  const { messages, model, gameId, sessionId, assetModelIds } = body;
 
   const selectedModel = model ?? DEFAULT_MODEL;
 
@@ -32,6 +32,7 @@ export async function POST(req: Request) {
     model: selectedModel,
     gameId,
     sessionId,
+    assetModelIds: assetModelIds ?? [],
     userId: authUser.userId,
     clientMessageCount: messages?.length ?? 0,
     useMastra: isMastraConfigured(),
@@ -171,19 +172,25 @@ async function handleMastraProxy(
   });
 
   try {
-    const stream = await streamMastraChat({
+    const response = await streamMastraChat({
       messages: mastraMessages,
       gameId,
       gameName: (body.gameName as string) ?? "",
       genre,
       sessionId,
+      assetModelIds: (body.assetModelIds as string[]) ?? [],
     });
 
-    return new Response(stream, {
+    // Forward the AI SDK protocol response with its original headers.
+    return new Response(response.body, {
+      status: response.status,
       headers: {
-        "Content-Type": "text/event-stream",
+        "Content-Type": response.headers.get("Content-Type") ?? "text/plain; charset=utf-8",
         "Cache-Control": "no-cache",
         Connection: "keep-alive",
+        ...(response.headers.get("x-vercel-ai-data-stream")
+          ? { "x-vercel-ai-data-stream": response.headers.get("x-vercel-ai-data-stream")! }
+          : {}),
       },
     });
   } catch (err) {

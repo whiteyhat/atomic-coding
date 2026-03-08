@@ -7,6 +7,7 @@ import { GameFrame } from "@/components/playground/game-frame";
 import { ActionsConsole } from "@/components/console/actions-console";
 import { WarRoomPanel } from "@/components/warroom/war-room-panel";
 import { WarRoomList } from "@/components/warroom/war-room-list";
+import { ChatSessionList } from "@/components/chat/chat-session-list";
 import Link from "next/link";
 import { ArrowLeft, MessageSquare, Settings, Swords } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,7 @@ type SidebarTab = "chat" | "config" | "warroom";
 export function GameWorkspace({ gameId, gameName, isPublished, publicSlug }: GameWorkspaceProps) {
   const router = useRouter();
   const [tab, setTab] = useState<SidebarTab>("chat");
+  const [activeChatSessionId, setActiveChatSessionId] = useState<string | null>(null);
   const [activeWarRoomId, setActiveWarRoomId] = useState<string | null>(null);
 
   /** Called when a war room is created (from chat or future UI trigger). */
@@ -116,11 +118,21 @@ export function GameWorkspace({ gameId, gameName, isPublished, publicSlug }: Gam
 
           {/* Panels — always mounted, toggled via CSS */}
           <div className={cn("flex-1 min-h-0", tab !== "chat" && "hidden")}>
-            <ChatPanel
-              gameId={gameId}
-              gameName={gameName}
-              onWarRoomCreated={handleWarRoomCreated}
-            />
+            {activeChatSessionId ? (
+              <ChatPanel
+                key={activeChatSessionId}
+                gameId={gameId}
+                gameName={gameName}
+                sessionId={activeChatSessionId}
+                onBack={() => setActiveChatSessionId(null)}
+                onWarRoomCreated={handleWarRoomCreated}
+              />
+            ) : (
+              <ChatSessionList
+                gameName={gameName}
+                onSelect={(id) => setActiveChatSessionId(id)}
+              />
+            )}
           </div>
           <div className={cn("flex-1 min-h-0", tab !== "warroom" && "hidden")}>
             {activeWarRoomId ? (
