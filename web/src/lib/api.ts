@@ -292,6 +292,16 @@ export async function listWarRooms(
   );
 }
 
+export async function cancelWarRoom(
+  gameName: string,
+  warRoomId: string
+): Promise<WarRoom> {
+  return apiFetch(
+    `/games/${encodeURIComponent(gameName)}/warrooms/${warRoomId}/cancel`,
+    { method: "POST" }
+  );
+}
+
 // ── Token Launches ──────────────────────────────────────────────────────────
 
 export async function getTokenLaunch(

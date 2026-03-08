@@ -82,6 +82,10 @@ export function useWarRoom(
         const evt: WarRoomEvent = JSON.parse(e.data);
         setEvents((prev) => [...prev, evt]);
 
+        if (evt.event_type === "war_room_cancelled") {
+          setWarRoom((prev) => prev ? { ...prev, status: "cancelled" } : prev);
+        }
+
         // Update task state from events
         if (evt.task_number != null) {
           setTasks((prev) =>
@@ -95,8 +99,14 @@ export function useWarRoom(
                   updates.output = evt.payload as Record<string, unknown>;
                 }
               }
-              if (evt.event_type === "task_failed") updates.status = "failed";
+              if (evt.event_type === "task_failed") {
+                updates.status = "failed";
+                if (evt.payload) {
+                  updates.output = evt.payload as Record<string, unknown>;
+                }
+              }
               if (evt.event_type === "task_assigned") updates.status = "assigned";
+              if (evt.event_type === "task_retry") updates.status = "pending";
               return { ...t, ...updates };
             })
           );
@@ -116,6 +126,8 @@ export function useWarRoom(
       "war_room_running",
       "war_room_completed",
       "war_room_failed",
+      "war_room_cancelled",
+      "task_retry",
       "retry_cycle",
       "pipeline_error",
       "pipeline_stuck",

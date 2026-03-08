@@ -238,6 +238,17 @@ export async function createWarRoom(
 ): Promise<WarRoomWithTasks> {
   const supabase = getSupabaseClient();
 
+  // Check for concurrent war rooms
+  const { count, error: countError } = await supabase
+    .from("war_rooms")
+    .select("*", { count: "exact", head: true })
+    .eq("game_id", gameId)
+    .in("status", ["planning", "running"]);
+  if (countError) throw new Error(countError.message);
+  if ((count ?? 0) > 0) {
+    throw new Error("A war room is already running for this game. Cancel it first or wait for it to complete.");
+  }
+
   // 1. Create the war room
   const { data: room, error: roomErr } = await supabase
     .from("war_rooms")

@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronRight, Check, X, Loader2, Clock, Pause } from "lucide-react";
+import { ChevronRight, Check, X, Loader2, Clock, Pause, AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
   Collapsible,
@@ -111,6 +111,14 @@ export function TaskCard({ task }: TaskCardProps) {
               {new Date(task.completed_at).toLocaleTimeString()}
             </p>
           )}
+          {task.status === "failed" && task.output && (task.output as Record<string, unknown>).error ? (
+            <div className="flex items-start gap-2 p-2 rounded border border-red-500/20 bg-red-500/10 text-red-400">
+              <AlertTriangle className="size-3.5 mt-0.5 shrink-0" />
+              <span className="text-[11px] leading-relaxed break-all">
+                {String((task.output as Record<string, unknown>).error)}
+              </span>
+            </div>
+          ) : null}
           {task.output && (
             <pre className="text-[10px] bg-zinc-900 rounded p-2 overflow-auto max-h-32 text-zinc-400">
               {JSON.stringify(task.output, null, 2)}
