@@ -100,6 +100,64 @@ export const upsertTokenSchema = z.object({
 });
 
 // =============================================================================
+// Bonding Curve
+// =============================================================================
+
+export const configureCurveSchema = z.object({
+  curve_mode: z.number().int().min(0).max(3).optional(),
+  initial_mcap: z.number().positive().optional(),
+  migration_mcap: z.number().positive().optional(),
+  total_token_supply: z.number().positive().optional(),
+  token_decimals: z.number().int().min(0).max(18).optional(),
+  supply_on_migration_pct: z.number().int().min(20).max(100).optional(),
+  migration_option: z.number().int().min(0).max(1).optional(),
+  migration_fee_option: z.number().int().min(0).max(5).optional(),
+  creator_fee_pct: z.number().int().min(0).max(100).optional(),
+  creator_lp_pct: z.number().int().min(0).max(100).optional(),
+  base_fee_mode: z.number().int().min(0).max(2).optional(),
+  starting_fee_bps: z.number().int().min(1).max(9900).optional(),
+  ending_fee_bps: z.number().int().min(1).max(9900).optional(),
+  dynamic_fee: z.boolean().optional(),
+  token_image_url: z.string().url().optional(),
+  token_description: z.string().max(500).optional(),
+  token_website: z.string().url().optional(),
+  token_twitter: z.string().max(100).optional(),
+  token_telegram: z.string().max(200).optional(),
+});
+
+export const deployRecordSchema = z.object({
+  dbc_config_key: z.string().min(1),
+  pool_address: z.string().min(1),
+  base_mint: z.string().min(1),
+  creator_wallet: z.string().min(1),
+});
+
+export const recordTransactionSchema = z.object({
+  tx_signature: z.string().min(1),
+  tx_type: z.enum(["buy", "sell"]),
+  wallet_address: z.string().min(1),
+  amount_in: z.number().positive(),
+  amount_out: z.number().positive(),
+  price_per_token: z.number().positive(),
+  fee_amount: z.number().min(0).optional(),
+  mcap_at_trade: z.number().optional(),
+  bonding_pct_at_trade: z.number().optional(),
+  block_time: z.string().min(1),
+});
+
+export const swapQuoteSchema = z.object({
+  direction: z.enum(["buy", "sell"]),
+  amount: z.number().positive(),
+});
+
+export const exploreQuerySchema = z.object({
+  status: z.enum(["live", "graduated", "all"]).optional(),
+  sort: z.enum(["bonding_pct", "mcap", "volume", "newest"]).optional(),
+  limit: z.number().int().min(1).max(100).optional(),
+  offset: z.number().int().min(0).optional(),
+});
+
+// =============================================================================
 // User Profiles
 // =============================================================================
 

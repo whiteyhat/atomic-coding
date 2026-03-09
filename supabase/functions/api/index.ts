@@ -11,6 +11,8 @@ import * as users from "../_shared/services/users.ts";
 import * as boilerplates from "../_shared/services/boilerplates.ts";
 import * as scores from "../_shared/services/scores.ts";
 import * as tokens from "../_shared/services/tokens.ts";
+import * as bondingCurve from "../_shared/services/bonding-curve.ts";
+import * as curveSync from "../_shared/services/curve-sync.ts";
 import * as warrooms from "../_shared/services/warrooms.ts";
 import { verifyAuthToken, requireAuth } from "../_shared/auth.ts";
 import { checkRateLimit } from "../_shared/rate-limit.ts";
@@ -215,6 +217,26 @@ app.get("/registry/externals", async (c) => {
   try {
     const list = await externals.listRegistry();
     return c.json(list);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 500);
+  }
+});
+
+// =============================================================================
+// Token Explore (global, not game-scoped)
+// =============================================================================
+
+/** GET /tokens/explore -- browse all tokens with filters */
+app.get("/tokens/explore", async (c) => {
+  try {
+    const filters = {
+      status: c.req.query("status") as "live" | "graduated" | "all" | undefined,
+      sort: c.req.query("sort") as "bonding_pct" | "mcap" | "volume" | "newest" | undefined,
+      limit: c.req.query("limit") ? parseInt(c.req.query("limit")!, 10) : undefined,
+      offset: c.req.query("offset") ? parseInt(c.req.query("offset")!, 10) : undefined,
+    };
+    const result = await bondingCurve.getExploreTokens(filters);
+    return c.json(result);
   } catch (err) {
     return c.json({ error: (err as Error).message }, 500);
   }
@@ -502,6 +524,150 @@ app.get("/games/:name/token/distributions", async (c) => {
     return c.json(distributions);
   } catch (err) {
     return c.json({ error: (err as Error).message }, 500);
+  }
+});
+
+// =============================================================================
+// Bonding Curve (scoped to game)
+// =============================================================================
+
+/** PUT /games/:name/token/curve/config -- configure bonding curve params */
+app.put("/games/:name/token/curve/config", requireAuth(), async (c) => {
+  try {
+    const gameId = c.get("gameId") as string;
+    const launch = await tokens.getTokenLaunch(gameId);
+    if (!launch) return c.json({ error: "No token launch found" }, 404);
+    const body = schemas.configureCurveSchema.parse(await c.req.json());
+    const updated = await bondingCurve.configureCurve(launch.id, body);
+    return c.json(updated);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 400);
+  }
+});
+
+/** GET /games/:name/token/curve -- get curve config + live state */
+app.get("/games/:name/token/curve", async (c) => {
+  try {
+    const gameId = c.get("gameId") as string;
+    const result = await bondingCurve.getCurveConfig(gameId);
+    if (!result) return c.json({ error: "No token launch found" }, 404);
+    return c.json(result);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 500);
+  }
+});
+
+/** POST /games/:name/token/curve/deploy -- record on-chain deploy addresses */
+app.post("/games/:name/token/curve/deploy", requireAuth(), async (c) => {
+  try {
+    const gameId = c.get("gameId") as string;
+    const launch = await tokens.getTokenLaunch(gameId);
+    if (!launch) return c.json({ error: "No token launch found" }, 404);
+    const body = schemas.deployRecordSchema.parse(await c.req.json());
+    const updated = await bondingCurve.markDeploying(launch.id, body);
+    return c.json(updated);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 400);
+  }
+});
+
+/** POST /games/:name/token/curve/activate -- mark token as live after Jupiter detection */
+app.post("/games/:name/token/curve/activate", requireAuth(), async (c) => {
+  try {
+    const gameId = c.get("gameId") as string;
+    const launch = await tokens.getTokenLaunch(gameId);
+    if (!launch) return c.json({ error: "No token launch found" }, 404);
+    const updated = await bondingCurve.markLive(launch.id);
+    return c.json(updated);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 400);
+  }
+});
+
+/** GET /games/:name/token/curve/state -- get cached real-time state */
+app.get("/games/:name/token/curve/state", async (c) => {
+  try {
+    const gameId = c.get("gameId") as string;
+    const state = await curveSync.getState(gameId);
+    if (!state) return c.json({ error: "No curve state found" }, 404);
+    return c.json(state);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 500);
+  }
+});
+
+/** GET /games/:name/token/curve/holders -- top holders */
+app.get("/games/:name/token/curve/holders", async (c) => {
+  try {
+    const gameId = c.get("gameId") as string;
+    const launch = await tokens.getTokenLaunch(gameId);
+    if (!launch) return c.json({ error: "No token launch found" }, 404);
+    const limit = parseInt(c.req.query("limit") || "10", 10);
+    const holders = await curveSync.getHolders(launch.id, limit);
+    return c.json(holders);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 500);
+  }
+});
+
+/** GET /games/:name/token/curve/transactions -- recent transactions */
+app.get("/games/:name/token/curve/transactions", async (c) => {
+  try {
+    const gameId = c.get("gameId") as string;
+    const launch = await tokens.getTokenLaunch(gameId);
+    if (!launch) return c.json({ error: "No token launch found" }, 404);
+    const limit = parseInt(c.req.query("limit") || "50", 10);
+    const txs = await curveSync.getTransactions(launch.id, limit);
+    return c.json(txs);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 500);
+  }
+});
+
+/** POST /games/:name/token/curve/transactions -- record a buy/sell trade */
+app.post("/games/:name/token/curve/transactions", requireAuth(), async (c) => {
+  try {
+    const gameId = c.get("gameId") as string;
+    const launch = await tokens.getTokenLaunch(gameId);
+    if (!launch) return c.json({ error: "No token launch found" }, 404);
+    const body = schemas.recordTransactionSchema.parse(await c.req.json());
+    const tx = await curveSync.recordTransaction(launch.id, gameId, body);
+    return c.json(tx, 201);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 400);
+  }
+});
+
+/** POST /games/:name/token/curve/quote -- get swap quote for buy/sell */
+app.post("/games/:name/token/curve/quote", async (c) => {
+  try {
+    const gameId = c.get("gameId") as string;
+    const state = await curveSync.getState(gameId);
+    if (!state) return c.json({ error: "No curve state found" }, 404);
+    const body = schemas.swapQuoteSchema.parse(await c.req.json());
+    // Simple quote based on cached state
+    const price = state.current_price_usd || 0;
+    const quote = body.direction === "buy"
+      ? { amount_in: body.amount, amount_out: price > 0 ? body.amount / price : 0, price_per_token: price, price_impact_pct: 0 }
+      : { amount_in: body.amount, amount_out: body.amount * price, price_per_token: price, price_impact_pct: 0 };
+    return c.json(quote);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 400);
+  }
+});
+
+/** POST /games/:name/token/curve/graduate -- record graduation to DEX */
+app.post("/games/:name/token/curve/graduate", requireAuth(), async (c) => {
+  try {
+    const gameId = c.get("gameId") as string;
+    const launch = await tokens.getTokenLaunch(gameId);
+    if (!launch) return c.json({ error: "No token launch found" }, 404);
+    const { graduated_pool } = await c.req.json();
+    if (!graduated_pool) return c.json({ error: "graduated_pool is required" }, 400);
+    const updated = await bondingCurve.markGraduated(launch.id, graduated_pool);
+    return c.json(updated);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 400);
   }
 });
 

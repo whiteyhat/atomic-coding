@@ -5,3 +5,7 @@ export { useLeaderboard } from "./use-leaderboard";
 export { useWarRooms } from "./use-war-rooms";
 export { useChatSessions } from "./use-chat-sessions";
 export { useExternals, useRegistry } from "./use-externals";
+export { useSolanaWallet } from "./use-solana-wallet";
+export { useCurveState, useCurveData, useHolders, useTransactions } from "./use-curve-state";
+export { useSwapQuote } from "./use-swap-quote";
+export { useTokenExplore } from "./use-token-explore";

@@ -9,12 +9,15 @@ import { WarRoomPanel } from "@/components/warroom/war-room-panel";
 import { WarRoomList } from "@/components/warroom/war-room-list";
 import { ChatSessionList } from "@/components/chat/chat-session-list";
 import Link from "next/link";
-import { ArrowLeft, MessageSquare, Settings, Swords } from "lucide-react";
+import { ArrowLeft, Coins, MessageSquare, Settings, Swords } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { AgentStatusDropdown } from "./agent-status-dropdown";
 import { PublishDialog } from "@/components/games/publish-dialog";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
+import { TokenStatusBadge } from "@/components/token/token-status-badge";
+import { BondProgressBar } from "@/components/token/bond-progress-bar";
+import { useCurveData } from "@/lib/hooks";
 
 interface GameWorkspaceProps {
   gameId: string;
@@ -23,7 +26,7 @@ interface GameWorkspaceProps {
   publicSlug: string | null;
 }
 
-type SidebarTab = "chat" | "config" | "warroom";
+type SidebarTab = "chat" | "config" | "warroom" | "token";
 
 export function GameWorkspace({ gameId, gameName, isPublished, publicSlug }: GameWorkspaceProps) {
   const router = useRouter();
@@ -115,6 +118,21 @@ export function GameWorkspace({ gameId, gameName, isPublished, publicSlug }: Gam
                 <span className="absolute bottom-0 inset-x-2 h-0.5 rounded-full bg-foreground" />
               )}
             </button>
+            <button
+              onClick={() => setTab("token")}
+              className={cn(
+                "relative flex items-center gap-1.5 px-4 text-xs font-medium transition-colors",
+                tab === "token"
+                  ? "text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Coins className="size-3.5" />
+              Token
+              {tab === "token" && (
+                <span className="absolute bottom-0 inset-x-2 h-0.5 rounded-full bg-foreground" />
+              )}
+            </button>
           </div>
 
           {/* Panels — always mounted, toggled via CSS */}
@@ -159,6 +177,11 @@ export function GameWorkspace({ gameId, gameName, isPublished, publicSlug }: Gam
               <ActionsConsole gameName={gameName} />
             </ErrorBoundary>
           </div>
+          <div className={cn("flex-1 min-h-0 overflow-y-auto", tab !== "token" && "hidden")}>
+            <ErrorBoundary label="Token">
+              <TokenSidebarPanel gameName={gameName} isPublished={isPublished} />
+            </ErrorBoundary>
+          </div>
         </aside>
 
         {/* Game */}
@@ -168,6 +191,106 @@ export function GameWorkspace({ gameId, gameName, isPublished, publicSlug }: Gam
           </ErrorBoundary>
         </main>
       </div>
+    </div>
+  );
+}
+
+// ── Token Sidebar Panel ─────────────────────────────────────────────────────
+
+function TokenSidebarPanel({
+  gameName,
+  isPublished,
+}: {
+  gameName: string;
+  isPublished: boolean;
+}) {
+  const { data: curveData, isLoading } = useCurveData(isPublished ? gameName : null);
+  const launch = curveData?.launch ?? null;
+  const state = curveData?.state ?? null;
+
+  if (!isPublished) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full px-6 text-center gap-3">
+        <Coins className="size-8 text-muted-foreground" />
+        <p className="text-sm text-muted-foreground">
+          Publish your game to launch a token.
+        </p>
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/20 border-t-white/60" />
+      </div>
+    );
+  }
+
+  if (!launch) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full px-6 text-center gap-4">
+        <Coins className="size-8 text-muted-foreground" />
+        <div className="space-y-1">
+          <p className="text-sm font-medium">No token yet</p>
+          <p className="text-xs text-muted-foreground">
+            Create a bonding curve token for your game.
+          </p>
+        </div>
+        <Link href={`/games/${encodeURIComponent(gameName)}/token/create`}>
+          <Button size="sm" className="gap-1.5">
+            <Coins className="size-3.5" />
+            Launch Token
+          </Button>
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-4 space-y-4">
+      {/* Status + name */}
+      <div className="flex items-center gap-2">
+        <TokenStatusBadge status={launch.status} />
+        <span className="text-sm font-medium truncate">{launch.token_name}</span>
+        <span className="text-xs text-muted-foreground">${launch.token_symbol}</span>
+      </div>
+
+      {/* Bonding progress */}
+      {state && (
+        <BondProgressBar
+          bondingPct={state.bonding_pct}
+          currentMcap={state.current_mcap}
+          migrationMcap={launch.migration_mcap ?? undefined}
+        />
+      )}
+
+      {/* Key metric */}
+      {state && (
+        <div className="grid grid-cols-2 gap-3 text-xs">
+          <div className="rounded-lg border border-white/5 bg-white/[0.02] p-2.5">
+            <span className="text-muted-foreground">Market Cap</span>
+            <p className="font-semibold tabular-nums mt-0.5">
+              ${state.current_mcap_usd >= 1000
+                ? `${(state.current_mcap_usd / 1000).toFixed(1)}K`
+                : state.current_mcap_usd.toFixed(2)}
+            </p>
+          </div>
+          <div className="rounded-lg border border-white/5 bg-white/[0.02] p-2.5">
+            <span className="text-muted-foreground">Holders</span>
+            <p className="font-semibold tabular-nums mt-0.5">
+              {state.holder_count.toLocaleString()}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Dashboard link */}
+      <Link href={`/games/${encodeURIComponent(gameName)}/token`}>
+        <Button variant="outline" size="sm" className="w-full">
+          View Dashboard
+        </Button>
+      </Link>
     </div>
   );
 }

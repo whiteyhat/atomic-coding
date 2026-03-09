@@ -13,5 +13,8 @@
     "dev:supabase:reset": "supabase db reset --local --workdir supabase",
     "dev:supabase:functions": "supabase functions serve --workdir supabase --env-file supabase/.env.local --no-verify-jwt",
     "dev:local": "node scripts/dev/run-stack.mjs local"
+  },
+  "dependencies": {
+    "swr": "^2.4.1"
   }
 }

@@ -103,7 +103,7 @@ export function ChatSessionList({ gameName, onSelect }: ChatSessionListProps) {
                     role="button"
                     tabIndex={0}
                     onClick={(e) => handleDelete(e, session.id)}
-                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") handleDelete(e, session.id); }}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") handleDelete(e as unknown as React.MouseEvent, session.id); }}
                     className="opacity-0 group-hover:opacity-100 transition-opacity text-zinc-600 hover:text-red-400 shrink-0 cursor-pointer"
                   >
                     <Trash2 className="size-3.5" />

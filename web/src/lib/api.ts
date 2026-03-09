@@ -12,6 +12,11 @@ import type {
   LeaderboardEntry,
   LeaderboardPeriod,
   TokenLaunch,
+  BondingCurveState,
+  TokenTransaction,
+  TokenHolder,
+  SwapQuote,
+  TokenExploreItem,
   WarRoom,
   WarRoomWithTasks,
 } from "./types";
@@ -350,4 +355,129 @@ export async function upsertTokenLaunch(
       ...opts,
     }),
   });
+}
+
+// ── Bonding Curve ──────────────────────────────────────────────────────────
+
+export async function configureCurve(
+  gameName: string,
+  params: Record<string, unknown>,
+): Promise<TokenLaunch> {
+  return apiFetch(`/games/${encodeURIComponent(gameName)}/token/curve/config`, {
+    method: "PUT",
+    body: JSON.stringify(params),
+  });
+}
+
+export async function getCurveData(
+  gameName: string,
+): Promise<{ launch: TokenLaunch; state: BondingCurveState | null }> {
+  return apiFetch(`/games/${encodeURIComponent(gameName)}/token/curve`);
+}
+
+export async function recordDeploy(
+  gameName: string,
+  addresses: {
+    dbc_config_key: string;
+    pool_address: string;
+    base_mint: string;
+    creator_wallet: string;
+  },
+): Promise<TokenLaunch> {
+  return apiFetch(`/games/${encodeURIComponent(gameName)}/token/curve/deploy`, {
+    method: "POST",
+    body: JSON.stringify(addresses),
+  });
+}
+
+export async function activateToken(gameName: string): Promise<TokenLaunch> {
+  return apiFetch(
+    `/games/${encodeURIComponent(gameName)}/token/curve/activate`,
+    { method: "POST" },
+  );
+}
+
+export async function getCurveState(
+  gameName: string,
+): Promise<BondingCurveState | null> {
+  try {
+    return await apiFetch(
+      `/games/${encodeURIComponent(gameName)}/token/curve/state`,
+    );
+  } catch {
+    return null;
+  }
+}
+
+export async function getHolders(
+  gameName: string,
+  limit = 10,
+): Promise<TokenHolder[]> {
+  return apiFetch(
+    `/games/${encodeURIComponent(gameName)}/token/curve/holders?limit=${limit}`,
+  );
+}
+
+export async function getTransactions(
+  gameName: string,
+  limit = 50,
+): Promise<TokenTransaction[]> {
+  return apiFetch(
+    `/games/${encodeURIComponent(gameName)}/token/curve/transactions?limit=${limit}`,
+  );
+}
+
+export async function recordTrade(
+  gameName: string,
+  txData: {
+    tx_signature: string;
+    tx_type: "buy" | "sell";
+    wallet_address: string;
+    amount_in: number;
+    amount_out: number;
+    price_per_token: number;
+    fee_amount?: number;
+    block_time: string;
+  },
+): Promise<TokenTransaction> {
+  return apiFetch(
+    `/games/${encodeURIComponent(gameName)}/token/curve/transactions`,
+    { method: "POST", body: JSON.stringify(txData) },
+  );
+}
+
+export async function getSwapQuote(
+  gameName: string,
+  direction: "buy" | "sell",
+  amount: number,
+): Promise<SwapQuote> {
+  return apiFetch(
+    `/games/${encodeURIComponent(gameName)}/token/curve/quote`,
+    { method: "POST", body: JSON.stringify({ direction, amount }) },
+  );
+}
+
+export async function exploreTokens(filters?: {
+  status?: string;
+  sort?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<{ tokens: TokenExploreItem[]; total: number }> {
+  const params = new URLSearchParams();
+  if (filters?.status) params.set("status", filters.status);
+  if (filters?.sort) params.set("sort", filters.sort);
+  if (filters?.limit) params.set("limit", String(filters.limit));
+  if (filters?.offset) params.set("offset", String(filters.offset));
+  const qs = params.toString();
+  return apiFetch(`/tokens/explore${qs ? `?${qs}` : ""}`);
+}
+
+export async function recordGraduation(
+  gameName: string,
+  graduatedPool: string,
+): Promise<TokenLaunch> {
+  return apiFetch(
+    `/games/${encodeURIComponent(gameName)}/token/curve/graduate`,
+    { method: "POST", body: JSON.stringify({ graduated_pool: graduatedPool }) },
+  );
 }

@@ -124,13 +124,112 @@ export interface TokenLaunch {
   creator_id: string;
   token_name: string;
   token_symbol: string;
-  status: "draft" | "pending" | "launched" | "failed";
+  status: "draft" | "configuring" | "deploying" | "live" | "graduating" | "graduated" | "failed";
   chain_id: string | null;
   contract_address: string | null;
   total_supply: number | null;
   leaderboard_allocation_pct: number;
   metadata: Record<string, unknown>;
   created_at: string;
+  // Bonding curve config
+  curve_mode: number | null;
+  initial_mcap: number | null;
+  migration_mcap: number | null;
+  total_token_supply: number | null;
+  token_decimals: number | null;
+  supply_on_migration_pct: number | null;
+  migration_option: number | null;
+  migration_fee_option: number | null;
+  creator_fee_pct: number | null;
+  creator_lp_pct: number | null;
+  base_fee_mode: number | null;
+  starting_fee_bps: number | null;
+  ending_fee_bps: number | null;
+  dynamic_fee: boolean | null;
+  token_image_url: string | null;
+  token_description: string | null;
+  token_website: string | null;
+  token_twitter: string | null;
+  token_telegram: string | null;
+  // On-chain addresses
+  dbc_config_key: string | null;
+  pool_address: string | null;
+  base_mint: string | null;
+  quote_mint: string | null;
+  creator_wallet: string | null;
+  // Timestamps
+  deployed_at: string | null;
+  graduated_at: string | null;
+  graduated_pool: string | null;
+}
+
+export interface BondingCurveState {
+  id: string;
+  launch_id: string;
+  game_id: string;
+  bonding_pct: number;
+  current_mcap: number;
+  current_mcap_usd: number;
+  current_price: number;
+  current_price_usd: number;
+  total_supply_sold: number;
+  base_reserve: number;
+  quote_reserve: number;
+  volume_24h: number;
+  volume_24h_usd: number;
+  trades_24h: number;
+  unique_traders: number;
+  holder_count: number;
+  fdv: number;
+  liquidity: number;
+  price_change_5m: number;
+  price_change_1h: number;
+  price_change_6h: number;
+  price_change_24h: number;
+  is_graduated: boolean;
+  last_synced_at: string;
+  created_at: string;
+}
+
+export interface TokenTransaction {
+  id: string;
+  launch_id: string;
+  game_id: string;
+  tx_signature: string;
+  tx_type: "buy" | "sell";
+  wallet_address: string;
+  amount_in: number;
+  amount_out: number;
+  price_per_token: number;
+  fee_amount: number;
+  mcap_at_trade: number | null;
+  bonding_pct_at_trade: number | null;
+  block_time: string;
+  created_at: string;
+}
+
+export interface TokenHolder {
+  id: string;
+  launch_id: string;
+  wallet_address: string;
+  balance: number;
+  percentage: number;
+  is_creator: boolean;
+  is_contract: boolean;
+  last_updated_at: string;
+  created_at: string;
+}
+
+export interface SwapQuote {
+  amountIn: number;
+  amountOut: number;
+  minimumAmountOut: number;
+  priceImpact: number;
+  fee: number;
+}
+
+export interface TokenExploreItem extends TokenLaunch {
+  state: BondingCurveState | null;
 }
 
 // ── War Rooms ────────────────────────────────────────────────────────────────

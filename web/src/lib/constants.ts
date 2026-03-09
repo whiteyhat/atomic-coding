@@ -42,3 +42,15 @@ export const MODELS: ModelOption[] = [
 ];
 
 export const DEFAULT_MODEL = MODELS[0].id;
+
+// ── Solana ────────────────────────────────────────────────────────────────────
+
+export const SOLANA_RPC_URL =
+  process.env.NEXT_PUBLIC_SOLANA_RPC_URL ??
+  "https://api.mainnet-beta.solana.com";
+
+export const SOLANA_NETWORK =
+  process.env.NEXT_PUBLIC_SOLANA_NETWORK ?? "mainnet-beta";
+
+export const JUPITER_API_URL =
+  process.env.NEXT_PUBLIC_JUPITER_API_URL ?? "https://datapi.jup.ag";

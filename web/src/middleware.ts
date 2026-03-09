@@ -14,7 +14,7 @@ const PUBLIC_ROUTES = [
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-
+  console.log('[MIDDLEWARE]', 'in', 'PATH:',pathname)
   if (isDevAuthBypassEnabled(request.nextUrl.hostname)) {
     return NextResponse.next();
   }
