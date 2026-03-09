@@ -12,8 +12,8 @@ export function SuggestedPrompts({ prompts, onSelect }: SuggestedPromptsProps) {
 
   return (
     <div className="px-3 py-3 space-y-2">
-      <p className="text-xs text-zinc-500 flex items-center gap-1.5">
-        <Sparkles className="size-3" />
+      <p className="text-xs text-white/40 flex items-center gap-1.5">
+        <Sparkles className="size-3 text-rose-400" />
         Suggested next steps
       </p>
       <div className="flex flex-col gap-1.5">
@@ -21,7 +21,7 @@ export function SuggestedPrompts({ prompts, onSelect }: SuggestedPromptsProps) {
           <button
             key={i}
             onClick={() => onSelect(prompt)}
-            className="text-left text-sm px-3 py-2 rounded-md bg-zinc-800/50 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 text-zinc-300 transition-colors"
+            className="text-left text-sm px-3 py-2 rounded-xl bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] hover:border-white/12 text-white/70 transition-colors"
           >
             {prompt}
           </button>

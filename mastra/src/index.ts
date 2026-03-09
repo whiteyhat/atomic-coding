@@ -10,10 +10,16 @@ for (const root of envSearchRoots) {
   for (const envFile of envFiles) {
     const envPath = path.join(root, envFile);
     if (fs.existsSync(envPath)) {
+      console.log(`[env] loading ${envPath}`);
       dotenv.config({ path: envPath, override: false });
     }
   }
 }
+
+// Verify critical env vars are loaded
+const orKey = process.env.OPENROUTER_API_KEY;
+console.log(`[env] OPENROUTER_API_KEY: ${orKey ? `${orKey.slice(0, 12)}...${orKey.slice(-4)}` : "NOT SET"}`);
+console.log(`[env] cwd: ${process.cwd()}`);
 
 // Initialize Sentry before anything else
 if (process.env.SENTRY_DSN) {

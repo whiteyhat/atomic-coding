@@ -59,8 +59,8 @@ export function DashboardTokenFeed({ items }: { items: TokenActivityItem[] }) {
     <motion.section variants={fadeInUp} initial="hidden" animate="visible">
       <div className="mb-4 flex items-center justify-between px-1">
         <h2 className="text-xl font-semibold text-white">Token Activity Feed</h2>
-        <Link href="/games" className="text-sm text-white/50 transition hover:text-white/80">
-          View Leaderboard
+        <Link href="/dashboard" className="text-sm text-white/50 transition hover:text-white/80">
+          Open Dashboard
         </Link>
       </div>
       <motion.div

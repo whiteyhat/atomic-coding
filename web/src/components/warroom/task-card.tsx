@@ -27,15 +27,15 @@ const AGENT_SHORT: Record<AgentName, string> = {
 function StatusIcon({ status }: { status: string }) {
   switch (status) {
     case "completed":
-      return <Check className="size-3.5 text-green-400" />;
+      return <Check className="size-3.5 text-emerald-400" />;
     case "running":
       return <Loader2 className="size-3.5 text-blue-400 animate-spin" />;
     case "failed":
-      return <X className="size-3.5 text-red-400" />;
+      return <X className="size-3.5 text-rose-400" />;
     case "blocked":
-      return <Pause className="size-3.5 text-zinc-500" />;
+      return <Pause className="size-3.5 text-white/40" />;
     default:
-      return <Clock className="size-3.5 text-zinc-600" />;
+      return <Clock className="size-3.5 text-white/30" />;
   }
 }
 
@@ -52,12 +52,12 @@ export function TaskCard({ task }: TaskCardProps) {
     <Collapsible open={open} onOpenChange={setOpen}>
       <CollapsibleTrigger asChild>
         <button
-          className={`w-full flex items-center gap-2 px-3 py-2 text-left text-sm rounded-md transition-colors hover:bg-zinc-800/50 ${
-            isActive ? "bg-zinc-800/70 ring-1 ring-zinc-700" : ""
+          className={`w-full flex items-center gap-2 px-3 py-2 text-left text-sm rounded-xl transition-colors hover:bg-white/[0.06] ${
+            isActive ? "bg-white/[0.05] ring-1 ring-white/10" : ""
           }`}
         >
           {/* Task number */}
-          <span className="text-xs text-zinc-500 w-5 shrink-0 text-right font-mono">
+          <span className="text-xs text-white/40 w-5 shrink-0 text-right font-mono">
             {task.task_number}
           </span>
 
@@ -68,10 +68,10 @@ export function TaskCard({ task }: TaskCardProps) {
           <span
             className={`flex-1 truncate ${
               task.status === "completed"
-                ? "text-zinc-500 line-through"
+                ? "text-white/40 line-through"
                 : task.status === "failed"
-                  ? "text-red-400"
-                  : "text-zinc-200"
+                  ? "text-rose-400"
+                  : "text-white/80"
             }`}
           >
             {task.title}
@@ -89,7 +89,7 @@ export function TaskCard({ task }: TaskCardProps) {
 
           {/* Expand arrow */}
           <ChevronRight
-            className={`size-3 text-zinc-600 transition-transform ${
+            className={`size-3 text-white/30 transition-transform ${
               open ? "rotate-90" : ""
             }`}
           />
@@ -97,7 +97,7 @@ export function TaskCard({ task }: TaskCardProps) {
       </CollapsibleTrigger>
 
       <CollapsibleContent>
-        <div className="ml-10 mr-3 mb-2 text-xs text-zinc-500 space-y-1">
+        <div className="ml-10 mr-3 mb-2 text-xs text-white/40 space-y-1">
           {task.description && <p>{task.description}</p>}
           {task.started_at && (
             <p>
@@ -112,7 +112,7 @@ export function TaskCard({ task }: TaskCardProps) {
             </p>
           )}
           {task.status === "failed" && task.output && (task.output as Record<string, unknown>).error ? (
-            <div className="flex items-start gap-2 p-2 rounded border border-red-500/20 bg-red-500/10 text-red-400">
+            <div className="flex items-start gap-2 p-2 rounded-xl border border-rose-500/20 bg-rose-500/10 text-rose-400">
               <AlertTriangle className="size-3.5 mt-0.5 shrink-0" />
               <span className="text-[11px] leading-relaxed break-all">
                 {String((task.output as Record<string, unknown>).error)}
@@ -120,7 +120,7 @@ export function TaskCard({ task }: TaskCardProps) {
             </div>
           ) : null}
           {task.output && (
-            <pre className="text-[10px] bg-zinc-900 rounded p-2 overflow-auto max-h-32 text-zinc-400">
+            <pre className="text-[10px] bg-white/[0.03] rounded-xl p-2 overflow-auto max-h-32 text-white/50 border border-white/[0.05]">
               {JSON.stringify(task.output, null, 2)}
             </pre>
           )}

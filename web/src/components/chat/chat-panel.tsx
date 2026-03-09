@@ -94,11 +94,11 @@ export function ChatPanel({ gameId, gameName, sessionId, onBack, onWarRoomCreate
     return (
       <div className="flex flex-col h-full">
         {onBack && (
-          <div className="flex items-center gap-2 px-3 py-1.5 border-b border-zinc-800/50 shrink-0">
+          <div className="flex items-center gap-2 px-3 py-1.5 border-b border-white/[0.06] shrink-0">
             <Button variant="ghost" size="icon" className="size-6" onClick={onBack}>
               <ArrowLeft className="size-3.5" />
             </Button>
-            <span className="text-xs text-zinc-500">Back to sessions</span>
+            <span className="text-xs text-white/40">Back to sessions</span>
           </div>
         )}
         <div className="flex items-center justify-center flex-1 text-muted-foreground text-sm">
@@ -278,11 +278,11 @@ function ChatPanelContent({
   return (
     <div className="flex flex-col h-full">
       {onBack && (
-        <div className="flex items-center gap-2 px-3 py-1.5 border-b border-zinc-800/50 shrink-0">
+        <div className="flex items-center gap-2 px-3 py-1.5 border-b border-white/[0.06] shrink-0">
           <Button variant="ghost" size="icon" className="size-6" onClick={onBack}>
             <ArrowLeft className="size-3.5" />
           </Button>
-          <span className="text-xs text-zinc-500">Back to sessions</span>
+          <span className="text-xs text-white/40">Back to sessions</span>
         </div>
       )}
       <Conversation className="flex-1 min-h-0">
@@ -324,15 +324,15 @@ function ChatPanelContent({
 
       <div className={cn(
         "p-3 border-t shrink-0",
-        warRoomMode ? "border-amber-500/50 bg-amber-500/5" : "border-buu bg-buu-50"
+        warRoomMode ? "border-amber-500/30 bg-amber-500/5" : "border-white/[0.06] bg-[#2a1014]/60"
       )}>
         <PromptInput onSubmit={handleSubmit}>
           {selectedAssets.length > 0 && (
-            <div className="flex flex-wrap items-center gap-1.5 px-3 py-1.5 border-b border-zinc-800/30">
+            <div className="flex flex-wrap items-center gap-1.5 px-3 py-1.5 border-b border-white/[0.05]">
               {selectedAssets.map((asset) => (
                 <div
                   key={asset._id}
-                  className="flex items-center gap-1.5 rounded-md border border-zinc-700/50 bg-zinc-800/50 px-1.5 py-0.5"
+                  className="flex items-center gap-1.5 rounded-md border border-white/[0.08] bg-white/[0.04] px-1.5 py-0.5"
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
@@ -340,11 +340,11 @@ function ChatPanelContent({
                     alt=""
                     className="size-4 rounded object-cover shrink-0"
                   />
-                  <span className="text-[11px] text-zinc-400 truncate max-w-25">
+                  <span className="text-[11px] text-white/50 truncate max-w-25">
                     {asset.prompt ?? "3D Model"}
                   </span>
                   <button
-                    className="shrink-0 text-zinc-500 hover:text-zinc-300 transition-colors"
+                    className="shrink-0 text-white/40 hover:text-white/70 transition-colors"
                     onClick={() =>
                       setSelectedAssets((prev) =>
                         prev.filter((a) => a._id !== asset._id)

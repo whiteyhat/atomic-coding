@@ -6,7 +6,7 @@ interface GamePageProps {
   params: Promise<{ name: string }>;
 }
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 export default async function GamePage({ params }: GamePageProps) {
   const { name } = await params;
@@ -23,6 +23,8 @@ export default async function GamePage({ params }: GamePageProps) {
     <GameWorkspace
       gameId={game.id}
       gameName={game.name}
+      genre={game.genre}
+      description={game.description}
       isPublished={game.is_published}
       publicSlug={game.public_slug}
     />

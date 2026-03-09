@@ -15,7 +15,7 @@ export function ActionsConsole({ gameName }: ActionsConsoleProps) {
   return (
     <div className="flex flex-col h-full">
       <Tabs defaultValue="externals" className="flex flex-col h-full">
-        <TabsList className="w-full justify-start rounded-none border-b bg-transparent px-2 shrink-0">
+        <TabsList className="w-full justify-start rounded-none border-b border-white/[0.06] bg-transparent px-2 shrink-0">
           <TabsTrigger value="externals" className="gap-1.5 text-xs">
             <Package className="size-3.5" />
             Externals

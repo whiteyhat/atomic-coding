@@ -38,6 +38,8 @@ const defaults = {
   PORT: base.PORT || "4500",
 };
 
+requireValues(base, ["OPENROUTER_API_KEY"]);
+
 const supabaseValues =
   mode === "hybrid" ? getHybridSupabaseValues(base) : getLocalSupabaseValues();
 
@@ -61,7 +63,6 @@ function getHybridSupabaseValues(values) {
     "DEV_SUPABASE_URL",
     "DEV_SUPABASE_ANON_KEY",
     "DEV_SUPABASE_SERVICE_ROLE_KEY",
-    "OPENROUTER_API_KEY",
   ]);
 
   return {

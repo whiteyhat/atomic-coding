@@ -191,8 +191,8 @@ export function DashboardCreations({
     <motion.section variants={fadeInUp} initial="hidden" animate="visible">
       <div className="mb-4 flex items-center justify-between px-1">
         <h2 className="text-xl font-semibold text-white">My Creations</h2>
-        <Link href="/games" className="text-sm text-white/50 transition hover:text-white/80">
-          See More
+        <Link href="/dashboard" className="text-sm text-white/50 transition hover:text-white/80">
+          View Dashboard
         </Link>
       </div>
 
@@ -217,7 +217,7 @@ export function DashboardCreations({
 
         {showEmptyState ? (
           <div className="w-full rounded-[1.75rem] border border-dashed border-white/12 bg-[#311519]/70 p-6 text-sm text-white/65">
-            No creations yet. Start a game from the games page to see it here.
+            No creations yet. Start a game from the dashboard to see it here.
           </div>
         ) : null}
 

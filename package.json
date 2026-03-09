@@ -12,6 +12,7 @@
     "dev:supabase:start": "supabase start --workdir supabase",
     "dev:supabase:reset": "supabase db reset --local --workdir supabase",
     "dev:supabase:functions": "supabase functions serve --workdir supabase --env-file supabase/.env.local --no-verify-jwt",
-    "dev:local": "node scripts/dev/run-stack.mjs local"
+    "dev:local": "node scripts/dev/run-stack.mjs local",
+    "marketing:images": "node scripts/generate-landing-marketing-images.mjs"
   }
 }

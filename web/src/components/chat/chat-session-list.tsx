@@ -55,7 +55,7 @@ export function ChatSessionList({ gameName, onSelect }: ChatSessionListProps) {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-full text-zinc-500">
+      <div className="flex items-center justify-center h-full text-white/40">
         <Loader2 className="size-5 animate-spin" />
       </div>
     );
@@ -63,7 +63,7 @@ export function ChatSessionList({ gameName, onSelect }: ChatSessionListProps) {
 
   if (error) {
     return (
-      <div className="flex items-center justify-center h-full text-red-400 text-sm px-4 text-center">
+      <div className="flex items-center justify-center h-full text-rose-400 text-sm px-4 text-center">
         {error instanceof Error ? error.message : "Failed to load sessions"}
       </div>
     );
@@ -73,8 +73,8 @@ export function ChatSessionList({ gameName, onSelect }: ChatSessionListProps) {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-800/50 shrink-0">
-        <span className="text-xs font-medium text-zinc-400">Chat Sessions</span>
+      <div className="flex items-center justify-between px-3 py-2 border-b border-white/[0.06] shrink-0">
+        <span className="text-xs font-medium text-white/50">Chat Sessions</span>
         <Button
           variant="ghost"
           size="sm"
@@ -88,10 +88,10 @@ export function ChatSessionList({ gameName, onSelect }: ChatSessionListProps) {
       </div>
 
       {items.length === 0 ? (
-        <div className="flex flex-col items-center justify-center flex-1 gap-2 text-zinc-500 px-6 text-center">
-          <MessageSquare className="size-8 text-zinc-700" />
+        <div className="flex flex-col items-center justify-center flex-1 gap-2 text-white/40 px-6 text-center">
+          <MessageSquare className="size-8 text-white/20" />
           <p className="text-sm">No conversations yet</p>
-          <p className="text-xs text-zinc-600">
+          <p className="text-xs text-white/30">
             Start a new chat session to begin building with AI.
           </p>
         </div>
@@ -102,10 +102,10 @@ export function ChatSessionList({ gameName, onSelect }: ChatSessionListProps) {
               <button
                 key={session.id}
                 onClick={() => onSelect(session.id)}
-                className="group w-full text-left px-3 py-2.5 hover:bg-zinc-800/50 transition-colors border-b border-zinc-800/50 last:border-b-0"
+                className="group w-full text-left px-3 py-2.5 hover:bg-white/[0.06] transition-colors border-b border-white/[0.06] last:border-b-0"
               >
                 <div className="flex items-start justify-between gap-2">
-                  <p className="text-xs text-zinc-300 line-clamp-1 flex-1">
+                  <p className="text-xs text-white/70 line-clamp-1 flex-1">
                     {session.title ?? "Untitled session"}
                   </p>
                   <div
@@ -113,18 +113,18 @@ export function ChatSessionList({ gameName, onSelect }: ChatSessionListProps) {
                     tabIndex={0}
                     onClick={(e) => handleDelete(e, session.id)}
                     onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") handleDelete(e, session.id); }}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity text-zinc-600 hover:text-red-400 shrink-0 cursor-pointer"
+                    className="opacity-0 group-hover:opacity-100 transition-opacity text-white/30 hover:text-rose-400 shrink-0 cursor-pointer"
                   >
                     <Trash2 className="size-3.5" />
                   </div>
                 </div>
                 <div className="flex items-center gap-2 mt-1">
                   {session.model && (
-                    <span className="text-[11px] text-zinc-500">
+                    <span className="text-[11px] text-white/40">
                       {modelName(session.model)}
                     </span>
                   )}
-                  <span className="text-[11px] text-zinc-600">
+                  <span className="text-[11px] text-white/30">
                     {new Date(session.created_at).toLocaleString()}
                   </span>
                 </div>

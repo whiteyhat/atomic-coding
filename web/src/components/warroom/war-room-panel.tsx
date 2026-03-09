@@ -38,7 +38,7 @@ export function WarRoomPanel({
 
   if (isLoading && !warRoom) {
     return (
-      <div className="flex items-center justify-center h-full text-zinc-500">
+      <div className="flex items-center justify-center h-full text-white/40">
         <Loader2 className="size-5 animate-spin" />
       </div>
     );
@@ -46,7 +46,7 @@ export function WarRoomPanel({
 
   if (error) {
     return (
-      <div className="flex items-center justify-center h-full text-red-400 text-sm px-4 text-center">
+      <div className="flex items-center justify-center h-full text-rose-400 text-sm px-4 text-center">
         {error}
       </div>
     );
@@ -59,7 +59,7 @@ export function WarRoomPanel({
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="px-3 py-3 border-b border-zinc-800 space-y-2">
+      <div className="px-3 py-3 border-b border-white/[0.06] space-y-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             {onBack && (
@@ -67,8 +67,8 @@ export function WarRoomPanel({
                 <ArrowLeft className="size-3.5" />
               </Button>
             )}
-            <Swords className="size-4 text-zinc-400" />
-            <span className="text-sm font-medium text-zinc-200">
+            <Swords className="size-4 text-white/50" />
+            <span className="text-sm font-medium text-white/80">
               War Room
             </span>
           </div>
@@ -77,7 +77,7 @@ export function WarRoomPanel({
               <Button
                 variant="ghost"
                 size="icon"
-                className="size-6 text-zinc-400 hover:text-red-400"
+                className="size-6 text-white/50 hover:text-rose-400"
                 disabled={isCancelling}
                 onClick={async () => {
                   setIsCancelling(true);
@@ -100,13 +100,13 @@ export function WarRoomPanel({
 
         {/* Progress */}
         <div className="space-y-1">
-          <div className="flex justify-between text-[11px] text-zinc-500">
+          <div className="flex justify-between text-[11px] text-white/40">
             <span>Pipeline progress</span>
             <span>
               {completedCount}/{tasks.length}
             </span>
           </div>
-          <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+          <div className="h-1.5 bg-white/8 rounded-full overflow-hidden">
             <div
               className={`h-full rounded-full transition-all duration-500 ${
                 warRoom.status === "failed"
@@ -131,7 +131,7 @@ export function WarRoomPanel({
           if (failedTasks.length === 0) return null;
           return (
             <div className="mt-2 p-2 rounded border border-red-500/20 bg-red-500/10 space-y-1">
-              <div className="flex items-center gap-1.5 text-red-400 text-xs font-medium">
+              <div className="flex items-center gap-1.5 text-rose-400 text-xs font-medium">
                 <AlertTriangle className="size-3" />
                 <span>{failedTasks.length} task{failedTasks.length > 1 ? "s" : ""} failed</span>
               </div>
@@ -149,8 +149,8 @@ export function WarRoomPanel({
       </div>
 
       {/* Prompt */}
-      <div className="px-3 py-2 border-b border-zinc-800">
-        <p className="text-xs text-zinc-500 line-clamp-2">
+      <div className="px-3 py-2 border-b border-white/[0.06]">
+        <p className="text-xs text-white/40 line-clamp-2">
           {warRoom.prompt}
         </p>
       </div>

@@ -42,11 +42,11 @@ export function AssetModelDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl p-0 gap-0">
-        <DialogHeader className="px-4 pt-4 pb-3 border-b border-zinc-800/50">
+        <DialogHeader className="px-4 pt-4 pb-3 border-b border-white/[0.06]">
           <DialogTitle className="text-sm">
             3D Model Library
             {selected.length > 0 && (
-              <span className="ml-2 text-zinc-500 font-normal">
+              <span className="ml-2 text-white/40 font-normal">
                 {selected.length} selected
               </span>
             )}
@@ -54,27 +54,27 @@ export function AssetModelDialog({
         </DialogHeader>
 
         {/* Search */}
-        <div className="flex items-center gap-2 px-4 py-2.5 border-b border-zinc-800/30">
-          <Search className="size-3.5 text-zinc-500 shrink-0" />
+        <div className="flex items-center gap-2 px-4 py-2.5 border-b border-white/[0.05]">
+          <Search className="size-3.5 text-white/40 shrink-0" />
           <input
             type="text"
             placeholder="Search models..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="flex-1 bg-transparent text-sm text-zinc-300 placeholder:text-zinc-600 outline-none"
+            className="flex-1 bg-transparent text-sm text-white/70 placeholder:text-white/30 outline-none"
           />
         </div>
 
         {/* Grid */}
         <ScrollArea className="max-h-[60vh]">
           {error && (
-            <div className="p-4 text-center text-sm text-red-400">
+            <div className="p-4 text-center text-sm text-rose-400">
               {error}
             </div>
           )}
 
           {!error && filteredItems.length === 0 && !isLoading && (
-            <div className="p-8 text-center text-sm text-zinc-500">
+            <div className="p-8 text-center text-sm text-white/40">
               No models found
             </div>
           )}
@@ -90,7 +90,7 @@ export function AssetModelDialog({
                     "group relative flex flex-col gap-2 rounded-lg border p-2 text-left transition-colors",
                     isSelected
                       ? "border-blue-500 bg-blue-500/10"
-                      : "border-zinc-800 hover:border-blue-500/50 hover:bg-blue-500/5"
+                      : "border-white/[0.08] hover:border-blue-500/50 hover:bg-blue-500/5"
                   )}
                 >
                   {isSelected && (
@@ -98,7 +98,7 @@ export function AssetModelDialog({
                       <Check className="size-3 text-white" />
                     </div>
                   )}
-                  <div className="aspect-square w-full overflow-hidden rounded-md bg-zinc-900">
+                  <div className="aspect-square w-full overflow-hidden rounded-md bg-white/[0.03]">
                     {model.image?.url ? (
                       <img
                         src={model.image.url}
@@ -107,13 +107,13 @@ export function AssetModelDialog({
                         loading="lazy"
                       />
                     ) : (
-                      <div className="size-full flex items-center justify-center text-zinc-700 text-xs">
+                      <div className="size-full flex items-center justify-center text-white/20 text-xs">
                         No image
                       </div>
                     )}
                   </div>
                   <div className="flex flex-col gap-1 min-w-0">
-                    <p className="text-xs text-zinc-300 line-clamp-2">
+                    <p className="text-xs text-white/70 line-clamp-2">
                       {model.prompt ?? "Untitled"}
                     </p>
                     {model.style && (
@@ -138,7 +138,7 @@ export function AssetModelDialog({
                 size="sm"
                 onClick={loadMore}
                 disabled={isLoading}
-                className="text-xs text-zinc-400"
+                className="text-xs text-white/50"
               >
                 {isLoading ? (
                   <Loader2 className="size-3 animate-spin mr-1.5" />
@@ -150,7 +150,7 @@ export function AssetModelDialog({
 
           {isLoading && filteredItems.length === 0 && (
             <div className="flex justify-center py-8">
-              <Loader2 className="size-5 animate-spin text-zinc-500" />
+              <Loader2 className="size-5 animate-spin text-white/40" />
             </div>
           )}
         </ScrollArea>

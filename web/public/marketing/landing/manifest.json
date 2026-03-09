@@ -1,0 +1,18 @@
+{
+  "generatedAt": "2026-03-09T23:32:12.550Z",
+  "model": "google/gemini-3.1-flash-image-preview",
+  "images": [
+    {
+      "id": "stardew-inspired-farm-world",
+      "label": "Cozy Farming Lane",
+      "alt": "Original cozy farming-adventure world with crops, cabins, and warm village light.",
+      "aspectRatio": "4:3",
+      "imageSize": "2K",
+      "src": "/marketing/landing/stardew-inspired-farm-world.png",
+      "mimeType": "image/png",
+      "prompt": "Create an original premium marketing image for a cozy farming-adventure game world. The mood should be inspired by the emotional warmth of beloved indie farming RPGs, but the world, characters, props, and composition must be completely original. Show a lush village with crops, paths, a wooden bridge, cabins, lanterns, and a hero character silhouette moving through the scene. Use handcrafted detail, rich color, warm sunset light, and a polished game-key-art finish. Make it feel playable and alive, not like concept art wallpaper. No logos, no UI chrome, no text, no watermark.",
+      "revisedPrompt": null,
+      "model": "google/gemini-3.1-flash-image-preview"
+    }
+  ]
+}
