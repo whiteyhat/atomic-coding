@@ -15,6 +15,7 @@
     "@mastra/hono": "latest",
     "@supabase/supabase-js": "^2.95.3",
     "ai": "^6.0.77",
+    "dotenv": "^17.3.1",
     "hono": "^4.9.7",
     "zod": "^3.23.0"
   },

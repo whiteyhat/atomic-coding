@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { PrivyProvider as BasePrivyProvider, usePrivy } from "@privy-io/react-auth";
 import { registerAuthTokenGetter } from "./api";
-import { ensureUserProfile } from "./auth";
+import { ensureUserProfile } from "./user-profile";
 
 const PRIVY_APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID ?? "";
 

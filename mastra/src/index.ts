@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { MastraServer } from "@mastra/hono";
@@ -8,7 +9,7 @@ import { chatRoutes } from "./routes/chat.js";
 
 const app = new Hono<{ Bindings: HonoBindings; Variables: HonoVariables }>();
 
-const server = new MastraServer({ app, mastra });
+const server = new MastraServer({ app, mastra,  });
 
 await server.init();
 
