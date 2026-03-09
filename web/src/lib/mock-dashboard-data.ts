@@ -1,0 +1,161 @@
+import type {
+  DashboardSummary,
+  DashboardGameSummary,
+  TokenActivityItem,
+} from "./types";
+
+const mockProfile = {
+  id: "did:mock:nikitin-001",
+  displayName: "NIKITIN",
+  email: "nikitin@buuai.com",
+  walletAddress: "0x7a3b...9f2e",
+  avatarUrl: null,
+};
+
+const mockCreations: DashboardGameSummary[] = [
+  {
+    id: "game-001",
+    name: "Neon Kingdom Tactics",
+    description: "A cyberpunk hex-strategy game with AI-driven opponents and neon-lit battlefields.",
+    genre: "hex-strategy",
+    thumbnailUrl: null,
+    isPublished: true,
+    publicSlug: "neon-kingdom-tactics",
+    tokenStatus: "launched",
+    externalCount: 4,
+    topLeaderboardScore: 24800,
+    lastChatAt: new Date(Date.now() - 45 * 60_000).toISOString(),
+    latestBuild: { status: "success", atomCount: 38 },
+    currentWarRoom: null,
+    updatedAt: new Date(Date.now() - 2 * 3600_000).toISOString(),
+  },
+  {
+    id: "game-002",
+    name: "Cyber Quest II",
+    description: "An open-world adventure where players explore procedurally generated cyber-realms.",
+    genre: "rpg",
+    thumbnailUrl: null,
+    isPublished: false,
+    publicSlug: null,
+    tokenStatus: "pending",
+    externalCount: 6,
+    topLeaderboardScore: null,
+    lastChatAt: new Date(Date.now() - 3 * 3600_000).toISOString(),
+    latestBuild: { status: "building", atomCount: 22 },
+    currentWarRoom: {
+      status: "running",
+      prompt: "Add underwater biome with bioluminescent creatures",
+      progress: 42,
+      completedTasks: 3,
+      totalTasks: 7,
+    },
+    updatedAt: new Date(Date.now() - 30 * 60_000).toISOString(),
+  },
+  {
+    id: "game-003",
+    name: "Velocity Rush",
+    description: "High-speed racing through neon cityscapes with drift mechanics and power-ups.",
+    genre: "racing",
+    thumbnailUrl: null,
+    isPublished: true,
+    publicSlug: "velocity-rush",
+    tokenStatus: "draft",
+    externalCount: 3,
+    topLeaderboardScore: 15200,
+    lastChatAt: new Date(Date.now() - 8 * 3600_000).toISOString(),
+    latestBuild: { status: "success", atomCount: 29 },
+    currentWarRoom: null,
+    updatedAt: new Date(Date.now() - 6 * 3600_000).toISOString(),
+  },
+  {
+    id: "game-004",
+    name: "Shadow Fortress",
+    description: "A tower-defense game set in a dark fantasy world with summoning mechanics.",
+    genre: "tower-defense",
+    thumbnailUrl: null,
+    isPublished: false,
+    publicSlug: null,
+    tokenStatus: "none",
+    externalCount: 2,
+    topLeaderboardScore: null,
+    lastChatAt: null,
+    latestBuild: null,
+    currentWarRoom: null,
+    updatedAt: new Date(Date.now() - 24 * 3600_000).toISOString(),
+  },
+];
+
+const mockActivity = [
+  {
+    id: "act-001",
+    kind: "warRoom" as const,
+    title: "War room started",
+    gameName: "Cyber Quest II",
+    description: "Add underwater biome with bioluminescent creatures",
+    status: "running",
+    href: "/games/Cyber%20Quest%20II",
+    createdAt: new Date(Date.now() - 30 * 60_000).toISOString(),
+  },
+  {
+    id: "act-002",
+    kind: "build" as const,
+    title: "Build succeeded",
+    gameName: "Neon Kingdom Tactics",
+    description: "38 atoms compiled, bundle ready",
+    status: "success",
+    href: "/games/Neon%20Kingdom%20Tactics",
+    createdAt: new Date(Date.now() - 2 * 3600_000).toISOString(),
+  },
+  {
+    id: "act-003",
+    kind: "publish" as const,
+    title: "Game published",
+    gameName: "Velocity Rush",
+    description: "Now live at /play/velocity-rush",
+    status: null,
+    href: "/play/velocity-rush",
+    createdAt: new Date(Date.now() - 5 * 3600_000).toISOString(),
+  },
+  {
+    id: "act-004",
+    kind: "token" as const,
+    title: "Token launched",
+    gameName: "Neon Kingdom Tactics",
+    description: "$NEON token deployed on Base",
+    status: "launched",
+    href: "/games/Neon%20Kingdom%20Tactics/token",
+    createdAt: new Date(Date.now() - 12 * 3600_000).toISOString(),
+  },
+];
+
+const mockStats = {
+  totalGames: 4,
+  publishedGames: 2,
+  totalAtoms: 89,
+  successfulBuilds: 3,
+};
+
+export const MOCK_DASHBOARD_SUMMARY: DashboardSummary = {
+  profile: mockProfile,
+  stats: mockStats,
+  creations: mockCreations,
+  spotlight: { ...mockCreations[0], spotlightReason: "recentlyUpdated" },
+  activity: mockActivity,
+  boilerplates: [
+    { slug: "hex-strategy", displayName: "Hex Strategy" },
+    { slug: "side-scroller", displayName: "Side-Scroller" },
+    { slug: "fps-arena", displayName: "FPS Arena" },
+    { slug: "rpg", displayName: "RPG" },
+    { slug: "tower-defense", displayName: "Tower Defense" },
+    { slug: "racing", displayName: "Racing" },
+  ],
+};
+
+export const MOCK_TOKEN_ACTIVITY: TokenActivityItem[] = [
+  { id: "tok-001", tokenSymbol: "$NEON", tokenColor: "#f43f5e", action: "bonding", changePercent: 12, timeAgo: "3 mins ago", detail: "0.5 ETH Buy" },
+  { id: "tok-002", tokenSymbol: "$CYBER", tokenColor: "#8b5cf6", action: "sold", changePercent: -4, timeAgo: "12 mins ago", detail: "1.2 ETH Sell" },
+  { id: "tok-003", tokenSymbol: "$RUSH", tokenColor: "#f59e0b", action: "bought", changePercent: 8, timeAgo: "28 mins ago", detail: "0.3 ETH Buy" },
+  { id: "tok-004", tokenSymbol: "$SHADOW", tokenColor: "#10b981", action: "launched", changePercent: 0, timeAgo: "1h ago", detail: "Initial mint" },
+  { id: "tok-005", tokenSymbol: "$NEON", tokenColor: "#f43f5e", action: "bonding", changePercent: 6, timeAgo: "2h ago", detail: "0.8 ETH Buy" },
+];
+

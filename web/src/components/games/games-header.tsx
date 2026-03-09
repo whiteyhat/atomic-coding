@@ -1,12 +1,9 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { CreateGameDialog } from "./create-game-dialog";
 import { UserMenu } from "@/components/auth/user-menu";
 
 export function GamesHeader() {
-  const router = useRouter();
-
   return (
     <div className="flex items-center justify-between">
       <div>
@@ -18,7 +15,7 @@ export function GamesHeader() {
         </p>
       </div>
       <div className="flex items-center gap-3">
-        <CreateGameDialog onCreated={() => router.refresh()} />
+        <CreateGameDialog />
         <UserMenu />
       </div>
     </div>

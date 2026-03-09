@@ -7,6 +7,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Loader2, MessageSquare, Plus, Trash2 } from "lucide-react";
 import { MODELS } from "@/lib/constants";
+import { useAppAuth } from "@/lib/privy-provider";
 
 interface ChatSessionListProps {
   gameName: string;
@@ -19,10 +20,15 @@ function modelName(modelId: string | null): string | null {
 }
 
 export function ChatSessionList({ gameName, onSelect }: ChatSessionListProps) {
+  const { authenticated, login } = useAppAuth();
   const { data: sessions, isLoading, error, mutate } = useChatSessions(gameName);
   const [isCreating, setIsCreating] = useState(false);
 
   async function handleCreate() {
+    if (!authenticated) {
+      login();
+      return;
+    }
     setIsCreating(true);
     try {
       const session = await createChatSession(gameName);
@@ -34,7 +40,10 @@ export function ChatSessionList({ gameName, onSelect }: ChatSessionListProps) {
     }
   }
 
-  async function handleDelete(e: React.MouseEvent, sessionId: string) {
+  async function handleDelete(
+    e: React.MouseEvent | React.KeyboardEvent,
+    sessionId: string
+  ) {
     e.stopPropagation();
     try {
       await deleteChatSession(gameName, sessionId);

@@ -38,7 +38,7 @@ export function GameWorkspace({ gameId, gameName, isPublished, publicSlug }: Gam
   }
 
   /** Called when a suggested prompt is selected from a completed war room. */
-  function handleSuggestedPrompt(_prompt: string) {
+  function handleSuggestedPrompt() {
     // Switch back to chat — the prompt can be used to create a new war room
     setTab("chat");
   }

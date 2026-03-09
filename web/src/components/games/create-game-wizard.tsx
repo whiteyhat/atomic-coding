@@ -1,0 +1,690 @@
+"use client";
+
+import { type KeyboardEvent as ReactKeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { AnimatePresence, motion } from "framer-motion";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  Loader2,
+  Sparkles,
+  Wand2,
+  X,
+} from "lucide-react";
+import type { Game } from "@/lib/types";
+import { createGame } from "@/lib/api";
+import { getGameGenre } from "@/lib/game-genres";
+import { useAppAuth } from "@/lib/privy-provider";
+import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { GenreSelector } from "./genre-selector";
+
+const STEP_LABELS = ["Name", "Genre", "Review"] as const;
+const MAX_NAME_LENGTH = 100;
+const MAX_DESCRIPTION_LENGTH = 500;
+const REVIEW_FALLBACK_COPY =
+  "A polished new playground for AI-assisted mechanics, bold visuals, and instant iteration.";
+
+function isDuplicateNameError(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("already exists") ||
+    normalized.includes("duplicate key") ||
+    normalized.includes("games_name_key")
+  );
+}
+
+interface CreateGameWizardProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  initialGenre?: string | null;
+  onCreated?: (game: Game) => void;
+}
+
+export function CreateGameWizard({
+  open,
+  onOpenChange,
+  initialGenre = null,
+  onCreated,
+}: CreateGameWizardProps) {
+  const router = useRouter();
+  const { ready, authenticated } = useAppAuth();
+  const [step, setStep] = useState(0);
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [genre, setGenre] = useState<string | null>(null);
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const wasOpenRef = useRef(false);
+  const previousNextDisabledRef = useRef(true);
+  const pulseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [shouldPulseNext, setShouldPulseNext] = useState(false);
+
+  useEffect(() => {
+    if (open && !wasOpenRef.current) {
+      const safeInitialGenre = getGameGenre(initialGenre)?.slug ?? null;
+      setStep(safeInitialGenre ? 1 : 0);
+      setName("");
+      setDescription("");
+      setGenre(safeInitialGenre);
+      setNameError(null);
+      setSubmitError(null);
+      setLoading(false);
+    }
+
+    wasOpenRef.current = open;
+  }, [open, initialGenre]);
+
+  const selectedGenre = useMemo(() => getGameGenre(genre), [genre]);
+  const previewName = name.trim() || "my-awesome-game";
+  const previewDescription = description.trim() || REVIEW_FALLBACK_COPY;
+  const isNameValid = name.trim().length > 0 && name.trim().length <= MAX_NAME_LENGTH;
+  const canReview = isNameValid && !!selectedGenre;
+  const isPrevDisabled = step === 0 || loading;
+  const isNextDisabled =
+    loading ||
+    step === 2 ||
+    (step === 0 && !isNameValid) ||
+    (step === 1 && !selectedGenre);
+  const keyboardHint =
+    step === 0
+      ? "Press Enter to continue. Use Cmd/Ctrl+Enter in the description box."
+      : step === 1
+        ? "Choose a template, then press Enter to continue."
+        : "Press Enter to create once everything looks right.";
+
+  useEffect(() => {
+    if (!open) {
+      setShouldPulseNext(false);
+      previousNextDisabledRef.current = true;
+      if (pulseTimeoutRef.current) {
+        clearTimeout(pulseTimeoutRef.current);
+        pulseTimeoutRef.current = null;
+      }
+      return;
+    }
+
+    const shouldTriggerPulse =
+      (step === 0 || step === 1) &&
+      previousNextDisabledRef.current &&
+      !isNextDisabled;
+
+    if (shouldTriggerPulse) {
+      setShouldPulseNext(true);
+      if (pulseTimeoutRef.current) {
+        clearTimeout(pulseTimeoutRef.current);
+      }
+      pulseTimeoutRef.current = setTimeout(() => {
+        setShouldPulseNext(false);
+        pulseTimeoutRef.current = null;
+      }, 2200);
+    }
+
+    if (step === 2 || isNextDisabled) {
+      setShouldPulseNext(false);
+    }
+
+    previousNextDisabledRef.current = isNextDisabled;
+  }, [isNextDisabled, open, step]);
+
+  useEffect(() => {
+    return () => {
+      if (pulseTimeoutRef.current) {
+        clearTimeout(pulseTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  function handleNameChange(value: string) {
+    setName(value);
+    if (nameError) setNameError(null);
+    if (submitError) setSubmitError(null);
+  }
+
+  function handleDescriptionChange(value: string) {
+    setDescription(value);
+    if (submitError) setSubmitError(null);
+  }
+
+  function validateName(nextMessage?: string): boolean {
+    const trimmedName = name.trim();
+
+    if (!trimmedName) {
+      setNameError(nextMessage ?? "Give your game a name before continuing.");
+      return false;
+    }
+
+    if (trimmedName.length > MAX_NAME_LENGTH) {
+      setNameError(`Game names must be ${MAX_NAME_LENGTH} characters or less.`);
+      return false;
+    }
+
+    setNameError(null);
+    return true;
+  }
+
+  function goToGenreStep() {
+    if (!validateName()) {
+      setStep(0);
+      return;
+    }
+
+    setStep(1);
+  }
+
+  function goToReviewStep() {
+    if (!selectedGenre) {
+      return;
+    }
+
+    if (!validateName("Give your game a name before reviewing it.")) {
+      setStep(0);
+      return;
+    }
+
+    setStep(2);
+  }
+
+  function handlePreviousStep() {
+    if (isPrevDisabled) return;
+    setStep((currentStep) => currentStep - 1);
+  }
+
+  function handleNextStep() {
+    if (isNextDisabled) return;
+
+    if (step === 0) {
+      goToGenreStep();
+      return;
+    }
+
+    if (step === 1) {
+      goToReviewStep();
+    }
+  }
+
+  function handleStepHotkey(event: ReactKeyboardEvent<HTMLDivElement>) {
+    if (event.key !== "Enter" || loading) {
+      return;
+    }
+
+    const target = event.target as HTMLElement;
+    const tagName = target.tagName.toLowerCase();
+    const isTextarea = tagName === "textarea";
+    const isModifierEnter = event.metaKey || event.ctrlKey;
+
+    if (isTextarea && !isModifierEnter) {
+      return;
+    }
+
+    if (tagName === "button") {
+      return;
+    }
+
+    event.preventDefault();
+
+    if (step === 0) {
+      goToGenreStep();
+      return;
+    }
+
+    if (step === 1) {
+      goToReviewStep();
+      return;
+    }
+
+    if (step === 2) {
+      void handleCreate();
+    }
+  }
+
+  async function handleCreate() {
+    if (!selectedGenre) {
+      setStep(1);
+      return;
+    }
+
+    if (!validateName("Give your game a name before creating it.")) {
+      setStep(0);
+      return;
+    }
+
+    if (!authenticated) {
+      setSubmitError(ready ? "Sign in to create a game." : "Checking your session...");
+      return;
+    }
+
+    setLoading(true);
+    setSubmitError(null);
+
+    try {
+      const game = await createGame(
+        name.trim(),
+        description.trim() || undefined,
+        selectedGenre.slug,
+      );
+
+      onCreated?.(game);
+      onOpenChange(false);
+      router.push(`/games/${encodeURIComponent(game.name)}`);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to create game.";
+
+      if (isDuplicateNameError(message)) {
+        setNameError("That game name already exists. Try a different one.");
+        setStep(0);
+      } else {
+        setSubmitError(message);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        showCloseButton={false}
+        onKeyDown={handleStepHotkey}
+        className="max-h-[calc(100vh-1rem)] gap-0 overflow-hidden rounded-[2rem] border border-white/10 bg-[#12070a]/95 p-0 text-white shadow-[0_30px_120px_rgba(0,0,0,0.55)] sm:h-[calc(100vh-1rem)] sm:max-h-[900px] sm:max-w-[min(1180px,calc(100vw-2rem))]"
+      >
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(244,63,94,0.24),transparent_32%),radial-gradient(circle_at_bottom_right,rgba(251,146,60,0.16),transparent_30%),linear-gradient(180deg,#18080c_0%,#0f0508_100%)]" />
+        <div className="absolute inset-0 bg-[linear-gradient(120deg,rgba(255,255,255,0.04)_0%,transparent_18%,transparent_82%,rgba(255,255,255,0.04)_100%)] opacity-40" />
+
+        <div className="relative flex h-full flex-col">
+          <div className="flex items-start justify-between gap-4 border-b border-white/8 px-5 py-4 sm:px-7">
+            <DialogHeader className="space-y-2 text-left">
+              <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.32em] text-rose-300/70">
+                <Sparkles className="size-3" />
+                Create Flow
+              </div>
+              <DialogTitle className="text-2xl font-semibold tracking-tight text-white sm:text-[2rem]">
+                Launch a new game in three sharp moves
+              </DialogTitle>
+              <DialogDescription className="max-w-2xl text-sm leading-6 text-white/60">
+                Shape the concept, pick a starter scaffold, and ship directly into the editor.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="flex shrink-0 flex-col items-end gap-2">
+              <button
+                type="button"
+                onClick={() => onOpenChange(false)}
+                className="mt-1 flex size-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/70 transition hover:border-white/20 hover:bg-white/10 hover:text-white"
+              >
+                <X className="size-4" />
+                <span className="sr-only">Close</span>
+              </button>
+
+              <div className="flex flex-row gap-2">
+                <button
+                  type="button"
+                  onClick={handlePreviousStep}
+                  disabled={isPrevDisabled}
+                  className={cn(
+                    "flex size-10 items-center justify-center rounded-full border transition",
+                    isPrevDisabled
+                      ? "cursor-not-allowed border-white/8 bg-white/[0.03] text-white/20"
+                      : "border-white/10 bg-white/5 text-white/70 hover:border-white/20 hover:bg-white/10 hover:text-white",
+                  )}
+                >
+                  <ArrowLeft className="size-4" />
+                  <span className="sr-only">Previous step</span>
+                </button>
+
+                <motion.button
+                  type="button"
+                  onClick={handleNextStep}
+                  disabled={isNextDisabled}
+                  animate={
+                    shouldPulseNext
+                      ? {
+                          scale: [1, 1.08, 1],
+                          boxShadow: [
+                            "0 0 0 rgba(244,63,94,0)",
+                            "0 0 0 10px rgba(244,63,94,0.12)",
+                            "0 0 0 rgba(244,63,94,0)",
+                          ],
+                        }
+                      : {
+                          scale: 1,
+                          boxShadow: "0 0 0 rgba(244,63,94,0)",
+                        }
+                  }
+                  transition={
+                    shouldPulseNext
+                      ? {
+                          duration: 0.9,
+                          repeat: 2,
+                          ease: "easeInOut",
+                        }
+                      : { duration: 0.15 }
+                  }
+                  className={cn(
+                    "flex size-10 items-center justify-center rounded-full border transition",
+                    isNextDisabled
+                      ? "cursor-not-allowed border-white/8 bg-white/[0.03] text-white/20"
+                      : "border-white/10 bg-white/5 text-white/70 hover:border-white/20 hover:bg-white/10 hover:text-white",
+                    shouldPulseNext && !isNextDisabled && "border-rose-300/35 bg-rose-400/10 text-rose-100",
+                  )}
+                >
+                  <ArrowRight className="size-4" />
+                  <span className="sr-only">Next step</span>
+                </motion.button>
+              </div>
+            </div>
+          </div>
+
+          <div className="border-b border-white/8 px-5 py-4 sm:px-7">
+            <div className="grid gap-3 sm:grid-cols-3">
+              {STEP_LABELS.map((label, index) => {
+                const isCurrent = index === step;
+                const isComplete = index < step;
+                const isClickable = index <= step || (index === 1 && step === 0);
+
+                return (
+                  <button
+                    key={label}
+                    type="button"
+                    disabled={!isClickable || loading}
+                    onClick={() => {
+                      if (index === 2 && !canReview) return;
+                      setStep(index);
+                    }}
+                    className={cn(
+                      "group rounded-[1.4rem] border px-4 py-3 text-left transition-all",
+                      isCurrent
+                        ? "border-rose-300/30 bg-rose-500/10 shadow-[0_0_30px_rgba(244,63,94,0.12)]"
+                        : "border-white/8 bg-white/[0.03] hover:border-white/15 hover:bg-white/[0.05]",
+                      !isClickable && "cursor-not-allowed opacity-60",
+                    )}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={cn(
+                          "flex size-8 items-center justify-center rounded-full border text-sm font-semibold",
+                          isComplete
+                            ? "border-emerald-300/40 bg-emerald-400/15 text-emerald-200"
+                            : isCurrent
+                              ? "border-rose-300/40 bg-rose-400/15 text-rose-100"
+                              : "border-white/10 bg-white/5 text-white/60",
+                        )}
+                      >
+                        {isComplete ? <Check className="size-4" /> : `0${index + 1}`}
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-white">{label}</p>
+                        <p className="text-xs text-white/45">
+                          {index === 0
+                            ? "Identity first"
+                            : index === 1
+                              ? "Choose your scaffold"
+                              : "Final pass"}
+                        </p>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-y-auto lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:overflow-hidden">
+            <div className="flex min-h-0 flex-col px-5 py-5 sm:px-7 sm:py-6">
+              <div className="min-h-0 lg:flex-1 lg:overflow-y-auto">
+                <AnimatePresence mode="wait" initial={false}>
+                  <motion.div
+                    key={step}
+                    initial={{ opacity: 0, y: 18 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -18 }}
+                    transition={{ duration: 0.22, ease: "easeOut" }}
+                    className="mx-auto w-full max-w-3xl"
+                  >
+                    {step === 0 ? (
+                      <div className="space-y-8 pb-2">
+                        <div className="max-w-2xl">
+                          <p className="text-sm uppercase tracking-[0.28em] text-white/35">
+                            Step 1
+                          </p>
+                          <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">
+                            Name your game
+                          </h2>
+                          <p className="mt-3 text-sm leading-6 text-white/60">
+                            Give your game a unique name. You can add a description later.
+                          </p>
+                        </div>
+
+                        <div className="grid gap-5">
+                          <div className="rounded-[1.6rem] border border-white/10 bg-white/[0.03] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+                            <label htmlFor="wizard-game-name" className="text-sm font-medium text-white">
+                              Game name
+                            </label>
+                            <Input
+                              id="wizard-game-name"
+                              value={name}
+                              onChange={(event) => handleNameChange(event.target.value)}
+                              maxLength={MAX_NAME_LENGTH}
+                              placeholder="my-awesome-game"
+                              disabled={loading}
+                              className="mt-3 h-14 rounded-2xl border-white/10 bg-[#1f0c11] text-base text-white placeholder:text-white/25 focus-visible:border-rose-300/30 focus-visible:ring-rose-300/20"
+                            />
+                            <div className="mt-3 flex items-center justify-between text-xs">
+                              <span className={cn("text-rose-200", !nameError && "invisible")}>
+                                {nameError ?? "Placeholder"}
+                              </span>
+                              <span className="text-white/35">
+                                {name.trim().length}/{MAX_NAME_LENGTH}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="rounded-[1.6rem] border border-white/10 bg-white/[0.03] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+                            <label htmlFor="wizard-game-description" className="text-sm font-medium text-white">
+                              Description
+                            </label>
+                            <Textarea
+                              id="wizard-game-description"
+                              value={description}
+                              onChange={(event) => handleDescriptionChange(event.target.value)}
+                              maxLength={MAX_DESCRIPTION_LENGTH}
+                              placeholder="A 3D platformer with physics"
+                              disabled={loading}
+                              className="mt-3 min-h-32 rounded-[1.35rem] border-white/10 bg-[#1f0c11] text-base leading-7 text-white placeholder:text-white/25 focus-visible:border-rose-300/30 focus-visible:ring-rose-300/20"
+                            />
+                            <div className="mt-3 flex items-center justify-between text-xs text-white/35">
+                              <span>Set the tone now, refine the details later.</span>
+                              <span>{description.length}/{MAX_DESCRIPTION_LENGTH}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {step === 1 ? (
+                      <div className="space-y-8 pb-2">
+                        <div className="max-w-2xl">
+                          <p className="text-sm uppercase tracking-[0.28em] text-white/35">
+                            Step 2
+                          </p>
+                          <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">
+                            Choose a genre
+                          </h2>
+                          <p className="mt-3 text-sm leading-6 text-white/60">
+                            Pick a starting template. Each genre comes with pre-built atoms and a Three.js scaffold.
+                          </p>
+                        </div>
+
+                        <GenreSelector
+                          value={genre}
+                          onChange={(nextGenre) => {
+                            setGenre(nextGenre);
+                            if (submitError) setSubmitError(null);
+                          }}
+                        />
+                      </div>
+                    ) : null}
+
+                    {step === 2 ? (
+                      <div className="space-y-8 pb-2">
+                        <div className="max-w-2xl">
+                          <p className="text-sm uppercase tracking-[0.28em] text-white/35">
+                            Step 3
+                          </p>
+                          <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">
+                            Review and confirm
+                          </h2>
+                          <p className="mt-3 text-sm leading-6 text-white/60">
+                            One final pass before the wizard generates your starter game and opens the editor.
+                          </p>
+                        </div>
+
+                        <div className="grid gap-4 md:grid-cols-3">
+                          <div className="rounded-[1.6rem] border border-white/10 bg-white/[0.03] p-4">
+                            <p className="text-[11px] uppercase tracking-[0.24em] text-white/35">
+                              Name
+                            </p>
+                            <p className="mt-3 text-lg font-semibold text-white">{previewName}</p>
+                          </div>
+                          <div className="rounded-[1.6rem] border border-white/10 bg-white/[0.03] p-4">
+                            <p className="text-[11px] uppercase tracking-[0.24em] text-white/35">
+                              Genre
+                            </p>
+                            <p className="mt-3 text-lg font-semibold text-white">
+                              {selectedGenre?.displayName ?? "Select a genre"}
+                            </p>
+                          </div>
+                          <div className="rounded-[1.6rem] border border-white/10 bg-white/[0.03] p-4">
+                            <p className="text-[11px] uppercase tracking-[0.24em] text-white/35">
+                              Launch mode
+                            </p>
+                            <p className="mt-3 text-lg font-semibold text-white">Open editor instantly</p>
+                          </div>
+                        </div>
+
+                        {submitError ? (
+                          <div className="rounded-[1.4rem] border border-rose-400/25 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
+                            {submitError}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </motion.div>
+                </AnimatePresence>
+              </div>
+
+              <div className="mt-5 flex flex-col gap-4 border-t border-white/8 pt-5">
+                <div className="text-sm text-white/40">
+                  {keyboardHint}
+                </div>
+
+                <div className="flex min-h-12 items-center justify-end">
+                  {step === 2 ? (
+                    <Button
+                      type="button"
+                      onClick={handleCreate}
+                      disabled={loading || !canReview}
+                      className="h-12 rounded-full bg-rose-500 px-6 text-white hover:bg-rose-400"
+                    >
+                      {loading ? (
+                        <>
+                          <Loader2 className="size-4 animate-spin" />
+                          Creating game
+                        </>
+                      ) : (
+                        <>
+                          Enter game maker
+                          <Wand2 className="size-4" />
+                        </>
+                      )}
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+
+            <aside className="relative min-h-0 border-t border-white/8 bg-[#19080d]/80 lg:border-l lg:border-t-0">
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(244,63,94,0.22),transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.04),transparent_30%)]" />
+              <div className="relative flex h-full min-h-0 flex-col px-5 py-5 sm:px-6 sm:py-6 lg:overflow-y-auto">
+                <div className="mb-5 flex items-center justify-between">
+                  <div>
+                    <p className="text-[11px] uppercase tracking-[0.28em] text-white/35">
+                      Live Preview
+                    </p>
+                    <p className="mt-2 text-sm text-white/60">
+                      The card updates with each choice.
+                    </p>
+                  </div>
+                  <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] uppercase tracking-[0.24em] text-white/45">
+                    {step + 1}/3
+                  </div>
+                </div>
+
+                <motion.div
+                  layout
+                  className="relative flex min-h-[320px] flex-col overflow-hidden rounded-[2rem] border border-white/10 bg-[#220d13] shadow-[0_20px_60px_rgba(0,0,0,0.35)] lg:min-h-0 lg:self-start"
+                >
+                  <div className={cn("absolute inset-0 bg-gradient-to-br", selectedGenre?.gradientClass ?? "from-white/10 via-transparent to-transparent")} />
+                  <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.04)_0%,rgba(11,4,6,0.0)_35%,rgba(11,4,6,0.88)_100%)]" />
+
+                  <div className="relative flex min-h-24 items-start justify-between px-5 py-4 sm:min-h-28 sm:px-6 sm:py-5">
+                    <Badge className={cn("rounded-full border px-3 py-1 text-[11px] font-medium tracking-[0.2em] uppercase", selectedGenre?.pillClass ?? "border-white/15 bg-white/10 text-white/80")}>
+                      {selectedGenre?.displayName ?? "Choose a genre"}
+                    </Badge>
+                    <div className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-[11px] uppercase tracking-[0.22em] text-white/45">
+                      Review card
+                    </div>
+                  </div>
+
+                  <div className="relative flex items-center justify-center px-6 py-1 text-[3.4rem] sm:text-[4rem]">
+                    <span aria-hidden="true">{selectedGenre?.emoji ?? "🎮"}</span>
+                  </div>
+
+                  <div className="relative space-y-3 px-5 pb-5 pt-2 sm:px-6">
+                    <div>
+                      <p className="text-[11px] uppercase tracking-[0.28em] text-white/35">
+                        Game name
+                      </p>
+                      <h3 className="mt-3 text-xl font-semibold tracking-tight text-white sm:text-2xl">
+                        {previewName}
+                      </h3>
+                    </div>
+
+                    <p className="line-clamp-3 text-sm leading-6 text-white/65 sm:line-clamp-4">
+                      {previewDescription}
+                    </p>
+
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/65">
+                        Three.js scaffold
+                      </div>
+                      <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/65">
+                        Genre atoms
+                      </div>
+                      <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/65">
+                        AI-ready workspace
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              </div>
+            </aside>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}

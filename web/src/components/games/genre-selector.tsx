@@ -1,60 +1,9 @@
 "use client";
 
+import { motion } from "framer-motion";
+import { Badge } from "@/components/ui/badge";
+import { GAME_GENRES } from "@/lib/game-genres";
 import { cn } from "@/lib/utils";
-import {
-  Grid3X3,
-  Swords,
-  Plane,
-  Building,
-  Layers,
-  Code,
-} from "lucide-react";
-
-export interface GenreOption {
-  slug: string;
-  display_name: string;
-  description: string;
-  icon: React.ReactNode;
-}
-
-const GENRES: GenreOption[] = [
-  {
-    slug: "hex-grid-tbs",
-    display_name: "Hex Grid Strategy",
-    description: "Turn-based hex grid with units and combat",
-    icon: <Grid3X3 className="size-6" />,
-  },
-  {
-    slug: "side-scroller-2d-3d",
-    display_name: "Side-Scroller",
-    description: "2D platformer with jumping and collectibles",
-    icon: <Layers className="size-6" />,
-  },
-  {
-    slug: "3d-roguelike-deckbuilder",
-    display_name: "Roguelike Deckbuilder",
-    description: "Card combat with procedural rooms",
-    icon: <Swords className="size-6" />,
-  },
-  {
-    slug: "arena-dogfighter",
-    display_name: "Arena Dogfighter",
-    description: "Aerial combat with flight physics",
-    icon: <Plane className="size-6" />,
-  },
-  {
-    slug: "base-builder",
-    display_name: "Base Builder",
-    description: "Grid placement with resource management",
-    icon: <Building className="size-6" />,
-  },
-  {
-    slug: "custom",
-    display_name: "Custom",
-    description: "Blank Three.js canvas — build anything",
-    icon: <Code className="size-6" />,
-  },
-];
 
 interface GenreSelectorProps {
   value: string | null;
@@ -63,29 +12,64 @@ interface GenreSelectorProps {
 
 export function GenreSelector({ value, onChange }: GenreSelectorProps) {
   return (
-    <div className="grid grid-cols-2 gap-2">
-      {GENRES.map((genre) => (
-        <button
-          key={genre.slug}
-          type="button"
-          onClick={() => onChange(genre.slug)}
-          className={cn(
-            "flex flex-col items-start gap-1 rounded-lg border p-3 text-left transition-colors",
-            "hover:bg-accent hover:border-primary/30",
-            value === genre.slug
-              ? "border-primary bg-primary/5"
-              : "border-border"
-          )}
-        >
-          <div className="flex items-center gap-2">
-            <span className="text-muted-foreground">{genre.icon}</span>
-            <span className="text-sm font-medium">{genre.display_name}</span>
-          </div>
-          <p className="text-xs text-muted-foreground">{genre.description}</p>
-        </button>
-      ))}
+    <div className="grid gap-2.5 sm:grid-cols-2">
+      {GAME_GENRES.map((genre) => {
+        const Icon = genre.icon;
+        const isSelected = value === genre.slug;
+
+        return (
+          <motion.button
+            key={genre.slug}
+            type="button"
+            onClick={() => onChange(genre.slug)}
+            whileHover={{ y: -3, scale: 1.01 }}
+            whileTap={{ scale: 0.985 }}
+            className={cn(
+              "group relative overflow-hidden rounded-[1.35rem] border p-3.5 text-left transition-all",
+              isSelected
+                ? "border-white/20 bg-white/[0.08] shadow-[0_0_36px_rgba(244,63,94,0.12)]"
+                : "border-white/10 bg-white/[0.03] hover:border-white/20 hover:bg-white/[0.05]",
+            )}
+          >
+            <div className={cn("absolute inset-0 bg-gradient-to-br opacity-80", genre.gradientClass)} />
+            <div className="absolute inset-0 bg-[linear-gradient(165deg,rgba(11,4,6,0.0)_0%,rgba(11,4,6,0.82)_85%)]" />
+
+            <div className="relative flex items-start justify-between gap-2.5">
+              <div className="space-y-2.5">
+                <div className="flex size-9 items-center justify-center rounded-[1rem] border border-white/10 bg-white/5 text-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+                  <span aria-hidden="true">{genre.emoji}</span>
+                </div>
+                <div>
+                  <p className="text-sm font-semibold tracking-tight text-white sm:text-[15px]">
+                    {genre.displayName}
+                  </p>
+                  <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-white/60">
+                    {genre.description}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-col items-end gap-2.5">
+                <Badge
+                  className={cn(
+                    "rounded-full border px-2 py-0.5 text-[9px] uppercase tracking-[0.22em]",
+                    isSelected
+                      ? genre.pillClass
+                      : "border-white/10 bg-white/5 text-white/45",
+                  )}
+                >
+                  {isSelected ? "Selected" : "Template"}
+                </Badge>
+                <div className="flex size-8 items-center justify-center rounded-full border border-white/10 bg-black/20">
+                  <Icon className={cn("size-3.5", isSelected ? genre.iconClass : "text-white/45")} />
+                </div>
+              </div>
+            </div>
+          </motion.button>
+        );
+      })}
     </div>
   );
 }
 
-export { GENRES };
+export { GAME_GENRES as GENRES };

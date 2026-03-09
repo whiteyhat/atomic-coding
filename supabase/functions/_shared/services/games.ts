@@ -87,7 +87,13 @@ export async function createGame(
     .select("*")
     .single();
 
-  if (error) throw new Error(`Failed to create game: ${error.message}`);
+  if (error) {
+    if (error.code === "23505") {
+      throw new Error("Game name already exists");
+    }
+
+    throw new Error(`Failed to create game: ${error.message}`);
+  }
   log("info", "game created", { name, id: data.id, userId, genre });
   cacheDel(`game:id:${name}`);
   return mapGame(data);

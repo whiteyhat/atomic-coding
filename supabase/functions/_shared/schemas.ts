@@ -7,7 +7,6 @@ import { z } from "npm:zod@^3.23.0";
 export const createGameSchema = z.object({
   name: z.string().min(1).max(100),
   description: z.string().max(500).optional(),
-  user_id: z.string().min(1),
   genre: z.string().max(50).optional(),
 });
 

@@ -23,7 +23,7 @@ In this document, `Atomic Coding` refers to the technical architecture and `Buu 
 - Game bundles are generated into Supabase Storage as `manifest.json`, `latest.js`, and versioned bundle files.
 - The current primary chat/orchestration path is Mastra-first.
 - A secondary local chat fallback still exists inside `web/src/app/api/chat/route.ts`.
-- Privy provides user identity, OpenRouter provides LLMs and embeddings, and buu.fun provides generated 3D assets.
+- Privy provides user identity, OpenRouter provides LLMs, embeddings, and Pixel image generation, and buu.fun provides generated 3D assets.
 - Upstash Redis provides server-side caching and rate limiting; QStash provides reliable job delivery with retries.
 - Sentry tracks errors across web and Mastra; Axiom collects structured logs.
 - All request body validation uses Zod schemas.
@@ -146,8 +146,12 @@ Current agent roles:
 
 - `jarvis`: orchestration, planning, delivery, follow-up prompts
 - `forge`: atom implementation and mutation
-- `pixel`: visual asset generation metadata
+- `pixel`: OpenRouter-backed visual asset generation for HUD, menus, sprites, textures, and other polish-layer assets
 - `checker`: validation and QA
+
+Reference:
+
+- See [agent-role-skill-matrix.md](agent-role-skill-matrix.md) for the current role analysis, task ownership, and recommended skill emphasis for each live Mastra agent.
 
 Important implementation detail:
 
@@ -155,6 +159,9 @@ Important implementation detail:
 - They use a local tool layer in `mastra/src/tools/supabase.ts`.
 - That local tool layer currently wraps only `get-code-structure`, `read-atoms`, and `upsert-atom`.
 - The Supabase MCP server exposes a broader six-tool surface for MCP clients.
+- Pixel also has a dedicated local tool layer in `mastra/src/tools/pixel.ts`.
+- That tool layer exposes `generate-polished-visual-pack` plus read-only code-inspection tools so Pixel can inspect gameplay context before generating assets.
+- The image model is selected through `OPENROUTER_IMAGE_MODEL`; the checked-in default is `google/gemini-3.1-flash-image-preview`, and it can be pointed at a Nano Banana-class OpenRouter image model without code changes.
 
 ### `supabase/`
 
@@ -276,6 +283,25 @@ Important current-state details:
 - The `warroom-orchestrator` Edge Function exists, but the main API path does not call it.
 - The current `ChatPanel` creates war rooms through `createWarRoom()` in `web/src/lib/api.ts`, not through the `/api/chat` war-room branch.
 - `/api/chat` still contains a war-room mode, but it is not the primary current UI path.
+- When users pick asset references in chat, the current `ChatPanel` appends those references into the war-room prompt so Pixel receives art-direction and polish cues during tasks 7 and 8.
+
+### Pixel Asset Generation Path
+
+Pixel now has a direct image-generation path inside Mastra rather than only returning text metadata.
+
+Current behavior:
+
+- `mastra/src/agents/pixel.ts` uses the shared Pixel system prompt plus a dedicated tool bundle.
+- `mastra/src/tools/pixel.ts` calls OpenRouter `chat/completions` with image modalities enabled.
+- `generate-polished-visual-pack` accepts pack-level art direction, per-asset briefs, aspect ratio, resolution tier, transparency preference, polish goals, and reference notes.
+- The tool currently returns remote image URLs from the provider response, not persisted CDN URLs and not local base64 sprite sheets.
+- Pixel prompt rules explicitly emphasize gameplay readability, stateful UI, safe text zones, contrast, consistent palettes, and motion/feedback cues.
+
+Current limitations:
+
+- Generated assets are not yet copied into Supabase Storage or R2.
+- The pipeline does not yet validate asset loadability or preview outputs in the UI.
+- The current war-room reference handoff is prompt-based, not structured database metadata.
 
 ### Build and Playback Path
 
@@ -610,7 +636,10 @@ GitHub Actions workflow (`.github/workflows/ci.yml`):
 | `PRIVY_APP_SECRET` | `web`, `supabase` | Server-side Privy token verification |
 | `SUPABASE_URL` | `mastra`, `supabase`, local fallback | Service-role Supabase base URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | `mastra`, `supabase` | Service-role DB and function access |
-| `OPENROUTER_API_KEY` | `mastra`, `supabase` | LLMs and embeddings |
+| `OPENROUTER_API_KEY` | `mastra`, `supabase` | LLMs, embeddings, and Pixel image generation |
+| `OPENROUTER_IMAGE_MODEL` | `mastra` | Selects the OpenRouter image model used by Pixel |
+| `OPENROUTER_SITE_URL` | `mastra` | Optional OpenRouter attribution/referrer header for Pixel image requests |
+| `OPENROUTER_APP_NAME` | `mastra` | Optional OpenRouter title header for Pixel image requests |
 | `MASTRA_SERVER_URL` | `web`, `supabase api`, `warroom-orchestrator` | Primary orchestration endpoint |
 | `BUU_API_KEY` | local fallback in `web` | Access to `buu-mcp` |
 | `PORT` | `mastra` | Mastra HTTP port |
@@ -633,6 +662,7 @@ Operational rule:
 
 - Checked-in `.env` or deployment example files are **not** architecture source of truth.
 - Secret values must come from environment configuration, not from repository examples.
+- The Mastra service loads `.env.development.local`, `.env.local`, and `.env` from both `mastra/` and the repo root so local image-generation credentials can be shared during development.
 
 ## Current vs Fallback vs Legacy
 

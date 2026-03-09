@@ -1,7 +1,6 @@
 import "server-only";
 import { PrivyClient } from "@privy-io/server-auth";
 import {
-  DEV_AUTH_BYPASS_TOKEN,
   getDevAuthUser,
   isDevAuthBypassEnabled,
 } from "./dev-auth";
@@ -32,10 +31,11 @@ export async function verifyAuthToken(
 ): Promise<AuthUser | null> {
   const hostname = new URL(req.url).hostname;
   if (isDevAuthBypassEnabled(hostname)) {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader || authHeader === `Bearer ${DEV_AUTH_BYPASS_TOKEN}`) {
-      return getDevAuthUser();
-    }
+    // In local dev mode, always bypass auth — the client may send a real
+    // Privy JWT (for hybrid setups) that the server can't verify without
+    // the app secret.  Accepting any token here is safe because
+    // isDevAuthBypassEnabled already requires localhost + non-production.
+    return getDevAuthUser();
   }
 
   const authHeader = req.headers.get("Authorization");

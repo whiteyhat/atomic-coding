@@ -1,4 +1,12 @@
-# Atomic Coding -- AI Agent System Prompts
+# Atomic Coding -- Legacy Agent System Prompts
+
+> Historical reference only.
+> This document describes the older `Researcher / Planner / Builder` prompt flow for MCP-driven editing.
+> It is not the source of truth for the current production Mastra pipeline.
+>
+> Current source of truth:
+> - [system-architecture.md](system-architecture.md)
+> - [agent-role-skill-matrix.md](agent-role-skill-matrix.md)
 
 Three specialized roles for AI agents building games with the Atomic Coding MCP server.
 

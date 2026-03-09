@@ -136,8 +136,20 @@ app.get("/boilerplates/:slug", async (c) => {
 /** POST /games -- create a game (optionally seed from a genre boilerplate) */
 app.post("/games", requireAuth(), async (c) => {
   try {
+    const authUser = c.get("authUser") as { userId: string };
     const body = schemas.createGameSchema.parse(await c.req.json());
-    const game = await games.createGame(body.name, body.description, body.user_id, body.genre);
+
+    const existingProfile = await users.getUserProfile(authUser.userId);
+    if (!existingProfile) {
+      await users.upsertUserProfile({ id: authUser.userId });
+    }
+
+    const game = await games.createGame(
+      body.name,
+      body.description,
+      authUser.userId,
+      body.genre,
+    );
 
     // Seed atoms and externals from boilerplate if genre is specified
     if (body.genre) {
@@ -163,6 +175,17 @@ app.post("/games", requireAuth(), async (c) => {
 app.get("/games", async (c) => {
   try {
     const list = await games.listGames();
+    return c.json(list);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 500);
+  }
+});
+
+/** GET /games/mine -- list games for the authenticated user */
+app.get("/games/mine", requireAuth(), async (c) => {
+  try {
+    const authUser = c.get("authUser") as { userId: string };
+    const list = await games.listGamesByUser(authUser.userId);
     return c.json(list);
   } catch (err) {
     return c.json({ error: (err as Error).message }, 500);

@@ -5,6 +5,7 @@ import {
   getDevAuthUser,
   isDevAuthBypassEnabled,
 } from "./dev-auth.ts";
+import { log } from "./logger.ts";
 
 export interface AuthUser {
   userId: string;
@@ -46,7 +47,11 @@ export async function verifyAuthToken(req: Request): Promise<AuthUser | null> {
   try {
     const claims = await getPrivyClient().verifyAuthToken(token);
     return { userId: claims.userId };
-  } catch {
+  } catch (err) {
+    log("warn", "auth:verify_failed", {
+      error: (err as Error).message,
+      hasToken: !!token,
+    });
     return null;
   }
 }
@@ -59,6 +64,9 @@ export function requireAuth() {
   return async (c: Context, next: Next) => {
     const user = await verifyAuthToken(c.req.raw);
     if (!user) {
+      const path = new URL(c.req.url).pathname;
+      const hasAuthHeader = !!c.req.header("Authorization");
+      log("warn", "auth:unauthorized", { path, hasAuthHeader });
       return c.json({ error: "Unauthorized" }, 401);
     }
     c.set("authUser", user);

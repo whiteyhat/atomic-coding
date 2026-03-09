@@ -47,6 +47,8 @@ Compares the original "Game Maker: Full Detailed Plan" against the current codeb
 - [x] **Pixel** agent — visual asset generation (`mastra/src/agents/pixel.ts`)
   - Model: `gemini-2.0-flash-001`
   - Tasks: #7 (UI assets), #8 (game sprites)
+  - Local tool bundle: read-only code inspection + `generate-polished-visual-pack`
+  - Image generation model is configurable through `OPENROUTER_IMAGE_MODEL`
 - [x] **Checker** agent — QA & validation (`mastra/src/agents/checker.ts`)
   - Model: `gemini-2.5-pro-preview-06-05`
   - Tasks: #3 (write specs), #9 (run validation), #11 (final validation)
@@ -56,10 +58,10 @@ Compares the original "Game Maker: Full Detailed Plan" against the current codeb
 - [x] System prompt with 8-step atomic workflow (`mastra/src/lib/system-prompt.ts`)
 
 ### Todo
-- [ ] **Pixel: actual image generation** — currently text-only Gemini 2.0 Flash; needs image generation model (plan says Gemini 3.1 Flash Image Gen + NANOBANANA 2)
+- [x] **Pixel: actual image generation** — OpenRouter-backed image generation now exists via `generate-polished-visual-pack`; the model is configurable and defaults to `google/gemini-3.1-flash-image-preview`
 - [ ] **Pixel: sprite output pipeline** — generate base64 PNG sprites optimized for Three.js `TextureLoader` / `SpriteMaterial`
 - [ ] **Pixel: asset storage** — upload generated assets to R2/Supabase Storage and return CDN URLs
-- [ ] **Pixel: menus/HUDs/buttons** — generate UI overlays for Three.js canvas (task 7)
+- [x] **Pixel: menus/HUDs/buttons** — task 7 now has explicit UI-pack generation and polish rules (hover/pressed states, safe text zones, contrast, hierarchy)
 - [ ] **Checker: Jest test suite generation** — plan says Checker writes full Jest tests + Three.js scene validators; currently only does structural validation rules
 - [ ] **Checker: runtime validators** — frame-time, collision detection, memory usage checks
 - [ ] **Checker: CI enforcement loop** — block merge until 100% pass (currently validation is advisory)
@@ -237,7 +239,7 @@ Compares the original "Game Maker: Full Detailed Plan" against the current codeb
 
 ## Priority Order (Suggested)
 
-1. **Pixel agent image generation** — unblocks tasks 7 & 8 which are currently no-ops
+1. **Pixel asset persistence + preview** — move generated art into R2/Supabase Storage and expose preview/load validation in the UI
 2. **Checker agent real validation** — unblocks meaningful CI loop (tasks 3, 9, 11)
 3. **R2 CDN + boilerplate files** — gives Forge real starting code per genre
 4. **Score enforcement + postMessage security** — required before token launch

@@ -1,5 +1,6 @@
 import type { WarRoomTask } from "./types.js";
 import { SYSTEM_PROMPT, getGenreContext } from "../lib/system-prompt.js";
+import { buildPixelSystemPrompt, PIXEL_STYLE_PILLARS } from "../lib/pixel-guidelines.js";
 
 /**
  * Build the user prompt for a pipeline task.
@@ -84,10 +85,16 @@ export function getAgentSystemPrompt(
 
     case "pixel":
       return [
-        "You are Pixel, the visual asset generation agent.",
-        "You generate UI elements, sprites, textures, and HUD components for Three.js games.",
-        "Output images as base64 PNG or reference URLs.",
-        "Return your results as JSON with: { status, assets_created: [{ name, type, url_or_base64 }], notes }",
+        buildPixelSystemPrompt(),
+        "",
+        "## Pipeline Mode",
+        "You are running inside the war room pipeline, not interactive chat.",
+        "When the task is about UI, prioritize these design pillars:",
+        ...PIXEL_STYLE_PILLARS.map((pillar) => `- ${pillar}`),
+        "For task 7, produce gameplay-facing UI packs such as HUD, menus, buttons, or overlays.",
+        "For task 8, align sprites and textures with the mechanics and silhouettes described by Jarvis and Forge outputs.",
+        "Always mention polish choices such as safe text zones, contrast handling, hover/pressed states, motion cues, or damage feedback.",
+        "Return JSON with: { status: \"completed\", art_direction, assets_created: [{ name, type, url_or_base64, prompt_used, aspect_ratio, image_size, polish_notes, source_model }], notes }",
       ].join("\n");
 
     case "checker":

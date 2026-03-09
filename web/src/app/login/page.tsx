@@ -1,54 +1,17 @@
-"use client";
+import { LoginPageClient } from "./login-page-client";
 
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
-import { Button } from "@/components/ui/button";
-import { useAppAuth } from "@/lib/privy-provider";
+interface LoginPageProps {
+  searchParams: Promise<{ redirect?: string }>;
+}
 
-export default function LoginPage() {
-  const router = useRouter();
-  const { login, authenticated, ready, isDevBypass } = useAppAuth();
-
-  useEffect(() => {
-    if (ready && authenticated) {
-      router.replace("/");
-    }
-  }, [ready, authenticated, router]);
-
-  if (!ready) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="text-muted-foreground">Loading...</div>
-      </div>
-    );
+function normalizeRedirectPath(value?: string): string {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) {
+    return "/games";
   }
+  return value;
+}
 
-  if (authenticated) {
-    return null;
-  }
-
-  if (isDevBypass) {
-    return null;
-  }
-
-  return (
-    <div className="flex min-h-screen items-center justify-center">
-      <div className="mx-auto max-w-sm space-y-8 text-center">
-        <div className="space-y-2">
-          <h1 className="text-3xl font-bold tracking-tight">
-            Buu AI Game Maker
-          </h1>
-          <p className="text-muted-foreground">
-            Build Three.js games with AI agents
-          </p>
-        </div>
-        <Button size="lg" className="w-full" onClick={login}>
-          Sign In
-        </Button>
-        <p className="text-muted-foreground text-xs">
-          Sign in with email, Google, GitHub, or connect a wallet
-        </p>
-      </div>
-    </div>
-  );
+export default async function LoginPage({ searchParams }: LoginPageProps) {
+  const params = await searchParams;
+  return <LoginPageClient redirectTo={normalizeRedirectPath(params.redirect)} />;
 }

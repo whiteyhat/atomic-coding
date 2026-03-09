@@ -84,6 +84,10 @@ export async function listGames(): Promise<GameWithBuild[]> {
   return apiFetch("/games");
 }
 
+export async function listMyGames(): Promise<GameWithBuild[]> {
+  return apiFetch("/games/mine");
+}
+
 export async function getGame(name: string): Promise<GameWithBuild> {
   return apiFetch(`/games/${encodeURIComponent(name)}`);
 }
@@ -91,12 +95,11 @@ export async function getGame(name: string): Promise<GameWithBuild> {
 export async function createGame(
   name: string,
   description?: string,
-  userId?: string,
   genre?: string
 ): Promise<Game> {
   return apiFetch("/games", {
     method: "POST",
-    body: JSON.stringify({ name, description, user_id: userId, genre }),
+    body: JSON.stringify({ name, description, genre }),
   });
 }
 

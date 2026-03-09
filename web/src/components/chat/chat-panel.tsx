@@ -134,6 +134,31 @@ interface ChatPanelContentProps {
   onWarRoomCreated?: (warRoomId: string) => void;
 }
 
+function buildWarRoomPrompt(
+  prompt: string,
+  selectedAssets: AssetModel[]
+): string {
+  const trimmed = prompt.trim();
+  if (selectedAssets.length === 0) return trimmed;
+
+  const visualRefs = selectedAssets
+    .slice(0, 5)
+    .map((asset, index) => {
+      const style = asset.style?.trim() ? ` | style: ${asset.style.trim()}` : "";
+      return `${index + 1}. ${asset.prompt.trim()}${style}`;
+    })
+    .join("\n");
+
+  return [
+    trimmed,
+    "",
+    "Visual references to consider for Pixel:",
+    visualRefs,
+    "",
+    "Use these references for art direction, cohesion, and polish, not as hard requirements.",
+  ].join("\n");
+}
+
 function ChatPanelContent({
   gameId,
   gameName,
@@ -225,15 +250,17 @@ function ChatPanelContent({
 
   const handleSubmit = async (message: PromptInputMessage) => {
     if (!message.text?.trim()) return;
+    const promptText = message.text.trim();
 
     if (warRoomMode) {
       setIsCreatingWarRoom(true);
       try {
         const warRoom = await createWarRoom(
           gameName,
-          message.text.trim()
+          buildWarRoomPrompt(promptText, assetsRef.current)
         );
         setWarRoomMode(false);
+        setSelectedAssets([]);
         onWarRoomCreated?.(warRoom.id);
       } catch (err) {
         console.error("[chat] War room creation failed:", err);
@@ -244,7 +271,7 @@ function ChatPanelContent({
       return;
     }
 
-    sendMessage({ text: message.text });
+    sendMessage({ text: promptText });
     setSelectedAssets([]);
   };
 

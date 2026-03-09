@@ -243,3 +243,93 @@ export interface BuildSummary {
   error_message: string | null;
   created_at: string;
 }
+
+// ── Dashboard ────────────────────────────────────────────────────────────────
+
+export type DashboardTokenStatus =
+  | "none"
+  | "draft"
+  | "pending"
+  | "launched"
+  | "failed";
+
+export interface DashboardProfile {
+  id: string;
+  displayName: string | null;
+  email: string | null;
+  walletAddress: string | null;
+  avatarUrl: string | null;
+}
+
+export interface DashboardStats {
+  totalGames: number;
+  publishedGames: number;
+  totalAtoms: number;
+  successfulBuilds: number;
+}
+
+export interface DashboardGameSummary {
+  id: string;
+  name: string;
+  description: string | null;
+  genre: string | null;
+  thumbnailUrl: string | null;
+  isPublished: boolean;
+  publicSlug: string | null;
+  tokenStatus: DashboardTokenStatus;
+  externalCount: number;
+  topLeaderboardScore: number | null;
+  lastChatAt: string | null;
+  latestBuild: {
+    status: BuildStatus;
+    atomCount: number | null;
+  } | null;
+  currentWarRoom: {
+    status: WarRoomStatus;
+    prompt: string;
+    progress: number;
+    completedTasks: number;
+    totalTasks: number;
+  } | null;
+  spotlightReason?: "activeWarRoom" | "building" | "recentlyUpdated";
+  updatedAt: string;
+}
+
+export interface DashboardSpotlight extends DashboardGameSummary {
+  spotlightReason: "activeWarRoom" | "building" | "recentlyUpdated";
+}
+
+export interface DashboardActivityItem {
+  id: string;
+  kind: "warRoom" | "build" | "chat" | "publish" | "unpublish" | "token";
+  title: string;
+  gameName: string;
+  description: string | null;
+  status: string | null;
+  href: string;
+  createdAt: string;
+}
+
+export interface BoilerplateQuickStart {
+  slug: string;
+  displayName: string;
+}
+
+export interface DashboardSummary {
+  profile: DashboardProfile;
+  stats: DashboardStats;
+  creations: DashboardGameSummary[];
+  spotlight: DashboardSpotlight | null;
+  activity: DashboardActivityItem[];
+  boilerplates: BoilerplateQuickStart[];
+}
+
+export interface TokenActivityItem {
+  id: string;
+  tokenSymbol: string;
+  tokenColor: string;
+  action: "bonding" | "sold" | "bought" | "launched";
+  changePercent: number;
+  timeAgo: string;
+  detail: string;
+}
