@@ -1,5 +1,5 @@
 import { Badge } from "@/components/ui/badge";
-import { Loader2, CheckCircle2, XCircle } from "lucide-react";
+import { Loader2, CheckCircle2, XCircle, Ban } from "lucide-react";
 import type { WarRoomStatus } from "@/lib/types";
 
 export function StatusBadge({ status }: { status: WarRoomStatus }) {
@@ -24,6 +24,13 @@ export function StatusBadge({ status }: { status: WarRoomStatus }) {
         <Badge variant="destructive" className="gap-1 text-xs">
           <XCircle className="size-3" />
           Failed
+        </Badge>
+      );
+    case "cancelled":
+      return (
+        <Badge variant="outline" className="gap-1 text-xs text-zinc-400 border-zinc-500/30">
+          <Ban className="size-3" />
+          Cancelled
         </Badge>
       );
     default:

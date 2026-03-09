@@ -1,13 +1,15 @@
 "use client";
 
+import { useState } from "react";
 import { useWarRoom } from "@/lib/use-war-room";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
-import { Loader2, Swords, ArrowLeft } from "lucide-react";
+import { Loader2, Swords, ArrowLeft, Ban, AlertTriangle } from "lucide-react";
 import { TaskCard } from "./task-card";
 import { AgentHealthBar } from "./agent-health-bar";
 import { SuggestedPrompts } from "./suggested-prompts";
 import { StatusBadge } from "./status-badge";
+import { cancelWarRoom } from "@/lib/api";
 
 interface WarRoomPanelProps {
   gameName: string;
@@ -30,7 +32,9 @@ export function WarRoomPanel({
     isComplete,
     isLoading,
     error,
+    refresh,
   } = useWarRoom(gameName, warRoomId);
+  const [isCancelling, setIsCancelling] = useState(false);
 
   if (isLoading && !warRoom) {
     return (
@@ -68,7 +72,30 @@ export function WarRoomPanel({
               War Room
             </span>
           </div>
-          <StatusBadge status={warRoom.status} />
+          <div className="flex items-center gap-1.5">
+            {(warRoom.status === "running" || warRoom.status === "planning") && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-6 text-zinc-400 hover:text-red-400"
+                disabled={isCancelling}
+                onClick={async () => {
+                  setIsCancelling(true);
+                  try {
+                    await cancelWarRoom(gameName, warRoom.id);
+                    await refresh();
+                  } catch (err) {
+                    console.error("[warroom] cancel failed:", err);
+                  } finally {
+                    setIsCancelling(false);
+                  }
+                }}
+              >
+                {isCancelling ? <Loader2 className="size-3.5 animate-spin" /> : <Ban className="size-3.5" />}
+              </Button>
+            )}
+            <StatusBadge status={warRoom.status} />
+          </div>
         </div>
 
         {/* Progress */}
@@ -97,6 +124,28 @@ export function WarRoomPanel({
 
         {/* Agent health */}
         <AgentHealthBar heartbeats={heartbeats} />
+
+        {/* Error summary for failed pipelines */}
+        {warRoom.status === "failed" && (() => {
+          const failedTasks = tasks.filter((t) => t.status === "failed");
+          if (failedTasks.length === 0) return null;
+          return (
+            <div className="mt-2 p-2 rounded border border-red-500/20 bg-red-500/10 space-y-1">
+              <div className="flex items-center gap-1.5 text-red-400 text-xs font-medium">
+                <AlertTriangle className="size-3" />
+                <span>{failedTasks.length} task{failedTasks.length > 1 ? "s" : ""} failed</span>
+              </div>
+              {failedTasks.map((t) => (
+                <p key={t.id} className="text-[11px] text-red-300/80 pl-4.5">
+                  #{t.task_number} {t.title}
+                  {t.output && (t.output as Record<string, unknown>).error
+                    ? `: ${String((t.output as Record<string, unknown>).error).slice(0, 120)}`
+                    : ""}
+                </p>
+              ))}
+            </div>
+          );
+        })()}
       </div>
 
       {/* Prompt */}
