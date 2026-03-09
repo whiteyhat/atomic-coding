@@ -20,6 +20,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts
 
 COPY --from=builder /app/dist ./dist
+COPY .env.production ./
 
 EXPOSE 4500
 

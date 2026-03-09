@@ -19,3 +19,6 @@ Thumbs.db
 
 .agents/
 .cursor/
+.env.production
+
+.env.production

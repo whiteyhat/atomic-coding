@@ -1,4 +1,10 @@
-import "dotenv/config";
+import dotenv from "dotenv";
+dotenv.config({ path: process.env.NODE_ENV === "production" ? ".env.production" : ".env" });
+
+// Temporary debug: verify OpenRouter key is loaded
+const orKey = process.env.OPENROUTER_API_KEY;
+console.log("[debug] OPENROUTER_API_KEY:", orKey ? `${orKey.slice(0, 12)}...${orKey.slice(-4)} (${orKey.length} chars)` : "NOT SET");
+
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { MastraServer } from "@mastra/hono";

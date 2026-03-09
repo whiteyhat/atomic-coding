@@ -157,6 +157,7 @@ export const upsertAtomTool = createTool({
   outputSchema: z.object({
     success: z.boolean(),
     atom: z.object({ name: z.string(), type: z.string() }),
+    warning: z.string().optional(),
   }),
   execute: async ({ gameId, name, type, code, description, inputs, outputs, depends_on }) => {
     const supabase = getSupabaseClient();
@@ -165,7 +166,7 @@ export const upsertAtomTool = createTool({
     const codeBytes = new TextEncoder().encode(code).length;
     if (codeBytes > 2048) {
       throw new Error(
-        `Code is ${codeBytes} bytes (limit: 2048). Break this into smaller atoms.`
+        `Code is ${codeBytes} bytes (limit: 2048, over by ${codeBytes - 2048} bytes). Split this atom into 2+ smaller atoms, each under 2048 bytes.`
       );
     }
 
@@ -196,19 +197,35 @@ export const upsertAtomTool = createTool({
       .eq("atom_name", name);
 
     if (depends_on.length > 0) {
+      const depRows = depends_on.map((dep) => ({
+        game_id: gameId,
+        atom_name: name,
+        depends_on: dep,
+      }));
       const { error: depError } = await supabase
         .from("atom_dependencies")
-        .insert(
-          depends_on.map((dep) => ({
-            game_id: gameId,
-            atom_name: name,
-            depends_on: dep,
-          }))
-        );
+        .insert(depRows);
       if (depError) {
-        throw new Error(
-          `Atom saved but dependency linking failed: ${depError.message}`
-        );
+        // Batch insert failed — try one-by-one to link what we can
+        const linked: string[] = [];
+        const failed: string[] = [];
+        for (const row of depRows) {
+          const { error } = await supabase.from("atom_dependencies").insert(row);
+          if (error) {
+            failed.push(row.depends_on);
+          } else {
+            linked.push(row.depends_on);
+          }
+        }
+        if (failed.length > 0) {
+          // Trigger rebuild for what we have, return warning instead of throwing
+          triggerRebuild(gameId);
+          return {
+            success: true,
+            atom: data,
+            warning: `Dependencies partially linked. Linked: [${linked.join(", ")}]. Failed (atoms not found yet): [${failed.join(", ")}]. Create the missing atoms first, then re-upsert this atom to fix.`,
+          };
+        }
       }
     }
 

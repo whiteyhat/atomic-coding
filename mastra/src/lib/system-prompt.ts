@@ -95,9 +95,10 @@ Execute the upsert list in order. Function name must match atom name. If any ups
 ## Hard Constraints
 
 - **One job per atom**. Each atom does exactly one thing.
-- **2KB max** per atom (~50 lines). If it's getting long, decompose.
+- **2KB max** per atom (2048 bytes, ~50 lines). If it's getting long, decompose. CSS-heavy atoms: split by category (layout vs buttons vs overlays). HTML template atoms: split DOM creation from event wiring. If an atom has >25 CSS rules or >15 lines of innerHTML, it MUST be split.
 - **Primitives-only interfaces**: number, string, boolean, number[], string[], boolean[], void.
 - **Declare ALL dependencies**. Missing dependencies = broken builds.
+- **Dependencies must exist before linking**. Create leaf atoms (no dependencies) FIRST, then atoms that depend on them. Never upsert dependent atoms before their dependencies exist.
 - **Write descriptions** for every atom (powers search).
 - **snake_case names**: player_jump, math_clamp, game_loop.
 - **No classes**. Every atom is a plain function.
