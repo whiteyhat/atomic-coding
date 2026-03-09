@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { listChatSessions, createChatSession, deleteChatSession } from "@/lib/api";
+import { useState } from "react";
+import { createChatSession, deleteChatSession } from "@/lib/api";
+import { useChatSessions } from "@/lib/hooks";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Loader2, MessageSquare, Plus, Trash2 } from "lucide-react";
 import { MODELS } from "@/lib/constants";
-import type { ChatSession } from "@/lib/types";
 
 interface ChatSessionListProps {
   gameName: string;
@@ -19,30 +19,8 @@ function modelName(modelId: string | null): string | null {
 }
 
 export function ChatSessionList({ gameName, onSelect }: ChatSessionListProps) {
-  const [sessions, setSessions] = useState<ChatSession[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data: sessions, isLoading, error, mutate } = useChatSessions(gameName);
   const [isCreating, setIsCreating] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    setIsLoading(true);
-    setError(null);
-    listChatSessions(gameName)
-      .then((data) => {
-        if (!cancelled) setSessions(data);
-      })
-      .catch((err) => {
-        if (!cancelled)
-          setError(err instanceof Error ? err.message : "Failed to load sessions");
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [gameName]);
 
   async function handleCreate() {
     setIsCreating(true);
@@ -60,7 +38,7 @@ export function ChatSessionList({ gameName, onSelect }: ChatSessionListProps) {
     e.stopPropagation();
     try {
       await deleteChatSession(gameName, sessionId);
-      setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+      await mutate();
     } catch (err) {
       console.error("[chat] Failed to delete session:", err);
     }
@@ -77,10 +55,12 @@ export function ChatSessionList({ gameName, onSelect }: ChatSessionListProps) {
   if (error) {
     return (
       <div className="flex items-center justify-center h-full text-red-400 text-sm px-4 text-center">
-        {error}
+        {error instanceof Error ? error.message : "Failed to load sessions"}
       </div>
     );
   }
+
+  const items = sessions ?? [];
 
   return (
     <div className="flex flex-col h-full">
@@ -98,7 +78,7 @@ export function ChatSessionList({ gameName, onSelect }: ChatSessionListProps) {
         </Button>
       </div>
 
-      {sessions.length === 0 ? (
+      {items.length === 0 ? (
         <div className="flex flex-col items-center justify-center flex-1 gap-2 text-zinc-500 px-6 text-center">
           <MessageSquare className="size-8 text-zinc-700" />
           <p className="text-sm">No conversations yet</p>
@@ -109,7 +89,7 @@ export function ChatSessionList({ gameName, onSelect }: ChatSessionListProps) {
       ) : (
         <ScrollArea className="flex-1">
           <div className="py-1">
-            {sessions.map((session) => (
+            {items.map((session) => (
               <button
                 key={session.id}
                 onClick={() => onSelect(session.id)}
@@ -119,12 +99,15 @@ export function ChatSessionList({ gameName, onSelect }: ChatSessionListProps) {
                   <p className="text-xs text-zinc-300 line-clamp-1 flex-1">
                     {session.title ?? "Untitled session"}
                   </p>
-                  <button
+                  <div
+                    role="button"
+                    tabIndex={0}
                     onClick={(e) => handleDelete(e, session.id)}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity text-zinc-600 hover:text-red-400 shrink-0"
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") handleDelete(e, session.id); }}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity text-zinc-600 hover:text-red-400 shrink-0 cursor-pointer"
                   >
                     <Trash2 className="size-3.5" />
-                  </button>
+                  </div>
                 </div>
                 <div className="flex items-center gap-2 mt-1">
                   {session.model && (

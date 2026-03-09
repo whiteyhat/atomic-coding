@@ -1,5 +1,7 @@
 # Deployment Guide
 
+Local development is the normal validation path for this repository. Before deploying, use [local-development.md](local-development.md) to run the hybrid or parity workflow and verify your change locally.
+
 This project has two backend services that need to be deployed independently.
 
 ---
@@ -7,8 +9,6 @@ This project has two backend services that need to be deployed independently.
 ## 1. Mastra Orchestrator (Railway)
 
 The Mastra server is a Dockerized Node.js application deployed to Railway. It runs on port 4500 and serves the AI orchestration layer.
-
-**Production URL:** `https://incredible-happiness-production.up.railway.app`
 
 ### Prerequisites
 
@@ -29,10 +29,11 @@ railway link
 
 ### Deploy
 
-From the project root:
+After local validation:
 
 ```bash
 cd mastra
+npm run build
 railway up
 ```
 
@@ -44,16 +45,13 @@ This builds the Docker image (`mastra/Dockerfile`), pushes it to Railway, and de
 
 Supabase hosts the Edge Functions (Deno + Hono) and the PostgreSQL database.
 
-**Project Ref:** `wgujqteirximgettseux`
-**Dashboard:** `https://supabase.com/dashboard/project/wgujqteirximgettseux`
-
 ### Prerequisites
 
 - Install Supabase CLI: `npm i -g supabase`
-- Set the access token as an environment variable:
+- Set the access token as an environment variable for the target project:
 
 ```bash
-export SUPABASE_ACCESS_TOKEN=sbp_31e12abe9644f9057eaa1f881c2940389f46eeb4
+export SUPABASE_ACCESS_TOKEN=sbp_your_access_token
 ```
 
 ### Deploy Edge Functions
@@ -67,7 +65,7 @@ Deploys all Edge Functions in `supabase/functions/`:
 - `warroom-orchestrator` — war room task orchestrator
 
 ```bash
-supabase functions deploy --project-ref wgujqteirximgettseux
+supabase functions deploy --project-ref <your-project-ref>
 ```
 
 ### Push Database Migrations
@@ -75,7 +73,7 @@ supabase functions deploy --project-ref wgujqteirximgettseux
 Applies any new migrations from `supabase/migrations/` to the remote database:
 
 ```bash
-supabase db push --project-ref wgujqteirximgettseux
+supabase db push --project-ref <your-project-ref>
 ```
 
 ---
@@ -85,11 +83,15 @@ supabase db push --project-ref wgujqteirximgettseux
 ### Deploy everything (copy-paste)
 
 ```bash
+# 0. Verify locally first
+npm run dev:doctor
+# Then use the local workflow from docs/local-development.md
+
 # 1. Mastra orchestrator
-cd mastra && railway up && cd ..
+cd mastra && npm run build && railway up && cd ..
 
 # 2. Supabase
-export SUPABASE_ACCESS_TOKEN=sbp_31e12abe9644f9057eaa1f881c2940389f46eeb4
-supabase db push --project-ref wgujqteirximgettseux
-supabase functions deploy --project-ref wgujqteirximgettseux
+export SUPABASE_ACCESS_TOKEN=sbp_your_access_token
+supabase db push --project-ref <your-project-ref>
+supabase functions deploy --project-ref <your-project-ref>
 ```

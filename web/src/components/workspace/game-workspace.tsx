@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { AgentStatusDropdown } from "./agent-status-dropdown";
 import { PublishDialog } from "@/components/games/publish-dialog";
+import { ErrorBoundary } from "@/components/ui/error-boundary";
 
 interface GameWorkspaceProps {
   gameId: string;
@@ -118,45 +119,53 @@ export function GameWorkspace({ gameId, gameName, isPublished, publicSlug }: Gam
 
           {/* Panels — always mounted, toggled via CSS */}
           <div className={cn("flex-1 min-h-0", tab !== "chat" && "hidden")}>
-            {activeChatSessionId ? (
-              <ChatPanel
-                key={activeChatSessionId}
-                gameId={gameId}
-                gameName={gameName}
-                sessionId={activeChatSessionId}
-                onBack={() => setActiveChatSessionId(null)}
-                onWarRoomCreated={handleWarRoomCreated}
-              />
-            ) : (
-              <ChatSessionList
-                gameName={gameName}
-                onSelect={(id) => setActiveChatSessionId(id)}
-              />
-            )}
+            <ErrorBoundary label="Chat">
+              {activeChatSessionId ? (
+                <ChatPanel
+                  key={activeChatSessionId}
+                  gameId={gameId}
+                  gameName={gameName}
+                  sessionId={activeChatSessionId}
+                  onBack={() => setActiveChatSessionId(null)}
+                  onWarRoomCreated={handleWarRoomCreated}
+                />
+              ) : (
+                <ChatSessionList
+                  gameName={gameName}
+                  onSelect={(id) => setActiveChatSessionId(id)}
+                />
+              )}
+            </ErrorBoundary>
           </div>
           <div className={cn("flex-1 min-h-0", tab !== "warroom" && "hidden")}>
-            {activeWarRoomId ? (
-              <WarRoomPanel
-                gameName={gameName}
-                warRoomId={activeWarRoomId}
-                onBack={() => setActiveWarRoomId(null)}
-                onSuggestedPrompt={handleSuggestedPrompt}
-              />
-            ) : (
-              <WarRoomList
-                gameName={gameName}
-                onSelect={(id) => setActiveWarRoomId(id)}
-              />
-            )}
+            <ErrorBoundary label="War Room">
+              {activeWarRoomId ? (
+                <WarRoomPanel
+                  gameName={gameName}
+                  warRoomId={activeWarRoomId}
+                  onBack={() => setActiveWarRoomId(null)}
+                  onSuggestedPrompt={handleSuggestedPrompt}
+                />
+              ) : (
+                <WarRoomList
+                  gameName={gameName}
+                  onSelect={(id) => setActiveWarRoomId(id)}
+                />
+              )}
+            </ErrorBoundary>
           </div>
           <div className={cn("flex-1 min-h-0", tab !== "config" && "hidden")}>
-            <ActionsConsole gameName={gameName} />
+            <ErrorBoundary label="Config">
+              <ActionsConsole gameName={gameName} />
+            </ErrorBoundary>
           </div>
         </aside>
 
         {/* Game */}
         <main className="flex-1 min-w-0">
-          <GameFrame gameName={gameName} />
+          <ErrorBoundary label="Game Preview">
+            <GameFrame gameName={gameName} />
+          </ErrorBoundary>
         </main>
       </div>
     </div>

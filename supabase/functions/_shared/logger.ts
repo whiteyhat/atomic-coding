@@ -1,5 +1,23 @@
 export type LogLevel = "info" | "warn" | "error" | "debug";
 
+const AXIOM_INGEST_URL = Deno.env.get("AXIOM_INGEST_URL");
+const AXIOM_TOKEN = Deno.env.get("AXIOM_TOKEN");
+
+/** Fire-and-forget log shipping to Axiom (if configured) */
+function shipToAxiom(entry: Record<string, unknown>): void {
+  if (!AXIOM_INGEST_URL || !AXIOM_TOKEN) return;
+  fetch(AXIOM_INGEST_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${AXIOM_TOKEN}`,
+    },
+    body: JSON.stringify([entry]),
+  }).catch(() => {
+    // Best-effort — do not block on log shipping failures
+  });
+}
+
 export function log(
   level: LogLevel,
   message: string,
@@ -19,6 +37,7 @@ export function log(
   } else {
     console.log(line);
   }
+  shipToAxiom(entry);
 }
 
 /** Wrap an async function with timing and error logging */

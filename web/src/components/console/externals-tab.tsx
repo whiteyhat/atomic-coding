@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -12,46 +12,25 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Plus, Trash2, Loader2 } from "lucide-react";
-import {
-  listExternals,
-  listRegistry,
-  installExternal,
-  uninstallExternal,
-} from "@/lib/api";
-import type { InstalledExternal, RegistryEntry } from "@/lib/types";
+import { installExternal, uninstallExternal } from "@/lib/api";
+import { useExternals, useRegistry } from "@/lib/hooks";
 
 interface ExternalsTabProps {
   gameName: string;
 }
 
 export function ExternalsTab({ gameName }: ExternalsTabProps) {
-  const [externals, setExternals] = useState<InstalledExternal[]>([]);
-  const [registry, setRegistry] = useState<RegistryEntry[]>([]);
+  const { data: externals, isLoading: extLoading, mutate: mutateExternals } = useExternals(gameName);
+  const { data: registry, isLoading: regLoading } = useRegistry();
   const [selectedRegistry, setSelectedRegistry] = useState("");
-  const [loading, setLoading] = useState(true);
   const [installing, setInstalling] = useState(false);
 
-  const load = useCallback(async () => {
-    try {
-      const [ext, reg] = await Promise.all([
-        listExternals(gameName),
-        listRegistry(),
-      ]);
-      setExternals(ext);
-      setRegistry(reg);
-    } catch (err) {
-      console.error("Failed to load externals:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [gameName]);
+  const loading = extLoading || regLoading;
+  const items = externals ?? [];
+  const registryItems = registry ?? [];
 
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  const installedNames = new Set(externals.map((e) => e.name));
-  const available = registry.filter((r) => !installedNames.has(r.name));
+  const installedNames = new Set(items.map((e) => e.name));
+  const available = registryItems.filter((r) => !installedNames.has(r.name));
 
   async function handleInstall() {
     if (!selectedRegistry) return;
@@ -59,7 +38,7 @@ export function ExternalsTab({ gameName }: ExternalsTabProps) {
     try {
       await installExternal(gameName, selectedRegistry);
       setSelectedRegistry("");
-      await load();
+      await mutateExternals();
     } catch (err) {
       console.error("Install failed:", err);
     } finally {
@@ -70,7 +49,7 @@ export function ExternalsTab({ gameName }: ExternalsTabProps) {
   async function handleUninstall(name: string) {
     try {
       await uninstallExternal(gameName, name);
-      await load();
+      await mutateExternals();
     } catch (err) {
       console.error("Uninstall failed:", err);
     }
@@ -122,12 +101,12 @@ export function ExternalsTab({ gameName }: ExternalsTabProps) {
       {/* Installed list */}
       <ScrollArea className="flex-1">
         <div className="p-3 space-y-2">
-          {externals.length === 0 ? (
+          {items.length === 0 ? (
             <p className="text-xs text-muted-foreground text-center py-6">
               No libraries installed
             </p>
           ) : (
-            externals.map((ext) => (
+            items.map((ext) => (
               <div
                 key={ext.name}
                 className="flex items-center justify-between gap-2 rounded-md border px-3 py-2"

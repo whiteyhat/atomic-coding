@@ -1,6 +1,5 @@
 "use client";
 
-import { usePrivy } from "@privy-io/react-auth";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -10,9 +9,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { LogOut, User, Wallet } from "lucide-react";
+import { useAppAuth } from "@/lib/privy-provider";
 
 export function UserMenu() {
-  const { user, logout, ready, authenticated } = usePrivy();
+  const { user, logout, ready, authenticated, isDevBypass } = useAppAuth();
 
   if (!ready || !authenticated || !user) {
     return null;
@@ -43,11 +43,18 @@ export function UserMenu() {
             {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
           </DropdownMenuItem>
         )}
+        {isDevBypass && (
+          <DropdownMenuItem disabled className="text-xs text-muted-foreground">
+            Local dev auth bypass
+          </DropdownMenuItem>
+        )}
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={logout} className="text-destructive">
-          <LogOut className="size-4 mr-2" />
-          Sign Out
-        </DropdownMenuItem>
+        {!isDevBypass && (
+          <DropdownMenuItem onClick={logout} className="text-destructive">
+            <LogOut className="size-4 mr-2" />
+            Sign Out
+          </DropdownMenuItem>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

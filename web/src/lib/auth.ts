@@ -1,5 +1,10 @@
 import "server-only";
 import { PrivyClient } from "@privy-io/server-auth";
+import {
+  DEV_AUTH_BYPASS_TOKEN,
+  getDevAuthUser,
+  isDevAuthBypassEnabled,
+} from "./dev-auth";
 
 const PRIVY_APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID ?? "";
 const PRIVY_APP_SECRET = process.env.PRIVY_APP_SECRET ?? "";
@@ -25,6 +30,14 @@ export interface AuthUser {
 export async function verifyAuthToken(
   req: Request
 ): Promise<AuthUser | null> {
+  const hostname = new URL(req.url).hostname;
+  if (isDevAuthBypassEnabled(hostname)) {
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader || authHeader === `Bearer ${DEV_AUTH_BYPASS_TOKEN}`) {
+      return getDevAuthUser();
+    }
+  }
+
   const authHeader = req.headers.get("Authorization");
   if (!authHeader?.startsWith("Bearer ")) return null;
 
@@ -41,4 +54,3 @@ export async function verifyAuthToken(
     return null;
   }
 }
-

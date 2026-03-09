@@ -28,20 +28,6 @@ export interface LeaderboardEntry {
 export type LeaderboardPeriod = "day" | "week" | "lifetime";
 
 // =============================================================================
-// Rate limiting (in-memory, per-instance)
-// =============================================================================
-
-const rateLimitMap = new Map<string, number>();
-
-function isRateLimited(key: string, intervalMs: number = 1000): boolean {
-  const now = Date.now();
-  const last = rateLimitMap.get(key) ?? 0;
-  if (now - last < intervalMs) return true;
-  rateLimitMap.set(key, now);
-  return false;
-}
-
-// =============================================================================
 // Service functions
 // =============================================================================
 
@@ -52,12 +38,6 @@ export async function submitScore(
   userId: string,
   metadata?: Record<string, unknown>,
 ): Promise<Score> {
-  // Rate limit: 1 score per second per user/game
-  const rateLimitKey = `${gameId}:${userId}`;
-  if (isRateLimited(rateLimitKey)) {
-    throw new Error("Rate limited: max 1 score per second");
-  }
-
   // Validate score
   if (!Number.isInteger(score) || score < 0) {
     throw new Error("Score must be a non-negative integer");

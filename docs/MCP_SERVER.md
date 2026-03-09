@@ -1,5 +1,9 @@
 # Atomic Coding MCP Server -- Developer Documentation
 
+> Source of truth: see [system-architecture.md](system-architecture.md) for the current end-to-end system architecture and interface boundaries.
+> This document is a narrower MCP reference and may lag the canonical architecture doc.
+> Drift note: the live `mcp-server` currently exposes 6 tools, including `read_externals`. The sections below were originally written against the earlier 5-tool surface.
+
 ## Overview
 
 The Atomic Coding MCP server exposes 5 tools for managing **atoms** -- individual JavaScript functions stored in Supabase. Each atom has a name, typed interface (inputs/outputs), source code, and a dependency graph connecting it to other atoms.

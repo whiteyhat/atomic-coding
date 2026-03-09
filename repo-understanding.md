@@ -1,5 +1,8 @@
 # Atomic Coding - Repository Documentation
 
+> Source of truth: see [docs/system-architecture.md](docs/system-architecture.md).
+> This document is a broad repository walkthrough and historical snapshot. It is useful context, but it is not the canonical architecture reference.
+
 ## Table of Contents
 
 - [1. Project Overview](#1-project-overview)

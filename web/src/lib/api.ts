@@ -19,6 +19,15 @@ import type {
 // ── Auth token helper ────────────────────────────────────────────────────────
 
 let getAuthTokenFn: (() => Promise<string | null>) | null = null;
+const DEV_AUTH_BYPASS =
+  process.env.NEXT_PUBLIC_DEV_AUTH_BYPASS === "true" ||
+  process.env.DEV_AUTH_BYPASS === "true";
+const DEV_AUTH_BYPASS_TOKEN =
+  process.env.NEXT_PUBLIC_DEV_AUTH_BYPASS_TOKEN ??
+  process.env.DEV_AUTH_BYPASS_TOKEN ??
+  "dev-bypass";
+const DEV_AUTH_BYPASS_ORIGIN =
+  process.env.DEV_AUTH_BYPASS_ORIGIN ?? "http://127.0.0.1:3000";
 
 /**
  * Called once from the PrivyProvider to register a function that returns
@@ -48,6 +57,13 @@ async function apiFetch<T>(
       }
     } catch {
       // Continue without auth token
+    }
+  }
+
+  if (!headers.Authorization && DEV_AUTH_BYPASS) {
+    headers.Authorization = `Bearer ${DEV_AUTH_BYPASS_TOKEN}`;
+    if (typeof window === "undefined" && !headers.Origin) {
+      headers.Origin = DEV_AUTH_BYPASS_ORIGIN;
     }
   }
 

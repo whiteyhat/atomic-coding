@@ -1,30 +1,20 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Loader2 } from "lucide-react";
-import { getGame } from "@/lib/api";
+import { useGame } from "@/lib/hooks";
 import { SUPABASE_URL } from "@/lib/constants";
-import type { GameWithBuild } from "@/lib/types";
 
 interface SettingsTabProps {
   gameName: string;
 }
 
 export function SettingsTab({ gameName }: SettingsTabProps) {
-  const [game, setGame] = useState<GameWithBuild | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { data: game, isLoading } = useGame(gameName);
 
-  useEffect(() => {
-    getGame(gameName)
-      .then(setGame)
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, [gameName]);
-
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center h-32">
         <Loader2 className="size-5 animate-spin text-muted-foreground" />

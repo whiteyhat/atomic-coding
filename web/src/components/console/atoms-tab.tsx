@@ -1,11 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Loader2 } from "lucide-react";
-import { getStructure } from "@/lib/api";
-import type { AtomSummary, AtomType } from "@/lib/types";
+import { useStructure } from "@/lib/hooks";
+import type { AtomType } from "@/lib/types";
 
 interface AtomsTabProps {
   gameName: string;
@@ -18,25 +17,9 @@ const typeColors: Record<AtomType, "default" | "secondary" | "outline"> = {
 };
 
 export function AtomsTab({ gameName }: AtomsTabProps) {
-  const [atoms, setAtoms] = useState<AtomSummary[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: atoms, isLoading } = useStructure(gameName);
 
-  const load = useCallback(async () => {
-    try {
-      const data = await getStructure(gameName);
-      setAtoms(data);
-    } catch (err) {
-      console.error("Failed to load atoms:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [gameName]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center h-32">
         <Loader2 className="size-5 animate-spin text-muted-foreground" />
@@ -44,10 +27,12 @@ export function AtomsTab({ gameName }: AtomsTabProps) {
     );
   }
 
+  const items = atoms ?? [];
+
   const grouped = {
-    core: atoms.filter((a) => a.type === "core"),
-    feature: atoms.filter((a) => a.type === "feature"),
-    util: atoms.filter((a) => a.type === "util"),
+    core: items.filter((a) => a.type === "core"),
+    feature: items.filter((a) => a.type === "feature"),
+    util: items.filter((a) => a.type === "util"),
   };
 
   const sections = (
@@ -57,7 +42,7 @@ export function AtomsTab({ gameName }: AtomsTabProps) {
   return (
     <ScrollArea className="h-full">
       <div className="p-3 space-y-4">
-        {atoms.length === 0 ? (
+        {items.length === 0 ? (
           <p className="text-xs text-muted-foreground text-center py-6">
             No atoms yet. Use the chat to create some.
           </p>

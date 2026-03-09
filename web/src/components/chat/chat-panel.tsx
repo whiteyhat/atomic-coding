@@ -37,7 +37,6 @@ import {
   createWarRoom,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { usePrivy } from "@privy-io/react-auth";
 import { ArrowLeft, Box, MessageSquare, Swords, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -47,6 +46,7 @@ import {
 } from "@/components/ui/tooltip";
 import { AssetModelDialog } from "./asset-model-dialog";
 import type { AssetModel } from "@/lib/types";
+import { useAppAuth } from "@/lib/privy-provider";
 
 interface ChatPanelProps {
   gameId: string;
@@ -143,7 +143,7 @@ function ChatPanelContent({
   onBack,
   onWarRoomCreated,
 }: ChatPanelContentProps) {
-  const { getAccessToken } = usePrivy();
+  const { getAccessToken } = useAppAuth();
   const [model, setModel] = useState(DEFAULT_MODEL);
   const modelRef = useRef(model);
   modelRef.current = model;

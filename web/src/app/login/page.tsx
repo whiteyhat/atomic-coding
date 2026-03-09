@@ -1,13 +1,13 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { usePrivy } from "@privy-io/react-auth";
 import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
+import { useAppAuth } from "@/lib/privy-provider";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login, authenticated, ready } = usePrivy();
+  const { login, authenticated, ready, isDevBypass } = useAppAuth();
 
   useEffect(() => {
     if (ready && authenticated) {
@@ -24,6 +24,10 @@ export default function LoginPage() {
   }
 
   if (authenticated) {
+    return null;
+  }
+
+  if (isDevBypass) {
     return null;
   }
 

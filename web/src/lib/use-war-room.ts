@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { API_BASE } from "./constants";
+import { getSupabaseBrowserClient } from "./supabase";
 import type {
   WarRoomWithTasks,
   WarRoomTask,
@@ -10,6 +10,7 @@ import type {
   WarRoomStatus,
 } from "./types";
 import { getWarRoom as fetchWarRoom } from "./api";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 
 interface UseWarRoomReturn {
   warRoom: WarRoomWithTasks | null;
@@ -26,8 +27,8 @@ interface UseWarRoomReturn {
 const TERMINAL_STATUSES: WarRoomStatus[] = ["completed", "failed", "cancelled"];
 
 /**
- * Hook that connects to a war room's SSE event stream and maintains
- * live state for tasks, events, and agent heartbeats.
+ * Hook that subscribes to Supabase Realtime for war room updates
+ * and maintains live state for tasks, events, and agent heartbeats.
  */
 export function useWarRoom(
   gameName: string | null,
@@ -40,7 +41,7 @@ export function useWarRoom(
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const eventSourceRef = useRef<EventSource | null>(null);
+  const channelRef = useRef<RealtimeChannel | null>(null);
 
   const isComplete =
     warRoom != null && TERMINAL_STATUSES.includes(warRoom.status);
@@ -68,107 +69,125 @@ export function useWarRoom(
     refresh();
   }, [refresh]);
 
-  // SSE connection
-  useEffect(() => {
-    if (!gameName || !warRoomId || isComplete) return;
+  // Process a war room event and update local state
+  const processEvent = useCallback((evt: WarRoomEvent) => {
+    setEvents((prev) => [...prev, evt]);
 
-    const url = `${API_BASE}/games/${encodeURIComponent(gameName)}/warrooms/${warRoomId}/events`;
-    const es = new EventSource(url);
-    eventSourceRef.current = es;
-
-    // Handle typed events
-    const handleTaskEvent = (e: MessageEvent) => {
-      try {
-        const evt: WarRoomEvent = JSON.parse(e.data);
-        setEvents((prev) => [...prev, evt]);
-
-        if (evt.event_type === "war_room_cancelled") {
-          setWarRoom((prev) => prev ? { ...prev, status: "cancelled" } : prev);
-        }
-
-        // Update task state from events
-        if (evt.task_number != null) {
-          setTasks((prev) =>
-            prev.map((t) => {
-              if (t.task_number !== evt.task_number) return t;
-              const updates: Partial<WarRoomTask> = {};
-              if (evt.event_type === "task_running") updates.status = "running";
-              if (evt.event_type === "task_completed") {
-                updates.status = "completed";
-                if (evt.payload?.output_summary) {
-                  updates.output = evt.payload as Record<string, unknown>;
-                }
-              }
-              if (evt.event_type === "task_failed") {
-                updates.status = "failed";
-                if (evt.payload) {
-                  updates.output = evt.payload as Record<string, unknown>;
-                }
-              }
-              if (evt.event_type === "task_assigned") updates.status = "assigned";
-              if (evt.event_type === "task_retry") updates.status = "pending";
-              return { ...t, ...updates };
-            })
-          );
-        }
-      } catch {
-        // Ignore parse errors
-      }
-    };
-
-    // Listen for specific event types
-    for (const type of [
-      "task_assigned",
-      "task_running",
-      "task_completed",
-      "task_failed",
-      "war_room_created",
-      "war_room_running",
-      "war_room_completed",
-      "war_room_failed",
-      "war_room_cancelled",
-      "task_retry",
-      "retry_cycle",
-      "pipeline_error",
-      "pipeline_stuck",
-    ]) {
-      es.addEventListener(type, handleTaskEvent);
+    if (evt.event_type === "war_room_cancelled") {
+      setWarRoom((prev) => prev ? { ...prev, status: "cancelled" } : prev);
+    }
+    if (evt.event_type === "war_room_completed") {
+      setWarRoom((prev) => prev ? { ...prev, status: "completed" } : prev);
+    }
+    if (evt.event_type === "war_room_failed") {
+      setWarRoom((prev) => prev ? { ...prev, status: "failed" } : prev);
     }
 
-    // Handle heartbeat events
-    es.addEventListener("heartbeats", (e: MessageEvent) => {
-      try {
-        const hbs: AgentHeartbeat[] = JSON.parse(e.data);
-        setHeartbeats(hbs);
-      } catch {
-        // Ignore
-      }
-    });
+    // Update task state from events
+    if (evt.task_number != null) {
+      setTasks((prev) =>
+        prev.map((t) => {
+          if (t.task_number !== evt.task_number) return t;
+          const updates: Partial<WarRoomTask> = {};
+          if (evt.event_type === "task_running") updates.status = "running";
+          if (evt.event_type === "task_completed") {
+            updates.status = "completed";
+            if (evt.payload?.output_summary) {
+              updates.output = evt.payload as Record<string, unknown>;
+            }
+          }
+          if (evt.event_type === "task_failed") {
+            updates.status = "failed";
+            if (evt.payload) {
+              updates.output = evt.payload as Record<string, unknown>;
+            }
+          }
+          if (evt.event_type === "task_assigned") updates.status = "assigned";
+          if (evt.event_type === "task_retry") updates.status = "pending";
+          return { ...t, ...updates };
+        })
+      );
+    }
+  }, []);
 
-    // Handle completion
-    es.addEventListener("done", (e: MessageEvent) => {
-      try {
-        const data = JSON.parse(e.data);
-        setWarRoom((prev) =>
-          prev ? { ...prev, status: data.status } : prev
-        );
-      } catch {
-        // Ignore
-      }
-      es.close();
-      // Refresh to get final state
-      refresh();
-    });
+  // Supabase Realtime subscription
+  useEffect(() => {
+    if (!warRoomId || isComplete) return;
 
-    es.onerror = () => {
-      // EventSource reconnects automatically
-    };
+    const supabase = getSupabaseBrowserClient();
+
+    const channel = supabase
+      .channel(`war-room:${warRoomId}`)
+      // Subscribe to new war room events
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "war_room_events",
+          filter: `war_room_id=eq.${warRoomId}`,
+        },
+        (payload) => {
+          const evt = payload.new as WarRoomEvent;
+          processEvent(evt);
+        }
+      )
+      // Subscribe to heartbeat updates
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "agent_heartbeats",
+          filter: `war_room_id=eq.${warRoomId}`,
+        },
+        (payload) => {
+          const hb = payload.new as AgentHeartbeat;
+          setHeartbeats((prev) => {
+            const existing = prev.findIndex((h) => h.agent === hb.agent);
+            if (existing >= 0) {
+              const updated = [...prev];
+              updated[existing] = hb;
+              return updated;
+            }
+            return [...prev, hb];
+          });
+        }
+      )
+      // Subscribe to war room status changes
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "war_rooms",
+          filter: `id=eq.${warRoomId}`,
+        },
+        (payload) => {
+          const updated = payload.new as { status: WarRoomStatus; suggested_prompts?: string[] };
+          setWarRoom((prev) => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              status: updated.status,
+              suggested_prompts: updated.suggested_prompts ?? prev.suggested_prompts,
+            };
+          });
+          // On terminal status, refresh to get full final state
+          if (TERMINAL_STATUSES.includes(updated.status)) {
+            refresh();
+          }
+        }
+      )
+      .subscribe();
+
+    channelRef.current = channel;
 
     return () => {
-      es.close();
-      eventSourceRef.current = null;
+      supabase.removeChannel(channel);
+      channelRef.current = null;
     };
-  }, [gameName, warRoomId, isComplete, refresh]);
+  }, [warRoomId, isComplete, processEvent, refresh]);
 
   return {
     warRoom,

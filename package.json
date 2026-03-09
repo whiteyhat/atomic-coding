@@ -1,0 +1,17 @@
+{
+  "name": "atomic-coding",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev:doctor": "node scripts/dev/doctor.mjs",
+    "dev:env:hybrid": "node scripts/dev/generate-env.mjs hybrid",
+    "dev:env:local": "node scripts/dev/generate-env.mjs local",
+    "dev:web": "npm run dev --prefix web -- --port 3002",
+    "dev:mastra": "npm run dev --prefix mastra",
+    "dev:hybrid": "node scripts/dev/run-stack.mjs hybrid",
+    "dev:supabase:start": "supabase start --workdir supabase",
+    "dev:supabase:reset": "supabase db reset --local --workdir supabase",
+    "dev:supabase:functions": "supabase functions serve --workdir supabase --env-file supabase/.env.local --no-verify-jwt",
+    "dev:local": "node scripts/dev/run-stack.mjs local"
+  }
+}

@@ -12,7 +12,11 @@ import * as boilerplates from "../_shared/services/boilerplates.ts";
 import * as scores from "../_shared/services/scores.ts";
 import * as tokens from "../_shared/services/tokens.ts";
 import * as warrooms from "../_shared/services/warrooms.ts";
-import { verifyAuthToken } from "../_shared/auth.ts";
+import { verifyAuthToken, requireAuth } from "../_shared/auth.ts";
+import { checkRateLimit } from "../_shared/rate-limit.ts";
+import { publishWithRetry } from "../_shared/qstash.ts";
+import * as schemas from "../_shared/schemas.ts";
+import { ZodError } from "npm:zod@^3.23.0";
 
 // =============================================================================
 // App
@@ -44,13 +48,26 @@ app.use("*", async (c, next) => {
 // =============================================================================
 
 app.use("*", async (c, next) => {
-  c.header("Access-Control-Allow-Origin", "*");
+  const allowedOrigin = Deno.env.get("ALLOWED_ORIGIN") || "*";
+  c.header("Access-Control-Allow-Origin", allowedOrigin);
   c.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
   c.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
   if (c.req.method === "OPTIONS") {
     return c.body(null, 204);
   }
   await next();
+});
+
+// =============================================================================
+// Middleware: Zod error handling
+// =============================================================================
+
+app.onError((err, c) => {
+  if (err instanceof ZodError) {
+    const issues = err.issues.map((i) => `${i.path.join(".")}: ${i.message}`);
+    return c.json({ error: "Validation error", details: issues }, 400);
+  }
+  throw err;
 });
 
 // =============================================================================
@@ -68,8 +85,7 @@ app.get("/", (c) =>
 /** POST /users/profile -- upsert user profile (called on login) */
 app.post("/users/profile", async (c) => {
   try {
-    const body = await c.req.json();
-    if (!body.id) return c.json({ error: "id is required" }, 400);
+    const body = schemas.upsertProfileSchema.parse(await c.req.json());
     const profile = await users.upsertUserProfile(body);
     return c.json(profile);
   } catch (err) {
@@ -118,9 +134,9 @@ app.get("/boilerplates/:slug", async (c) => {
 // =============================================================================
 
 /** POST /games -- create a game (optionally seed from a genre boilerplate) */
-app.post("/games", async (c) => {
+app.post("/games", requireAuth(), async (c) => {
   try {
-    const body = await c.req.json();
+    const body = schemas.createGameSchema.parse(await c.req.json());
     const game = await games.createGame(body.name, body.description, body.user_id, body.genre);
 
     // Seed atoms and externals from boilerplate if genre is specified
@@ -238,10 +254,7 @@ app.get("/games/:name/structure", async (c) => {
 app.post("/games/:name/atoms/read", async (c) => {
   try {
     const gameId = c.get("gameId") as string;
-    const body = await c.req.json();
-    if (!body.names || !Array.isArray(body.names) || body.names.length === 0) {
-      return c.json({ error: "names must be a non-empty array" }, 400);
-    }
+    const body = schemas.readAtomsSchema.parse(await c.req.json());
     const result = await atoms.readAtoms(gameId, body.names);
     if (result.length === 0) {
       return c.json({ error: `No atoms found: ${body.names.join(", ")}` }, 404);
@@ -256,8 +269,7 @@ app.post("/games/:name/atoms/read", async (c) => {
 app.post("/games/:name/atoms/search", async (c) => {
   try {
     const gameId = c.get("gameId") as string;
-    const body = await c.req.json();
-    if (!body.query) return c.json({ error: "query is required" }, 400);
+    const body = schemas.searchAtomsSchema.parse(await c.req.json());
     const result = await atoms.semanticSearch(gameId, body.query, body.limit);
     return c.json(result);
   } catch (err) {
@@ -266,11 +278,11 @@ app.post("/games/:name/atoms/search", async (c) => {
 });
 
 /** PUT /games/:name/atoms/:atom_name -- upsert atom */
-app.put("/games/:name/atoms/:atom_name", async (c) => {
+app.put("/games/:name/atoms/:atom_name", requireAuth(), async (c) => {
   try {
     const gameId = c.get("gameId") as string;
     const atomName = c.req.param("atom_name");
-    const body = await c.req.json();
+    const body = schemas.upsertAtomSchema.parse(await c.req.json());
     const result = await atoms.upsertAtom(gameId, {
       name: atomName,
       code: body.code,
@@ -287,7 +299,7 @@ app.put("/games/:name/atoms/:atom_name", async (c) => {
 });
 
 /** DELETE /games/:name/atoms/:atom_name -- delete atom */
-app.delete("/games/:name/atoms/:atom_name", async (c) => {
+app.delete("/games/:name/atoms/:atom_name", requireAuth(), async (c) => {
   try {
     const gameId = c.get("gameId") as string;
     await atoms.deleteAtom(gameId, c.req.param("atom_name"));
@@ -313,13 +325,10 @@ app.get("/games/:name/externals", async (c) => {
 });
 
 /** POST /games/:name/externals -- install an external */
-app.post("/games/:name/externals", async (c) => {
+app.post("/games/:name/externals", requireAuth(), async (c) => {
   try {
     const gameId = c.get("gameId") as string;
-    const body = await c.req.json();
-    if (!body.name) {
-      return c.json({ error: "name is required (e.g. \"three_js\")" }, 400);
-    }
+    const body = schemas.installExternalSchema.parse(await c.req.json());
     const result = await externals.installExternal(gameId, body.name);
     return c.json(result, 201);
   } catch (err) {
@@ -328,7 +337,7 @@ app.post("/games/:name/externals", async (c) => {
 });
 
 /** DELETE /games/:name/externals/:ext_name -- uninstall an external */
-app.delete("/games/:name/externals/:ext_name", async (c) => {
+app.delete("/games/:name/externals/:ext_name", requireAuth(), async (c) => {
   try {
     const gameId = c.get("gameId") as string;
     const extName = c.req.param("ext_name");
@@ -356,9 +365,12 @@ app.get("/games/:name/builds", async (c) => {
 });
 
 /** POST /games/:name/builds -- trigger rebuild */
-app.post("/games/:name/builds", async (c) => {
+app.post("/games/:name/builds", requireAuth(), async (c) => {
   try {
     const gameId = c.get("gameId") as string;
+    const rateLimited = await checkRateLimit(c, "build", gameId);
+    if (rateLimited) return rateLimited;
+
     atoms.triggerRebuild(gameId);
     return c.json({ status: "rebuild triggered", game_id: gameId });
   } catch (err) {
@@ -367,7 +379,7 @@ app.post("/games/:name/builds", async (c) => {
 });
 
 /** POST /games/:name/builds/:id/rollback -- rollback to build */
-app.post("/games/:name/builds/:id/rollback", async (c) => {
+app.post("/games/:name/builds/:id/rollback", requireAuth(), async (c) => {
   try {
     const gameId = c.get("gameId") as string;
     const buildId = c.req.param("id");
@@ -383,14 +395,11 @@ app.post("/games/:name/builds/:id/rollback", async (c) => {
 // =============================================================================
 
 /** POST /games/:name/publish -- publish a game with a slug */
-app.post("/games/:name/publish", async (c) => {
+app.post("/games/:name/publish", requireAuth(), async (c) => {
   try {
     const gameId = c.get("gameId") as string;
-    const body = await c.req.json();
-    if (!body.slug || typeof body.slug !== "string") {
-      return c.json({ error: "slug is required" }, 400);
-    }
-    const game = await games.publishGame(gameId, body.slug.trim().toLowerCase());
+    const body = schemas.publishGameSchema.parse(await c.req.json());
+    const game = await games.publishGame(gameId, body.slug.trim());
     return c.json(game);
   } catch (err) {
     return c.json({ error: (err as Error).message }, 400);
@@ -398,7 +407,7 @@ app.post("/games/:name/publish", async (c) => {
 });
 
 /** POST /games/:name/unpublish -- unpublish a game */
-app.post("/games/:name/unpublish", async (c) => {
+app.post("/games/:name/unpublish", requireAuth(), async (c) => {
   try {
     const gameId = c.get("gameId") as string;
     const game = await games.unpublishGame(gameId);
@@ -418,11 +427,11 @@ app.post("/games/:name/scores", async (c) => {
     const authUser = await verifyAuthToken(c.req.raw);
     if (!authUser) return c.json({ error: "Unauthorized" }, 401);
 
+    const rateLimited = await checkRateLimit(c, "score", authUser.userId);
+    if (rateLimited) return rateLimited;
+
     const gameId = c.get("gameId") as string;
-    const body = await c.req.json();
-    if (typeof body.score !== "number") {
-      return c.json({ error: "score is required and must be a number" }, 400);
-    }
+    const body = schemas.submitScoreSchema.parse(await c.req.json());
     const result = await scores.submitScore(
       gameId,
       body.score,
@@ -456,13 +465,10 @@ app.get("/games/:name/leaderboard", async (c) => {
 // =============================================================================
 
 /** PUT /games/:name/token -- create or update token launch */
-app.put("/games/:name/token", async (c) => {
+app.put("/games/:name/token", requireAuth(), async (c) => {
   try {
     const gameId = c.get("gameId") as string;
-    const body = await c.req.json();
-    if (!body.token_name || !body.token_symbol || !body.creator_id) {
-      return c.json({ error: "token_name, token_symbol, and creator_id are required" }, 400);
-    }
+    const body = schemas.upsertTokenSchema.parse(await c.req.json());
     const launch = await tokens.upsertTokenLaunch(gameId, body.creator_id, body.token_name, body.token_symbol, {
       chainId: body.chain_id,
       totalSupply: body.total_supply,
@@ -516,10 +522,10 @@ app.get("/games/:name/chat/sessions", async (c) => {
 });
 
 /** POST /games/:name/chat/sessions -- create session */
-app.post("/games/:name/chat/sessions", async (c) => {
+app.post("/games/:name/chat/sessions", requireAuth(), async (c) => {
   try {
     const gameId = c.get("gameId") as string;
-    const body = await c.req.json();
+    const body = schemas.createSessionSchema.parse(await c.req.json());
     const session = await chat.createSession(gameId, body.model, body.title);
     return c.json(session, 201);
   } catch (err) {
@@ -528,7 +534,7 @@ app.post("/games/:name/chat/sessions", async (c) => {
 });
 
 /** DELETE /games/:name/chat/sessions/:sessionId -- delete session */
-app.delete("/games/:name/chat/sessions/:sessionId", async (c) => {
+app.delete("/games/:name/chat/sessions/:sessionId", requireAuth(), async (c) => {
   try {
     await chat.deleteSession(c.req.param("sessionId"));
     return c.json({ deleted: c.req.param("sessionId") });
@@ -548,12 +554,12 @@ app.get("/games/:name/chat/sessions/:sessionId/messages", async (c) => {
 });
 
 /** POST /games/:name/chat/sessions/:sessionId/messages -- save messages */
-app.post("/games/:name/chat/sessions/:sessionId/messages", async (c) => {
+app.post("/games/:name/chat/sessions/:sessionId/messages", requireAuth(), async (c) => {
   try {
-    const body = await c.req.json();
-    if (!body.messages || !Array.isArray(body.messages)) {
-      return c.json({ error: "messages must be an array" }, 400);
-    }
+    const rateLimited = await checkRateLimit(c, "chatSave", c.req.param("sessionId"));
+    if (rateLimited) return rateLimited;
+
+    const body = schemas.saveMessagesSchema.parse(await c.req.json());
     await chat.saveMessages(c.req.param("sessionId"), body.messages);
 
     // Auto-set title from first user message if not set
@@ -576,33 +582,36 @@ app.post("/games/:name/chat/sessions/:sessionId/messages", async (c) => {
 // War Rooms (scoped to game)
 // =============================================================================
 
-/** Fire-and-forget: trigger the Mastra pipeline orchestrator. */
+/** Trigger the Mastra pipeline orchestrator with retries via QStash. */
 function triggerOrchestrator(warRoomId: string): void {
   const mastraUrl = Deno.env.get("MASTRA_SERVER_URL");
   if (!mastraUrl) {
     log("warn", "triggerOrchestrator: MASTRA_SERVER_URL not set, skipping");
     return;
   }
-  fetch(`${mastraUrl}/pipeline/run`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ war_room_id: warRoomId }),
-  })
-    .then((res) => log("info", "triggerOrchestrator: response", { warRoomId, status: res.status }))
-    .catch((err) => log("error", "triggerOrchestrator: failed", { error: (err as Error).message }));
+  publishWithRetry(`${mastraUrl}/pipeline/run`, { war_room_id: warRoomId }, { retries: 3 });
 }
 
 /** POST /games/:name/warrooms -- create a war room (+ 12 pipeline tasks) */
-app.post("/games/:name/warrooms", async (c) => {
+app.post("/games/:name/warrooms", requireAuth(), async (c) => {
   try {
+    const authUser = c.get("authUser") as { userId: string };
+    const rateLimited = await checkRateLimit(c, "warroom", authUser.userId);
+    if (rateLimited) return rateLimited;
+
     const gameId = c.get("gameId") as string;
-    const body = await c.req.json();
-    if (!body.prompt || typeof body.prompt !== "string") {
-      return c.json({ error: "prompt is required" }, 400);
+    const body = schemas.createWarRoomSchema.parse(await c.req.json());
+
+    // War rooms must be attributed to the authenticated user. The frontend may
+    // omit user_id, and profile sync is best-effort, so ensure a row exists.
+    const existingProfile = await users.getUserProfile(authUser.userId);
+    if (!existingProfile) {
+      await users.upsertUserProfile({ id: authUser.userId });
     }
+
     const room = await warrooms.createWarRoom(
       gameId,
-      body.user_id || null,
+      authUser.userId,
       body.prompt,
       body.genre || null,
     );
@@ -640,7 +649,7 @@ app.get("/games/:name/warrooms/:id", async (c) => {
 });
 
 /** POST /games/:name/warrooms/:id/cancel -- cancel a running war room */
-app.post("/games/:name/warrooms/:id/cancel", async (c) => {
+app.post("/games/:name/warrooms/:id/cancel", requireAuth(), async (c) => {
   try {
     const warRoomId = c.req.param("id");
     const room = await warrooms.getWarRoom(warRoomId);
@@ -769,8 +778,7 @@ app.get("/games/:name/warrooms/:id/events", async (c) => {
 app.post("/games/:name/warrooms/:id/heartbeat", async (c) => {
   try {
     const warRoomId = c.req.param("id");
-    const body = await c.req.json();
-    if (!body.agent) return c.json({ error: "agent is required" }, 400);
+    const body = schemas.heartbeatSchema.parse(await c.req.json());
     const hb = await warrooms.upsertHeartbeat(
       warRoomId,
       body.agent,
@@ -791,8 +799,7 @@ app.post("/games/:name/warrooms/:id/tasks/:num/status", async (c) => {
     if (isNaN(taskNumber) || taskNumber < 1 || taskNumber > 12) {
       return c.json({ error: "task number must be 1-12" }, 400);
     }
-    const body = await c.req.json();
-    if (!body.status) return c.json({ error: "status is required" }, 400);
+    const body = schemas.taskStatusSchema.parse(await c.req.json());
     const task = await warrooms.updateTaskStatus(
       warRoomId,
       taskNumber,

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useCallback } from "react";
 import { submitScore } from "@/lib/api";
-import { usePrivy } from "@privy-io/react-auth";
+import { useAppAuth } from "@/lib/privy-provider";
 
 interface ScoreListenerProps {
   gameName: string;
@@ -17,7 +17,7 @@ export function ScoreListener({
   gameName,
   requireAuth = true,
 }: ScoreListenerProps) {
-  const { user, authenticated, ready } = usePrivy();
+  const { user, authenticated, ready, isDevBypass } = useAppAuth();
   const lastSubmitRef = useRef(0);
   const pendingScoreRef = useRef<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -26,7 +26,7 @@ export function ScoreListener({
     const score = pendingScoreRef.current;
     if (score === null) return;
 
-    if (requireAuth && (!ready || !authenticated || !user?.id)) {
+    if (requireAuth && !isDevBypass && (!ready || !authenticated || !user?.id)) {
       pendingScoreRef.current = null;
       return;
     }

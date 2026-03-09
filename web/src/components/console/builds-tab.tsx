@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Hammer, RotateCcw, Loader2, CheckCircle2, XCircle, Clock } from "lucide-react";
-import { listBuilds, triggerBuild, rollbackBuild } from "@/lib/api";
-import type { BuildSummary, BuildStatus } from "@/lib/types";
+import { triggerBuild, rollbackBuild } from "@/lib/api";
+import { useBuilds } from "@/lib/hooks";
+import type { BuildStatus } from "@/lib/types";
 
 interface BuildsTabProps {
   gameName: string;
@@ -34,31 +35,15 @@ const statusConfig: Record<
 };
 
 export function BuildsTab({ gameName }: BuildsTabProps) {
-  const [builds, setBuilds] = useState<BuildSummary[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: builds, isLoading, mutate } = useBuilds(gameName);
   const [rebuilding, setRebuilding] = useState(false);
-
-  const load = useCallback(async () => {
-    try {
-      const data = await listBuilds(gameName);
-      setBuilds(data);
-    } catch (err) {
-      console.error("Failed to load builds:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [gameName]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
 
   async function handleRebuild() {
     setRebuilding(true);
     try {
       await triggerBuild(gameName);
-      // wait a moment for the build to start
-      setTimeout(load, 2000);
+      // wait a moment for the build to start, then revalidate
+      setTimeout(() => mutate(), 2000);
     } catch (err) {
       console.error("Rebuild failed:", err);
     } finally {
@@ -69,13 +54,13 @@ export function BuildsTab({ gameName }: BuildsTabProps) {
   async function handleRollback(buildId: string) {
     try {
       await rollbackBuild(gameName, buildId);
-      await load();
+      await mutate();
     } catch (err) {
       console.error("Rollback failed:", err);
     }
   }
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center h-32">
         <Loader2 className="size-5 animate-spin text-muted-foreground" />
@@ -83,11 +68,13 @@ export function BuildsTab({ gameName }: BuildsTabProps) {
     );
   }
 
+  const items = builds ?? [];
+
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between p-3 border-b">
         <span className="text-xs text-muted-foreground">
-          {builds.length} build{builds.length !== 1 && "s"}
+          {items.length} build{items.length !== 1 && "s"}
         </span>
         <Button
           size="sm"
@@ -106,12 +93,12 @@ export function BuildsTab({ gameName }: BuildsTabProps) {
 
       <ScrollArea className="flex-1">
         <div className="p-3 space-y-2">
-          {builds.length === 0 ? (
+          {items.length === 0 ? (
             <p className="text-xs text-muted-foreground text-center py-6">
               No builds yet
             </p>
           ) : (
-            builds.map((build) => {
+            items.map((build) => {
               const config = statusConfig[build.status];
               return (
                 <div

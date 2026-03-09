@@ -1,11 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { listWarRooms } from "@/lib/api";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Loader2, Swords } from "lucide-react";
 import { StatusBadge } from "./status-badge";
-import type { WarRoom } from "@/lib/types";
+import { useWarRooms } from "@/lib/hooks";
 
 interface WarRoomListProps {
   gameName: string;
@@ -13,29 +11,7 @@ interface WarRoomListProps {
 }
 
 export function WarRoomList({ gameName, onSelect }: WarRoomListProps) {
-  const [rooms, setRooms] = useState<WarRoom[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    setIsLoading(true);
-    setError(null);
-    listWarRooms(gameName)
-      .then((data) => {
-        if (!cancelled) setRooms(data);
-      })
-      .catch((err) => {
-        if (!cancelled)
-          setError(err instanceof Error ? err.message : "Failed to load war rooms");
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [gameName]);
+  const { data: rooms, isLoading, error } = useWarRooms(gameName);
 
   if (isLoading) {
     return (
@@ -48,12 +24,14 @@ export function WarRoomList({ gameName, onSelect }: WarRoomListProps) {
   if (error) {
     return (
       <div className="flex items-center justify-center h-full text-red-400 text-sm px-4 text-center">
-        {error}
+        {error instanceof Error ? error.message : "Failed to load war rooms"}
       </div>
     );
   }
 
-  if (rooms.length === 0) {
+  const items = rooms ?? [];
+
+  if (items.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-2 text-zinc-500 px-6 text-center">
         <Swords className="size-8 text-zinc-700" />
@@ -68,7 +46,7 @@ export function WarRoomList({ gameName, onSelect }: WarRoomListProps) {
   return (
     <ScrollArea className="h-full">
       <div className="py-1">
-        {rooms.map((room) => (
+        {items.map((room) => (
           <button
             key={room.id}
             onClick={() => onSelect(room.id)}

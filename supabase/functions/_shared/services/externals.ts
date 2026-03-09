@@ -1,5 +1,6 @@
 import { getSupabaseClient } from "../supabase-client.ts";
 import { log } from "../logger.ts";
+import { cached } from "../cache.ts";
 import { triggerRebuild } from "./atoms.ts";
 
 // =============================================================================
@@ -40,15 +41,17 @@ export interface ExternalDetail extends InstalledExternal {
 
 /** List all available libraries from the curated registry */
 export async function listRegistry(): Promise<RegistryEntry[]> {
-  const supabase = getSupabaseClient();
+  return cached("registry:externals", 300, async () => {
+    const supabase = getSupabaseClient();
 
-  const { data, error } = await supabase
-    .from("external_registry")
-    .select("id, name, display_name, package_name, version, cdn_url, global_name, description")
-    .order("name", { ascending: true });
+    const { data, error } = await supabase
+      .from("external_registry")
+      .select("id, name, display_name, package_name, version, cdn_url, global_name, description")
+      .order("name", { ascending: true });
 
-  if (error) throw new Error(`Failed to list registry: ${error.message}`);
-  return (data || []) as RegistryEntry[];
+    if (error) throw new Error(`Failed to list registry: ${error.message}`);
+    return (data || []) as RegistryEntry[];
+  });
 }
 
 /** Install an external library into a game (by registry name) */

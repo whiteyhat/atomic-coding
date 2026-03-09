@@ -12,6 +12,7 @@ import type { WarRoomTask, DispatchResult } from "./types.js";
 
 const MAX_RETRY_CYCLES = 3;
 const MAX_TASK_RETRIES = 2;
+const PIPELINE_TIMEOUT_MS = 20 * 60 * 1000; // 20 minutes
 
 /** Find tasks whose dependencies are all completed. */
 export function getNextRunnableTasks(tasks: WarRoomTask[]): WarRoomTask[] {
@@ -184,6 +185,16 @@ export async function runPipeline(warRoomId: string): Promise<void> {
   const room = await warrooms.getWarRoom(warRoomId);
   if (!room) throw new Error(`War room ${warRoomId} not found`);
 
+  // Idempotency: skip if already running or terminal
+  if (room.status === "running") {
+    console.log("[orchestrator] pipeline already running, skipping", { warRoomId });
+    return;
+  }
+  if (["completed", "failed", "cancelled"].includes(room.status)) {
+    console.log("[orchestrator] pipeline already terminal, skipping", { warRoomId, status: room.status });
+    return;
+  }
+
   const initialTasks = await warrooms.getTasks(warRoomId);
   console.log("[orchestrator] pipeline starting", {
     warRoomId,
@@ -219,6 +230,23 @@ export async function runPipeline(warRoomId: string): Promise<void> {
       if (currentRoom?.status === "cancelled") {
         console.log("[orchestrator] pipeline cancelled by user", { warRoomId });
         await warrooms.upsertHeartbeat(warRoomId, "jarvis", "idle");
+        return;
+      }
+
+      // Check for pipeline timeout
+      if (Date.now() - pipelineStart >= PIPELINE_TIMEOUT_MS) {
+        console.error("[orchestrator] pipeline timed out", {
+          warRoomId,
+          durationMs: Date.now() - pipelineStart,
+        });
+        await warrooms.updateWarRoomStatus(warRoomId, "failed");
+        await warrooms.recordEvent(warRoomId, "pipeline_timeout", "jarvis", null, {
+          timeout_ms: PIPELINE_TIMEOUT_MS,
+          elapsed_ms: Date.now() - pipelineStart,
+        });
+        await warrooms.upsertHeartbeat(warRoomId, "jarvis", "error", {
+          error: "Pipeline timed out after 20 minutes",
+        });
         return;
       }
 

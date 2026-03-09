@@ -1,5 +1,6 @@
 import { getSupabaseClient } from "../supabase-client.ts";
 import { log } from "../logger.ts";
+import { cached, cacheDel } from "../cache.ts";
 import { ensureBuildScoreSystemReport } from "./builds.ts";
 import type { ValidationReport } from "../../../../mastra/src/shared/atom-validation.ts";
 
@@ -88,6 +89,7 @@ export async function createGame(
 
   if (error) throw new Error(`Failed to create game: ${error.message}`);
   log("info", "game created", { name, id: data.id, userId, genre });
+  cacheDel(`game:id:${name}`);
   return mapGame(data);
 }
 
@@ -141,19 +143,21 @@ export async function listGamesByUser(userId: string): Promise<GameWithBuild[]> 
  * Used by transport layers (REST middleware, MCP tools) -- NOT by other services.
  */
 export async function resolveGameId(name: string): Promise<string> {
-  const supabase = getSupabaseClient();
+  return cached(`game:id:${name}`, 60, async () => {
+    const supabase = getSupabaseClient();
 
-  const { data, error } = await supabase
-    .from("games")
-    .select("id")
-    .eq("name", name)
-    .single();
+    const { data, error } = await supabase
+      .from("games")
+      .select("id")
+      .eq("name", name)
+      .single();
 
-  if (error || !data) {
-    throw new Error(`Game not found: "${name}"`);
-  }
+    if (error || !data) {
+      throw new Error(`Game not found: "${name}"`);
+    }
 
-  return data.id;
+    return data.id;
+  });
 }
 
 /**

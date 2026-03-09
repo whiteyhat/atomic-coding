@@ -1,8 +1,11 @@
 # Atomic Coding
 
-An AI-native game development platform where code lives as **atoms** (individual functions) in Supabase. An AI agent manipulates atoms through 5 MCP tools, and a rebuild pipeline automatically assembles them into a single JS bundle for Three.js.
+> Source of truth: see [docs/system-architecture.md](docs/system-architecture.md).
+> This README is a historical quickstart and no longer reflects the full current architecture. The active system now includes the Next.js `web/` app, the `mastra/` orchestration service, Supabase REST APIs, and a six-tool MCP server.
 
-## Architecture
+Atomic Coding started as an atom-centric game development platform where code lived as **atoms** (individual functions) in Supabase and an AI agent manipulated them through a small MCP tool surface. The current production architecture is broader; use [docs/system-architecture.md](docs/system-architecture.md) for the up-to-date system.
+
+## Original Minimal Architecture
 
 ```
 AI Agent (Cursor) --> MCP Server (5 tools) --> Supabase (atoms DB + pgvector)
@@ -14,7 +17,7 @@ AI Agent (Cursor) --> MCP Server (5 tools) --> Supabase (atoms DB + pgvector)
                                               Frontend (Three.js)
 ```
 
-## The 5 Tools
+## Original 5-Tool View
 
 | Tool | Role | Description |
 |------|------|-------------|

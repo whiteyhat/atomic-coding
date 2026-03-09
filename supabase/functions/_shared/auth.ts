@@ -1,4 +1,10 @@
 import { PrivyClient } from "npm:@privy-io/server-auth@^1.32.5";
+import type { Context, Next } from "npm:hono@^4.9.7";
+import {
+  DEV_AUTH_BYPASS_TOKEN,
+  getDevAuthUser,
+  isDevAuthBypassEnabled,
+} from "./dev-auth.ts";
 
 export interface AuthUser {
   userId: string;
@@ -24,6 +30,13 @@ function getPrivyClient(): PrivyClient {
 }
 
 export async function verifyAuthToken(req: Request): Promise<AuthUser | null> {
+  if (isDevAuthBypassEnabled(req)) {
+    const authHeader = req.headers.get("Authorization");
+    if (authHeader === `Bearer ${DEV_AUTH_BYPASS_TOKEN}`) {
+      return getDevAuthUser();
+    }
+  }
+
   const authHeader = req.headers.get("Authorization");
   if (!authHeader?.startsWith("Bearer ")) return null;
 
@@ -36,4 +49,19 @@ export async function verifyAuthToken(req: Request): Promise<AuthUser | null> {
   } catch {
     return null;
   }
+}
+
+/**
+ * Hono middleware that requires a valid auth token on the request.
+ * Sets `c.set("authUser", user)` on success, returns 401 on failure.
+ */
+export function requireAuth() {
+  return async (c: Context, next: Next) => {
+    const user = await verifyAuthToken(c.req.raw);
+    if (!user) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    c.set("authUser", user);
+    await next();
+  };
 }

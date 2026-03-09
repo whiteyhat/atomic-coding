@@ -1,5 +1,6 @@
 import { getSupabaseClient } from "../supabase-client.ts";
 import { log } from "../logger.ts";
+import { cached } from "../cache.ts";
 
 // =============================================================================
 // Types
@@ -42,15 +43,17 @@ export interface BoilerplateSummary {
 
 /** List all boilerplates (without atoms_json for lightweight listing) */
 export async function listBoilerplates(): Promise<BoilerplateSummary[]> {
-  const supabase = getSupabaseClient();
+  return cached("boilerplates:list", 300, async () => {
+    const supabase = getSupabaseClient();
 
-  const { data, error } = await supabase
-    .from("genre_boilerplates")
-    .select("slug, display_name, description, thumbnail_url, externals, template_prompts")
-    .order("display_name", { ascending: true });
+    const { data, error } = await supabase
+      .from("genre_boilerplates")
+      .select("slug, display_name, description, thumbnail_url, externals, template_prompts")
+      .order("display_name", { ascending: true });
 
-  if (error) throw new Error(`Failed to list boilerplates: ${error.message}`);
-  return (data || []) as BoilerplateSummary[];
+    if (error) throw new Error(`Failed to list boilerplates: ${error.message}`);
+    return (data || []) as BoilerplateSummary[];
+  });
 }
 
 /** Get a single boilerplate by slug (includes atoms_json) */

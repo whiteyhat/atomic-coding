@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { isDevAuthBypassEnabled } from "@/lib/dev-auth";
 
 // Routes that don't require authentication
 const PUBLIC_ROUTES = [
@@ -13,6 +14,10 @@ const PUBLIC_ROUTES = [
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  if (isDevAuthBypassEnabled(request.nextUrl.hostname)) {
+    return NextResponse.next();
+  }
 
   // Allow public routes
   if (PUBLIC_ROUTES.some((route) => pathname.startsWith(route))) {
