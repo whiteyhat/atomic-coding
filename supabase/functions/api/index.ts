@@ -639,6 +639,25 @@ app.get("/games/:name/warrooms/:id", async (c) => {
   }
 });
 
+/** POST /games/:name/warrooms/:id/cancel -- cancel a running war room */
+app.post("/games/:name/warrooms/:id/cancel", async (c) => {
+  try {
+    const warRoomId = c.req.param("id");
+    const room = await warrooms.getWarRoom(warRoomId);
+    if (!room) return c.json({ error: "War room not found" }, 404);
+    if (room.status !== "running" && room.status !== "planning") {
+      return c.json({ error: `Cannot cancel war room with status '${room.status}'` }, 400);
+    }
+    const updated = await warrooms.updateWarRoomStatus(warRoomId, "cancelled");
+    await warrooms.recordEvent(warRoomId, "war_room_cancelled", null, null, {
+      previous_status: room.status,
+    });
+    return c.json(updated);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 500);
+  }
+});
+
 /** GET /games/:name/warrooms/:id/events -- SSE event stream */
 app.get("/games/:name/warrooms/:id/events", async (c) => {
   const warRoomId = c.req.param("id");
@@ -648,9 +667,14 @@ app.get("/games/:name/warrooms/:id/events", async (c) => {
   const room = await warrooms.getWarRoom(warRoomId);
   if (!room) return c.json({ error: "War room not found" }, 404);
 
+  // Max connection duration to stay well under Supabase Edge Function wall clock limit (~6min)
+  const MAX_SSE_DURATION_MS = 4 * 60 * 1000;
+
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
+      const startTime = Date.now();
+
       // 1. Send existing events (hydration on connect / reconnect)
       try {
         const existing = await warrooms.getEvents(warRoomId, lastEventId);
@@ -666,8 +690,18 @@ app.get("/games/:name/warrooms/:id/events", async (c) => {
 
       // 2. Poll for new events every 2s (Supabase Realtime not available in Edge Functions)
       let lastSeen = lastEventId || "";
+      let keepalive: ReturnType<typeof setInterval>;
       const interval = setInterval(async () => {
         try {
+          // Gracefully close before hitting Supabase wall clock limit;
+          // EventSource auto-reconnects with Last-Event-ID
+          if (Date.now() - startTime >= MAX_SSE_DURATION_MS) {
+            clearInterval(interval);
+            clearInterval(keepalive);
+            controller.close();
+            return;
+          }
+
           const newEvents = await warrooms.getEvents(warRoomId, lastSeen || undefined);
           for (const evt of newEvents) {
             const data = JSON.stringify(evt);
@@ -701,6 +735,7 @@ app.get("/games/:name/warrooms/:id/events", async (c) => {
               ),
             );
             clearInterval(interval);
+            clearInterval(keepalive);
             controller.close();
           }
         } catch {
@@ -710,7 +745,7 @@ app.get("/games/:name/warrooms/:id/events", async (c) => {
       }, 2000);
 
       // Keepalive comment every 15s to prevent proxy timeouts
-      const keepalive = setInterval(() => {
+      keepalive = setInterval(() => {
         try {
           controller.enqueue(encoder.encode(": keepalive\n\n"));
         } catch {

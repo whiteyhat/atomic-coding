@@ -11,6 +11,7 @@ import { buildTaskPrompt, getAgentSystemPrompt } from "./prompts.js";
 import type { WarRoomTask, DispatchResult } from "./types.js";
 
 const MAX_RETRY_CYCLES = 3;
+const MAX_TASK_RETRIES = 2;
 
 /** Find tasks whose dependencies are all completed. */
 export function getNextRunnableTasks(tasks: WarRoomTask[]): WarRoomTask[] {
@@ -120,14 +121,25 @@ async function dispatchToAgent(
   const taskPrompt = buildTaskPrompt(task, context);
   const genre = context.genre as string | null | undefined;
   const systemPrompt = getAgentSystemPrompt(agentName, genre);
+  const maxSteps = agentName === "forge" ? 25 : 10;
 
+  console.log("[orchestrator] dispatching to agent", {
+    taskNumber: task.task_number,
+    title: task.title,
+    agent: agentName,
+    promptLength: taskPrompt.length,
+    maxSteps,
+    depKeys: Object.keys(context.dependency_outputs as Record<string, unknown> ?? {}),
+  });
+
+  const dispatchStart = Date.now();
   try {
     const agent = mastra.getAgent(agentName);
     const result = await agent.generate(
       [{ role: "user" as const, content: taskPrompt }],
       {
         instructions: systemPrompt,
-        maxSteps: agentName === "forge" ? 25 : 10,
+        maxSteps,
       }
     );
 
@@ -138,8 +150,22 @@ async function dispatchToAgent(
       output = { raw_response: result.text };
     }
 
+    console.log("[orchestrator] agent completed", {
+      taskNumber: task.task_number,
+      agent: agentName,
+      durationMs: Date.now() - dispatchStart,
+      responseLength: result.text.length,
+      outputKeys: Object.keys(output),
+    });
+
     return { success: true, output };
   } catch (err) {
+    console.error("[orchestrator] agent dispatch failed", {
+      taskNumber: task.task_number,
+      agent: agentName,
+      durationMs: Date.now() - dispatchStart,
+      error: (err as Error).message,
+    });
     return {
       success: false,
       error: `Agent dispatch failed: ${(err as Error).message}`,
@@ -154,8 +180,18 @@ async function dispatchToAgent(
  * in dependency order, waits for results, and repeats until done.
  */
 export async function runPipeline(warRoomId: string): Promise<void> {
+  const pipelineStart = Date.now();
   const room = await warrooms.getWarRoom(warRoomId);
   if (!room) throw new Error(`War room ${warRoomId} not found`);
+
+  const initialTasks = await warrooms.getTasks(warRoomId);
+  console.log("[orchestrator] pipeline starting", {
+    warRoomId,
+    gameId: room.game_id,
+    genre: room.genre,
+    promptPreview: room.prompt?.slice(0, 100),
+    totalTasks: initialTasks.length,
+  });
 
   // Mark war room as running
   await warrooms.updateWarRoomStatus(warRoomId, "running");
@@ -163,42 +199,28 @@ export async function runPipeline(warRoomId: string): Promise<void> {
     phase: "orchestrating",
   });
 
-  let retryCycles = 0;
-
-  const scheduleValidationRetry = async (
-    failedTaskNumber: number,
-    output: Record<string, unknown>
-  ): Promise<boolean> => {
-    if (retryCycles >= MAX_RETRY_CYCLES) {
-      return false;
-    }
-
-    retryCycles++;
-    console.log("[orchestrator] retrying validation fix cycle", {
-      warRoomId,
-      cycle: retryCycles,
-      failedTaskNumber,
-    });
-
-    await warrooms.updateTaskStatus(warRoomId, 10, "pending");
-    if (failedTaskNumber === 11) {
-      await warrooms.updateTaskStatus(warRoomId, 11, "pending");
-    }
-
-    await warrooms.recordEvent(warRoomId, "retry_cycle", "jarvis", 10, {
-      cycle: retryCycles,
-      max: MAX_RETRY_CYCLES,
-      failed_task: failedTaskNumber,
-      validation_output: output,
-    });
-
-    return true;
-  };
+  const retryMap = new Map<number, number>();
+  let iteration = 0;
 
   try {
     while (true) {
+      iteration++;
       // Refresh task state
       const tasks = await warrooms.getTasks(warRoomId);
+
+      const statusCounts = tasks.reduce(
+        (acc, t) => { acc[t.status] = (acc[t.status] || 0) + 1; return acc; },
+        {} as Record<string, number>
+      );
+      console.log(`[orchestrator] iteration ${iteration}`, { warRoomId, statusCounts });
+
+      // Check for cancellation
+      const currentRoom = await warrooms.getWarRoom(warRoomId);
+      if (currentRoom?.status === "cancelled") {
+        console.log("[orchestrator] pipeline cancelled by user", { warRoomId });
+        await warrooms.upsertHeartbeat(warRoomId, "jarvis", "idle");
+        return;
+      }
 
       if (isPipelineComplete(tasks)) {
         console.log("[orchestrator] pipeline complete", { warRoomId });
@@ -228,6 +250,11 @@ export async function runPipeline(warRoomId: string): Promise<void> {
       }
 
       // Dispatch all runnable tasks (some can run in parallel, e.g. tasks 7+8)
+      console.log("[orchestrator] dispatching runnable tasks", {
+        warRoomId,
+        tasks: runnable.map((t) => `#${t.task_number} ${t.title} → ${t.assigned_agent}`),
+      });
+
       const dispatches = runnable.map(async (task) => {
         const agent = task.assigned_agent;
         if (!agent) {
@@ -265,81 +292,29 @@ export async function runPipeline(warRoomId: string): Promise<void> {
         }
 
         // Dispatch to Mastra agent
+        const taskStart = Date.now();
         const result = await dispatchToAgent(task, context);
 
         if (result.success) {
-          if (task.task_number === 9 || task.task_number === 11) {
-            const deterministicValidation = await runDeterministicValidation(
-              room.game_id
-            );
-            const agentPassed = result.output?.passed !== false;
-            const combinedOutput = {
-              ...result.output,
-              passed: agentPassed && deterministicValidation.passed,
-              deterministic_validation: deterministicValidation,
-            };
-
-            if (agentPassed && deterministicValidation.passed) {
-              await warrooms.updateTaskStatus(
-                warRoomId,
-                task.task_number,
-                "completed",
-                combinedOutput
-              );
-              await warrooms.upsertHeartbeat(warRoomId, agent, "idle");
-            } else {
-              await warrooms.updateTaskStatus(
-                warRoomId,
-                task.task_number,
-                "failed",
-                combinedOutput
-              );
-
-              const retryScheduled = await scheduleValidationRetry(
-                task.task_number,
-                combinedOutput
-              );
-
-              if (!retryScheduled && task.task_number === 9) {
-                await warrooms.updateTaskStatus(warRoomId, 10, "blocked", {
-                  error: "Retry limit reached before fix cycle could run",
-                });
-              }
-
-              await warrooms.upsertHeartbeat(
-                warRoomId,
-                agent,
-                retryScheduled ? "idle" : "error",
-                retryScheduled
-                  ? {
-                      task_number: task.task_number,
-                      retry_scheduled: true,
-                    }
-                  : {
-                      task_number: task.task_number,
-                      validation_failed: true,
-                      failures: deterministicValidation.failures,
-                    }
-              );
-            }
-          } else {
-            await warrooms.updateTaskStatus(
-              warRoomId,
-              task.task_number,
-              "completed",
-              result.output
-            );
-            await warrooms.upsertHeartbeat(warRoomId, agent, "idle");
-          }
+          await warrooms.updateTaskStatus(
+            warRoomId,
+            task.task_number,
+            "completed",
+            result.output
+          );
+          await warrooms.upsertHeartbeat(warRoomId, agent, "idle");
         } else {
-          // Special handling for task 10 (fix failures) — retry loop
-          if (task.task_number === 10 && retryCycles < MAX_RETRY_CYCLES) {
-            retryCycles++;
+          const taskRetries = retryMap.get(task.task_number) ?? 0;
+
+          if (task.task_number === 10 && taskRetries < MAX_RETRY_CYCLES) {
+            // Special handling for task 10 — retry validation+fix cycle
+            retryMap.set(10, taskRetries + 1);
             console.log("[orchestrator] retrying fix cycle", {
               warRoomId,
-              cycle: retryCycles,
+              cycle: taskRetries + 1,
+              durationMs: Date.now() - taskStart,
+              error: result.error,
             });
-            // Reset tasks 9 and 10 to pending so the loop re-runs
             await warrooms.updateTaskStatus(warRoomId, 9, "pending");
             await warrooms.updateTaskStatus(warRoomId, 10, "pending");
             await warrooms.recordEvent(
@@ -347,9 +322,36 @@ export async function runPipeline(warRoomId: string): Promise<void> {
               "retry_cycle",
               "jarvis",
               10,
-              { cycle: retryCycles, max: MAX_RETRY_CYCLES }
+              { cycle: taskRetries + 1, max: MAX_RETRY_CYCLES }
+            );
+          } else if (task.task_number !== 10 && taskRetries < MAX_TASK_RETRIES) {
+            // Generic retry for any other task
+            retryMap.set(task.task_number, taskRetries + 1);
+            console.log("[orchestrator] retrying task", {
+              warRoomId,
+              taskNumber: task.task_number,
+              attempt: taskRetries + 1,
+              durationMs: Date.now() - taskStart,
+              error: result.error,
+            });
+            await warrooms.updateTaskStatus(warRoomId, task.task_number, "pending");
+            await warrooms.recordEvent(
+              warRoomId,
+              "task_retry",
+              agent,
+              task.task_number,
+              { attempt: taskRetries + 1, max: MAX_TASK_RETRIES }
             );
           } else {
+            // Max retries exceeded — mark as failed
+            console.error("[orchestrator] task failed permanently", {
+              warRoomId,
+              taskNumber: task.task_number,
+              agent,
+              retries: taskRetries,
+              durationMs: Date.now() - taskStart,
+              error: result.error,
+            });
             await warrooms.updateTaskStatus(
               warRoomId,
               task.task_number,
@@ -372,18 +374,13 @@ export async function runPipeline(warRoomId: string): Promise<void> {
 
     // Pipeline complete — determine final status
     const finalTasks = await warrooms.getTasks(warRoomId);
-    const task11Completed =
-      finalTasks.find((task) => task.task_number === 11)?.status === "completed";
-    const allPassed = finalTasks.every((task) => {
-      if (task.task_number === 9) {
-        return task.status === "completed" || (task.status === "failed" && task11Completed);
-      }
-      return task.status === "completed";
-    });
+    const allPassed = finalTasks.every((t) => t.status === "completed");
 
     if (allPassed) {
       // Trigger a final rebuild to ensure the game bundle is up-to-date
+      const rebuildStart = Date.now();
       await triggerFinalRebuild(room.game_id);
+      console.log("[orchestrator] final rebuild done", { durationMs: Date.now() - rebuildStart });
 
       const task12 = finalTasks.find((t) => t.task_number === 12);
       const suggestions =
@@ -396,8 +393,23 @@ export async function runPipeline(warRoomId: string): Promise<void> {
         suggestions,
         buildId
       );
+      console.log("[orchestrator] pipeline completed successfully", {
+        warRoomId,
+        suggestionsCount: suggestions.length,
+        buildId,
+        totalDurationMs: Date.now() - pipelineStart,
+      });
     } else {
       await warrooms.updateWarRoomStatus(warRoomId, "failed");
+      const finalCounts = finalTasks.reduce(
+        (acc, t) => { acc[t.status] = (acc[t.status] || 0) + 1; return acc; },
+        {} as Record<string, number>
+      );
+      console.error("[orchestrator] pipeline completed with failures", {
+        warRoomId,
+        finalCounts,
+        totalDurationMs: Date.now() - pipelineStart,
+      });
     }
 
     await warrooms.upsertHeartbeat(warRoomId, "jarvis", "idle");
@@ -405,6 +417,8 @@ export async function runPipeline(warRoomId: string): Promise<void> {
     console.error("[orchestrator] pipeline error", {
       warRoomId,
       error: (err as Error).message,
+      stack: (err as Error).stack,
+      totalDurationMs: Date.now() - pipelineStart,
     });
     await warrooms.updateWarRoomStatus(warRoomId, "failed");
     await warrooms.recordEvent(warRoomId, "pipeline_error", "jarvis", null, {

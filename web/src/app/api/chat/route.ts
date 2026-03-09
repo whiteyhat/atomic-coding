@@ -14,9 +14,13 @@ import { SYSTEM_PROMPT, getGenreContext } from "@/lib/system-prompt";
 export const maxDuration = 120;
 
 export async function POST(req: Request) {
+  const reqId = Math.random().toString(36).slice(2, 8);
+  const startTime = Date.now();
+
   // Verify authentication
   const authUser = await verifyAuthToken(req);
   if (!authUser) {
+    console.warn(`[chat][${reqId}] auth failed — rejecting with 401`);
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401,
       headers: { "Content-Type": "application/json" },
@@ -28,14 +32,16 @@ export async function POST(req: Request) {
 
   const selectedModel = model ?? DEFAULT_MODEL;
 
-  console.log("[chat] POST request", {
+  console.log(`[chat][${reqId}] POST request`, {
     model: selectedModel,
     gameId,
     sessionId,
+    gameName: body.gameName,
     assetModelIds: assetModelIds ?? [],
     userId: authUser.userId,
     clientMessageCount: messages?.length ?? 0,
     useMastra: isMastraConfigured(),
+    warRoomFlag: !!body.war_room,
   });
 
   // Fetch game to get genre for system prompt context
@@ -44,8 +50,9 @@ export async function POST(req: Request) {
     try {
       const game = await getGame(body.gameName);
       genre = game?.genre ?? null;
-    } catch {
-      // Continue without genre context
+      console.log(`[chat][${reqId}] genre resolved`, { gameName: body.gameName, genre });
+    } catch (err) {
+      console.warn(`[chat][${reqId}] genre fetch failed, continuing without`, { error: (err as Error).message });
     }
   }
 
@@ -53,17 +60,20 @@ export async function POST(req: Request) {
   // When explicitly requested via war_room flag, create a war room and return
   // its ID so the frontend can switch to the war room view.
   if (body.war_room && isMastraConfigured() && body.gameName) {
-    return handleWarRoomCreation(body, gameId, genre, authUser.userId);
+    console.log(`[chat][${reqId}] routing → war room creation`);
+    return handleWarRoomCreation(body, gameId, genre, authUser.userId, reqId);
   }
 
   // ── Mastra Gateway Mode ────────────────────────────────────────────────────
   // When the Mastra server is configured, proxy through it for multi-agent.
   // Otherwise, fall back to the local Vercel AI SDK agent.
   if (isMastraConfigured()) {
-    return handleMastraProxy(body, gameId, genre, sessionId);
+    console.log(`[chat][${reqId}] routing → mastra proxy`);
+    return handleMastraProxy(body, gameId, genre, sessionId, reqId);
   }
 
   // ── Local Agent Mode (fallback) ────────────────────────────────────────────
+  console.log(`[chat][${reqId}] routing → local agent`);
 
   // Build the full conversation from DB + new client messages
   let uiMessages: UIMessage[] = messages ?? [];
@@ -88,24 +98,27 @@ export async function POST(req: Request) {
         );
 
         uiMessages = [...dbUIMessages, ...newFromClient];
-        console.log("[chat] Loaded history from DB", {
+        console.log(`[chat][${reqId}] loaded history from DB`, {
           dbCount: dbMessages.length,
           newFromClient: newFromClient.length,
           total: uiMessages.length,
         });
       }
     } catch (err) {
-      console.warn("[chat] Failed to load session history, using client messages:", err);
+      console.warn(`[chat][${reqId}] failed to load session history, using client messages`, { error: (err as Error).message });
     }
   }
 
+  const agentStart = Date.now();
   const { agent, cleanup } = await createAtomicAgent(selectedModel, gameId, genre);
-  console.log("[chat] Agent created, starting stream");
+  console.log(`[chat][${reqId}] agent created`, { durationMs: Date.now() - agentStart });
 
+  const streamStart = Date.now();
   const response = await createAgentUIStreamResponse({
     agent,
     uiMessages,
   });
+  console.log(`[chat][${reqId}] stream response created`, { messageCount: uiMessages.length, durationMs: Date.now() - streamStart });
 
   // Pipe through a pass-through so we can clean up MCP clients
   // only AFTER the stream is fully consumed by the client.
@@ -114,13 +127,15 @@ export async function POST(req: Request) {
 
   originalBody.pipeTo(transform.writable).then(
     () => {
-      console.log("[chat] Stream finished, closing MCP clients...");
-      cleanup().then(() => console.log("[chat] MCP clients closed"));
+      const totalMs = Date.now() - startTime;
+      console.log(`[chat][${reqId}] stream finished`, { totalMs });
+      cleanup().then(() => console.log(`[chat][${reqId}] MCP clients closed`));
     },
     (err: unknown) => {
-      console.error("[chat] Stream error:", err);
+      const totalMs = Date.now() - startTime;
+      console.error(`[chat][${reqId}] stream error`, { totalMs, error: err });
       cleanup().then(() =>
-        console.log("[chat] MCP clients closed after error")
+        console.log(`[chat][${reqId}] MCP clients closed after error`)
       );
     }
   );
@@ -139,7 +154,8 @@ async function handleMastraProxy(
   body: Record<string, unknown>,
   gameId: string,
   genre: string | null,
-  sessionId: string | null
+  sessionId: string | null,
+  reqId: string
 ): Promise<Response> {
   const messages = body.messages as UIMessage[] | undefined;
 
@@ -165,12 +181,15 @@ async function handleMastraProxy(
     }
   }
 
-  console.log("[chat:mastra] Proxying to Mastra server", {
+  console.log(`[chat:mastra][${reqId}] proxying to Mastra server`, {
     messageCount: mastraMessages.length,
+    systemPromptLength: mastraMessages[0]?.content?.length ?? 0,
     gameId,
     genre,
+    sessionId,
   });
 
+  const proxyStart = Date.now();
   try {
     const response = await streamMastraChat({
       messages: mastraMessages,
@@ -179,6 +198,13 @@ async function handleMastraProxy(
       genre,
       sessionId,
       assetModelIds: (body.assetModelIds as string[]) ?? [],
+    });
+
+    console.log(`[chat:mastra][${reqId}] response received`, {
+      status: response.status,
+      contentType: response.headers.get("Content-Type"),
+      hasDataStream: !!response.headers.get("x-vercel-ai-data-stream"),
+      durationMs: Date.now() - proxyStart,
     });
 
     // Forward the AI SDK protocol response with its original headers.
@@ -194,7 +220,7 @@ async function handleMastraProxy(
       },
     });
   } catch (err) {
-    console.error("[chat:mastra] Server error:", err);
+    console.error(`[chat:mastra][${reqId}] server error`, { durationMs: Date.now() - proxyStart, error: err });
     return new Response(
       JSON.stringify({
         error: err instanceof Error ? err.message : "Mastra server error",
@@ -215,7 +241,8 @@ async function handleWarRoomCreation(
   body: Record<string, unknown>,
   gameId: string,
   genre: string | null,
-  userId: string
+  userId: string,
+  reqId: string
 ): Promise<Response> {
   const messages = body.messages as { parts?: { type: string; text: string }[] }[] | undefined;
 
@@ -230,18 +257,21 @@ async function handleWarRoomCreation(
       .join("\n") ?? "";
 
   if (!prompt) {
+    console.warn(`[chat:warroom][${reqId}] no prompt found in messages`);
     return new Response(
       JSON.stringify({ error: "No prompt found in messages" }),
       { status: 400, headers: { "Content-Type": "application/json" } }
     );
   }
 
-  console.log("[chat:warroom] Creating war room", {
+  console.log(`[chat:warroom][${reqId}] creating war room`, {
     gameId,
     genre,
     promptLength: prompt.length,
+    promptPreview: prompt.slice(0, 100),
   });
 
+  const createStart = Date.now();
   try {
     const warRoom = await createWarRoom(
       body.gameName as string,
@@ -249,6 +279,11 @@ async function handleWarRoomCreation(
       userId,
       genre ?? undefined
     );
+
+    console.log(`[chat:warroom][${reqId}] war room created`, {
+      warRoomId: (warRoom as unknown as Record<string, unknown>).id,
+      durationMs: Date.now() - createStart,
+    });
 
     return new Response(
       JSON.stringify({
@@ -261,7 +296,7 @@ async function handleWarRoomCreation(
       }
     );
   } catch (err) {
-    console.error("[chat:warroom] Creation failed:", err);
+    console.error(`[chat:warroom][${reqId}] creation failed`, { durationMs: Date.now() - createStart, error: err });
     return new Response(
       JSON.stringify({
         error: err instanceof Error ? err.message : "War room creation failed",
