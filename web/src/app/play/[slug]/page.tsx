@@ -26,7 +26,7 @@ export default async function PlayPage({ params }: PlayPageProps) {
       {/* Minimal header */}
       <header className="flex items-center justify-between h-10 px-4 bg-background/80 backdrop-blur border-b shrink-0">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-bold">Buu</span>
+          <span className="text-sm font-bold">Atomic</span>
           <span className="text-sm text-muted-foreground">/</span>
           <span className="text-sm font-medium">{game.name}</span>
           {game.genre && (

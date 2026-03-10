@@ -497,7 +497,7 @@ export function buildArchitectureGraph(): ArchitectureGraphDefinition {
     id: "platform",
     kind: "platform",
     position: { x: CENTER.x - 110, y: CENTER.y - 110 },
-    label: "Buu AI Game Maker",
+    label: "Atomic Game Maker",
     description:
       "AI-native game development platform built around atom storage, multi-agent orchestration, realtime progress, and generated asset pipelines.",
     iconSrc: "/favicon.ico",

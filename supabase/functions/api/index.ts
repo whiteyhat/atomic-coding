@@ -78,7 +78,7 @@ app.route("/", openClawRouter);
 // =============================================================================
 
 app.get("/", (c) =>
-  c.json({ status: "ok", server: "buu-ai-game-maker-api", version: "3.0.0" }),
+  c.json({ status: "ok", server: "atomic-game-maker-api", version: "3.0.0" }),
 );
 
 // =============================================================================

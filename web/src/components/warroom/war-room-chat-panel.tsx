@@ -360,11 +360,13 @@ function WarRoomDraftPanel({
                   </div>
                   <Textarea
                     value={answers[question.id] ?? ""}
-                    onChange={(event) =>
+                    onChange={(event) => {
+                      const val = event.currentTarget.value;
                       setAnswers((current) => ({
                         ...current,
-                        [question.id]: event.currentTarget.value,
-                      }))
+                        [question.id]: val,
+                      }));
+                    }}
                     }
                     placeholder={question.placeholder}
                     className="mt-4 min-h-28 rounded-[1.25rem] border-white/10 bg-[#11070a]/75 px-4 py-3 text-sm leading-6 text-white placeholder:text-white/28"

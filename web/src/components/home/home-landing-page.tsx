@@ -1,17 +1,16 @@
 "use client";
 
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useCallback, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
+import { motion, useMotionValue, useSpring, useTransform } from "framer-motion";
 import type { LucideIcon } from "lucide-react";
 import {
   Activity,
   ArrowRight,
   Bot,
   Crown,
-  Gamepad2,
   Gauge,
   Globe,
   Orbit,
@@ -80,9 +79,9 @@ const engineCards: Array<{
 }> = [
   {
     eyebrow: "Describe It",
-    title: "One sentence is all it takes. Buu builds the rest.",
+    title: "One sentence is all it takes. Atomic builds the rest.",
     description:
-      "Tell Buu what kind of game you want — the genre, the vibe, the mechanics. It handles the code, the assets, and the logic so you can focus on your vision.",
+      "Tell Atomic what kind of game you want — the genre, the vibe, the mechanics. It handles the code, the assets, and the logic so you can focus on your vision.",
     icon: Sparkles,
     accent:
       "from-rose-500/28 via-orange-400/16 to-transparent",
@@ -119,7 +118,7 @@ const swarmStages: Array<{
     step: "01",
     title: "Describe your dream game",
     description:
-      "Pick the genre, set the mood, choose the mechanics. You bring the creative vision — Buu handles everything else.",
+      "Pick the genre, set the mood, choose the mechanics. You bring the creative vision — Atomic handles everything else.",
     status: "You decide",
     icon: Crown,
     tone: "text-rose-200",
@@ -209,7 +208,7 @@ const cozyMarketingScene = {
   label: "Cozy & Casual",
   title: "From peaceful farm sims to high-octane action.",
   description:
-    "Build any kind of game you can imagine. Relaxing life sims, intense shooters, puzzle adventures — Buu adapts to your creative vision.",
+    "Build any kind of game you can imagine. Relaxing life sims, intense shooters, puzzle adventures — Atomic adapts to your creative vision.",
   alt: "Original cozy farming-adventure world with crops, cabins, and warm village light.",
   aspectClassName: "aspect-[4/3]",
 };
@@ -225,7 +224,7 @@ function LivePreviewVideo() {
     >
       {shouldLoadVideo ? (
         <iframe
-          title="Buu AI Game Maker live preview"
+          title="Atomic Game Maker live preview"
           src={VIDEO_URL}
           className="absolute inset-0 size-full border-0"
           loading="lazy"
@@ -306,6 +305,235 @@ function MarketingSceneCard({
   );
 }
 
+const orbitGenres = [
+  { icon: Swords, label: "Action", color: "text-red-300", bg: "bg-red-500/15", border: "border-red-400/25", glow: "rgba(239,68,68,0.4)", radius: 90, speed: 18, startAngle: 0 },
+  { icon: Crown, label: "RPG", color: "text-amber-300", bg: "bg-amber-500/15", border: "border-amber-400/25", glow: "rgba(245,158,11,0.4)", radius: 90, speed: 18, startAngle: 120 },
+  { icon: Bot, label: "Puzzle", color: "text-cyan-300", bg: "bg-cyan-500/15", border: "border-cyan-400/25", glow: "rgba(6,182,212,0.4)", radius: 90, speed: 18, startAngle: 240 },
+  { icon: Rocket, label: "Arcade", color: "text-violet-300", bg: "bg-violet-500/15", border: "border-violet-400/25", glow: "rgba(139,92,246,0.4)", radius: 140, speed: 25, startAngle: 45 },
+  { icon: Globe, label: "Open World", color: "text-emerald-300", bg: "bg-emerald-500/15", border: "border-emerald-400/25", glow: "rgba(16,185,129,0.4)", radius: 140, speed: 25, startAngle: 165 },
+  { icon: Zap, label: "Platformer", color: "text-rose-300", bg: "bg-rose-500/15", border: "border-rose-400/25", glow: "rgba(244,63,94,0.4)", radius: 140, speed: 25, startAngle: 285 },
+];
+
+function GameUniverseOrbit() {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const mouseX = useMotionValue(0.5);
+  const mouseY = useMotionValue(0.5);
+  const isHovering = useMotionValue(0);
+
+  const springConfig = { stiffness: 150, damping: 20, mass: 0.5 };
+  const smoothX = useSpring(mouseX, springConfig);
+  const smoothY = useSpring(mouseY, springConfig);
+  const smoothHover = useSpring(isHovering, { stiffness: 300, damping: 30 });
+
+  // 3D tilt transforms
+  const rotateX = useTransform(smoothY, [0, 1], [8, -8]);
+  const rotateY = useTransform(smoothX, [0, 1], [-8, 8]);
+
+  // Glow position (percentage-based)
+  const glowX = useTransform(smoothX, [0, 1], [0, 100]);
+  const glowY = useTransform(smoothY, [0, 1], [0, 100]);
+
+  // Glow intensity on hover
+  const glowOpacity = useTransform(smoothHover, [0, 1], [0, 0.35]);
+
+  // Ring expansion on hover
+  const ringScale = useTransform(smoothHover, [0, 1], [1, 1.06]);
+
+  // Core pulse intensity on hover
+  const coreScale = useTransform(smoothHover, [0, 1], [1, 1.18]);
+  const coreShadow = useTransform(
+    smoothHover,
+    [0, 1],
+    ["0 0 60px rgba(244,63,94,0.25)", "0 0 100px rgba(244,63,94,0.55)"]
+  );
+
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      const el = containerRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      mouseX.set((e.clientX - rect.left) / rect.width);
+      mouseY.set((e.clientY - rect.top) / rect.height);
+    },
+    [mouseX, mouseY]
+  );
+
+  return (
+    <motion.section
+      ref={containerRef}
+      variants={fadeInUp}
+      className="relative mt-8 overflow-hidden rounded-[2.4rem] border border-white/8 bg-[#2a0b12]/86 p-6 shadow-[0_28px_100px_rgba(14,3,6,0.28)] md:p-8"
+      onMouseMove={handleMouseMove}
+      onMouseEnter={() => isHovering.set(1)}
+      onMouseLeave={() => {
+        isHovering.set(0);
+        mouseX.set(0.5);
+        mouseY.set(0.5);
+      }}
+      style={{ perspective: 800 }}
+    >
+      {/* Static background */}
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(244,63,94,0.12),transparent_55%)]" />
+
+      {/* Cursor-following glow */}
+      <motion.div
+        className="pointer-events-none absolute inset-0"
+        style={{
+          opacity: glowOpacity,
+          background: useTransform(
+            [glowX, glowY] as never,
+            ([x, y]: number[]) =>
+              `radial-gradient(600px circle at ${x}% ${y}%, rgba(244,63,94,0.28), rgba(34,211,238,0.12) 40%, transparent 70%)`
+          ),
+        }}
+      />
+
+      <div className="relative flex flex-col items-center gap-8 py-8 md:py-12">
+        <div className="text-center">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-rose-300/80">
+            The Game Universe
+          </p>
+          <h2 className="mt-3 text-2xl font-semibold tracking-tight text-white md:text-3xl">
+            Every genre. One engine.
+          </h2>
+        </div>
+
+        {/* Orbit system with 3D tilt */}
+        <motion.div
+          className="relative flex items-center justify-center"
+          style={{
+            width: 340,
+            height: 340,
+            rotateX,
+            rotateY,
+            transformStyle: "preserve-3d",
+          }}
+        >
+          {/* Pulse rings — expand on hover */}
+          {[0, 1, 2].map((i) => (
+            <motion.div
+              key={`ring-${i}`}
+              className="absolute rounded-full border border-white/[0.06] transition-colors duration-500 hover:border-white/[0.12]"
+              style={{
+                width: 140 + i * 100,
+                height: 140 + i * 100,
+                scale: ringScale,
+              }}
+              animate={{ opacity: [0.5, 0.9, 0.5] }}
+              transition={{ duration: 4 + i, repeat: Infinity, ease: "easeInOut", delay: i * 0.6 }}
+            />
+          ))}
+
+          {/* Dashed orbit paths */}
+          <svg className="absolute inset-0 size-full" viewBox="0 0 340 340">
+            <circle cx="170" cy="170" r="90" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="1" strokeDasharray="6 6">
+              <animateTransform attributeName="transform" type="rotate" from="0 170 170" to="360 170 170" dur="30s" repeatCount="indefinite" />
+            </circle>
+            <circle cx="170" cy="170" r="140" fill="none" stroke="rgba(255,255,255,0.04)" strokeWidth="1" strokeDasharray="4 8">
+              <animateTransform attributeName="transform" type="rotate" from="360 170 170" to="0 170 170" dur="45s" repeatCount="indefinite" />
+            </circle>
+          </svg>
+
+          {/* Center core — reacts to hover */}
+          <motion.div
+            className="absolute z-10 flex size-20 items-center justify-center rounded-full border border-rose-400/30 bg-[radial-gradient(circle,rgba(244,63,94,0.3),rgba(244,63,94,0.05)_70%)]"
+            style={{ scale: coreScale, boxShadow: coreShadow }}
+            animate={{ scale: [1, 1.08, 1] }}
+            transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+          >
+            <Sparkles className="size-7 text-rose-300" />
+            <motion.div
+              className="absolute inset-0 rounded-full border border-rose-400/20"
+              animate={{ scale: [1, 1.5, 1], opacity: [0.6, 0, 0.6] }}
+              transition={{ duration: 2.5, repeat: Infinity, ease: "easeOut" }}
+            />
+            {/* Extra hover ripple */}
+            <motion.div
+              className="absolute inset-[-8px] rounded-full border border-rose-400/10"
+              style={{ opacity: smoothHover, scale: useTransform(smoothHover, [0, 1], [0.8, 1.8]) }}
+            />
+          </motion.div>
+
+          {/* Orbiting genre icons — scale + glow on individual hover */}
+          {orbitGenres.map(({ icon: Icon, label, color, bg, border, glow, radius, speed, startAngle }) => (
+            <motion.div
+              key={label}
+              className="absolute"
+              style={{ width: 0, height: 0, left: 170, top: 170 }}
+              animate={{ rotate: 360 }}
+              transition={{ duration: speed, repeat: Infinity, ease: "linear", delay: -(startAngle / 360) * speed }}
+            >
+              <motion.div
+                className="absolute flex flex-col items-center gap-1"
+                style={{ left: radius, top: -18, transformOrigin: "center center" }}
+                animate={{ rotate: -360 }}
+                transition={{ duration: speed, repeat: Infinity, ease: "linear", delay: -(startAngle / 360) * speed }}
+              >
+                <motion.div
+                  className={`flex size-9 items-center justify-center rounded-xl border ${border} ${bg} shadow-lg backdrop-blur-sm cursor-pointer`}
+                  whileHover={{
+                    scale: 1.45,
+                    boxShadow: `0 0 24px 6px ${glow}`,
+                    transition: { duration: 0.25 },
+                  }}
+                  whileTap={{ scale: 0.9 }}
+                >
+                  <Icon className={`size-4 ${color}`} />
+                </motion.div>
+                <span className="whitespace-nowrap text-[10px] font-medium tracking-wider text-white/50">
+                  {label}
+                </span>
+              </motion.div>
+            </motion.div>
+          ))}
+
+          {/* Floating particles — more dynamic on hover */}
+          {Array.from({ length: 16 }).map((_, i) => (
+            <motion.span
+              key={`particle-${i}`}
+              className="absolute rounded-full"
+              style={{
+                width: 2 + (i % 3),
+                height: 2 + (i % 3),
+                background: i % 3 === 0 ? "rgba(251,113,133,0.6)" : i % 3 === 1 ? "rgba(34,211,238,0.5)" : "rgba(168,85,247,0.5)",
+                boxShadow: i % 3 === 0 ? "0 0 8px rgba(251,113,133,0.4)" : i % 3 === 1 ? "0 0 8px rgba(34,211,238,0.3)" : "0 0 8px rgba(168,85,247,0.3)",
+                left: 50 + (i * 19) % 240,
+                top: 40 + (i * 27) % 260,
+                scale: useTransform(smoothHover, [0, 1], [1, 1.5 + (i % 3) * 0.3]),
+              }}
+              animate={{
+                y: [0, -14 - (i % 5) * 5, 0],
+                x: [0, 8 + (i % 4) * 4, 0],
+                opacity: [0.2, 0.85, 0.2],
+              }}
+              transition={{ duration: 2.5 + (i % 4), repeat: Infinity, ease: "easeInOut", delay: i * 0.3 }}
+            />
+          ))}
+        </motion.div>
+
+        {/* Bottom stats row */}
+        <div className="relative z-10 grid w-full max-w-3xl gap-3 sm:grid-cols-3">
+          {[
+            { value: "20+", label: "Game genres supported", tone: "text-rose-200" },
+            { value: "Real-time", label: "AI-powered generation", tone: "text-cyan-200" },
+            { value: "Infinite", label: "Creative possibilities", tone: "text-violet-200" },
+          ].map((stat) => (
+            <motion.div
+              key={stat.label}
+              variants={scaleIn}
+              className="rounded-[1.5rem] border border-white/8 bg-black/30 p-4 text-center backdrop-blur-sm transition-colors duration-300 hover:border-white/16 hover:bg-black/40"
+              whileHover={{ y: -4, transition: { duration: 0.2 } }}
+            >
+              <p className={`text-xl font-semibold ${stat.tone}`}>{stat.value}</p>
+              <p className="mt-1 text-xs text-white/50">{stat.label}</p>
+            </motion.div>
+          ))}
+        </div>
+      </div>
+    </motion.section>
+  );
+}
+
 export function HomeLandingPage() {
   const router = useRouter();
   const { authenticated, ready } = useAppAuth();
@@ -358,11 +586,16 @@ export function HomeLandingPage() {
         <div className="mx-auto flex max-w-[1480px] items-center justify-between gap-4 px-4 py-4 md:px-6">
           <Link href="/" className="flex items-center gap-3">
             <div className="flex size-11 items-center justify-center rounded-2xl border border-white/10 bg-white/6 shadow-[0_16px_40px_rgba(0,0,0,0.26)]">
-              <Gamepad2 className="size-5 text-white/80" />
+              <svg className="size-5 text-white/80" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                <circle cx="12" cy="12" r="2.5" fill="currentColor" stroke="none" opacity="0.9" />
+                <ellipse cx="12" cy="12" rx="10" ry="4" />
+                <ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(60 12 12)" />
+                <ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(120 12 12)" />
+              </svg>
             </div>
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-white/40">
-                Buu AI Game Maker
+                Atomic Game Maker
               </p>
               <p className="text-base font-semibold tracking-tight text-white md:text-lg">
                 Build fast. Launch louder.
@@ -376,7 +609,7 @@ export function HomeLandingPage() {
             rel="noopener noreferrer"
             className="hidden items-center gap-2 rounded-full border border-red-500/25 bg-red-500/10 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-red-200 transition hover:bg-red-500/20 sm:inline-flex"
           >
-            <span className="size-1.5 rounded-full bg-red-400 animate-pulse" />
+            <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />
             Avalanche Build Games Submission
             <ArrowRight className="size-3" />
           </a>
@@ -412,7 +645,7 @@ export function HomeLandingPage() {
           animate="visible"
           className="mx-auto max-w-[1480px] px-4 pb-16 pt-8 md:px-6 md:pb-20 md:pt-10"
         >
-          <section className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.04fr)_minmax(0,0.96fr)]">
+          <section className="grid items-stretch gap-6 xl:grid-cols-[minmax(0,1.04fr)_minmax(0,0.96fr)]">
             <motion.div
               variants={fadeInUp}
               className="overflow-hidden rounded-[2.4rem] border border-white/8 bg-[#2a0b12]/90 p-6 shadow-[0_28px_100px_rgba(14,3,6,0.34)] md:p-8 lg:p-10"
@@ -427,7 +660,7 @@ export function HomeLandingPage() {
               </h1>
 
               <p className="mt-6 max-w-2xl text-sm leading-7 text-white/66 md:text-lg">
-                Describe the game you want to make. Buu's AI agents build it
+                Describe the game you want to make. Atomic's AI agents build it
                 in real time — code, art, logic, everything. Play it instantly,
                 tweak it with words, and publish it for the world with one click.
               </p>
@@ -438,7 +671,7 @@ export function HomeLandingPage() {
                 rel="noopener noreferrer"
                 className="mt-4 inline-flex items-center gap-2.5 rounded-full border border-red-500/20 bg-red-500/8 px-4 py-2 text-xs font-medium text-red-200/90 transition hover:bg-red-500/16"
               >
-                <span className="size-2 rounded-full bg-red-400 animate-pulse" />
+                <span className="size-2 rounded-full bg-emerald-400 animate-pulse" />
                 Built for the Avalanche Build Games Hackathon
                 <span className="text-white/40">|</span>
                 <span className="font-semibold text-red-100 underline underline-offset-2">
@@ -523,11 +756,11 @@ export function HomeLandingPage() {
 
             <motion.div
               variants={slideInRight}
-              className="relative overflow-hidden rounded-[2.4rem] border border-white/8 bg-[#2a0b12]/88 p-4 shadow-[0_28px_100px_rgba(14,3,6,0.34)] md:p-5 xl:sticky xl:top-6"
+              className="relative flex flex-col overflow-hidden rounded-[2.4rem] border border-white/8 bg-[#2a0b12]/88 p-4 shadow-[0_28px_100px_rgba(14,3,6,0.34)] md:p-5"
             >
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(244,63,94,0.2),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(34,211,238,0.14),transparent_28%),linear-gradient(180deg,rgba(255,255,255,0.04),rgba(0,0,0,0))]" />
 
-              <div className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-[#12060a]/92">
+              <div className="relative flex flex-1 flex-col overflow-hidden rounded-[2rem] border border-white/10 bg-[#12060a]/92">
                 <div
                   className="absolute inset-0 opacity-25"
                   style={{
@@ -556,7 +789,7 @@ export function HomeLandingPage() {
                   </div>
                 </div>
 
-                <div className="relative aspect-[4/3] overflow-hidden border-b border-white/10 bg-[#080204] md:aspect-[16/10]">
+                <div className="relative min-h-[280px] flex-1 overflow-hidden border-b border-white/10 bg-[#080204]">
                   <LivePreviewVideo />
                   <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(7,2,4,0.08)_0%,rgba(7,2,4,0.12)_36%,rgba(7,2,4,0.75)_100%)]" />
                   <div className="absolute inset-0 bg-[linear-gradient(transparent_0%,rgba(255,255,255,0.05)_50%,transparent_100%)] bg-[length:100%_4px] opacity-20" />
@@ -566,7 +799,7 @@ export function HomeLandingPage() {
                       Live gameplay
                     </div>
                     <div className="rounded-full border border-rose-400/24 bg-rose-400/10 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.22em] text-rose-200">
-                      Made with Buu
+                      Made with Atomic
                     </div>
                   </div>
 
@@ -618,7 +851,7 @@ export function HomeLandingPage() {
               </div>
 
               <motion.div
-                className="absolute -right-3 top-16 hidden w-56 rounded-[1.5rem] border border-white/10 bg-[#17080d]/92 p-4 shadow-[0_18px_50px_rgba(0,0,0,0.34)] xl:block"
+                className="absolute -right-3 top-44 hidden w-56 rounded-[1.5rem] border border-white/10 bg-[#17080d]/92 p-4 shadow-[0_18px_50px_rgba(0,0,0,0.34)] xl:block"
                 animate={{ y: [0, -10, 0] }}
                 transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
               >
@@ -642,7 +875,7 @@ export function HomeLandingPage() {
             <SectionHeader
               eyebrow="How It Works"
               title="From your imagination to a playable game. Effortlessly."
-              description="Buu AI Game Maker handles the entire game creation pipeline — you describe what you want, AI agents build it, and you publish it to the world. No coding required."
+              description="Atomic Game Maker handles the entire game creation pipeline — you describe what you want, AI agents build it, and you publish it to the world. No coding required."
             />
 
             <div className="mt-8 grid gap-4 lg:grid-cols-3">
@@ -682,11 +915,11 @@ export function HomeLandingPage() {
                   Any Genre
                 </p>
                 <h3 className="mt-3 text-2xl font-semibold tracking-tight text-white">
-                  Whatever game lives in your head, Buu can build it.
+                  Whatever game lives in your head, Atomic can build it.
                 </h3>
                 <p className="mt-4 text-sm leading-7 text-white/60">
                   RPGs, platformers, puzzle games, farming sims, shooters, tower
-                  defense — Buu understands dozens of game genres and adapts its
+                  defense — Atomic understands dozens of game genres and adapts its
                   AI agents to match your creative direction perfectly.
                 </p>
                 <div className="mt-5 grid gap-3 sm:grid-cols-2">
@@ -700,7 +933,7 @@ export function HomeLandingPage() {
                   <div className="rounded-[1.35rem] border border-white/8 bg-white/[0.04] p-4">
                     <p className="text-sm font-medium text-white">Smart adaptation</p>
                     <p className="mt-2 text-xs leading-6 text-white/55">
-                      Buu adjusts art style, game mechanics, and UI to match the
+                      Atomic adjusts art style, game mechanics, and UI to match the
                       genre you choose — automatically.
                     </p>
                   </div>
@@ -718,7 +951,7 @@ export function HomeLandingPage() {
               <SectionHeader
                 eyebrow="AI Agents"
                 title="A team of AI specialists, working together on your game."
-                description="Buu doesn't use one AI — it deploys a team. Art agents, code agents, and logic agents collaborate in real time to bring your game to life faster than you thought possible."
+                description="Atomic doesn't use one AI — it deploys a team. Art agents, code agents, and logic agents collaborate in real time to bring your game to life faster than you thought possible."
               />
 
               <div className="mt-8 grid gap-3">
@@ -821,16 +1054,13 @@ export function HomeLandingPage() {
               </div>
 
               <div className="mt-8 space-y-4">
-                {swarmStages.map(({ step, title, description, status, icon: Icon, tone }) => (
+                {swarmStages.map(({ step, title, description, status }) => (
                   <motion.div
                     key={step}
                     variants={fadeInUp}
                     className="grid gap-4 rounded-[1.75rem] border border-white/8 bg-black/22 p-4 md:grid-cols-[84px_minmax(0,1fr)_auto] md:items-center"
                   >
-                    <div className="flex items-center gap-3">
-                      <div className="flex size-11 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.05]">
-                        <Icon className={`size-4 ${tone}`} />
-                      </div>
+                    <div>
                       <div>
                         <p className="text-[11px] uppercase tracking-[0.28em] text-white/38">
                           Stage
@@ -857,6 +1087,9 @@ export function HomeLandingPage() {
             </div>
           </motion.section>
 
+          {/* ── Game Universe Orbit ── */}
+          <GameUniverseOrbit />
+
           <motion.section
             id="launch-stack"
             variants={fadeInUp}
@@ -865,7 +1098,7 @@ export function HomeLandingPage() {
             <div className="rounded-[2.4rem] border border-white/8 bg-[#2a0b12]/86 p-6 shadow-[0_28px_100px_rgba(14,3,6,0.28)] md:p-8">
               <SectionHeader
                 eyebrow="Publish & Grow"
-                title="Your game deserves an audience. Buu gets it there."
+                title="Your game deserves an audience. Atomic gets it there."
                 description="Publishing isn't an afterthought — it's built into every step. Go from private creation to public game with a single click, and use built-in tools to grow your player base."
               />
 
@@ -948,7 +1181,7 @@ export function HomeLandingPage() {
                     </p>
                     <p className="mt-3 text-sm leading-7 text-white/58">
                       Start with one game. Build a catalog. Grow an audience.
-                      Buu gives you the tools to go from hobbyist to game studio
+                      Atomic gives you the tools to go from hobbyist to game studio
                       — all on one platform.
                     </p>
                   </div>

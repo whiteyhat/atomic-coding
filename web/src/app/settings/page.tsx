@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { SettingsShell } from "@/components/settings/settings-shell";
 
 export const metadata: Metadata = {
-  title: "Settings | Buu AI Game Maker",
+  title: "Settings | Atomic Game Maker",
   description: "Manage your creator profile and review platform runtime details.",
 };
 

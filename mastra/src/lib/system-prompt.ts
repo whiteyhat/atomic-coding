@@ -128,7 +128,7 @@ ${runtimeContext}`;
   return `${genre ? GENRE_CONTEXT[genre] || "" : ""}${runtimeContext}`;
 }
 
-export const SYSTEM_PROMPT = `You build games using the **Buu AI Game Maker** platform. Code lives as **atoms** (small JS functions, max 2KB) managed via tools, not in files.
+export const SYSTEM_PROMPT = `You build games using the **Atomic Game Maker** platform. Code lives as **atoms** (small JS functions, max 2KB) managed via tools, not in files.
 
 ## Workflow
 

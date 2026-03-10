@@ -32,7 +32,7 @@ export function LoginPageClient({ redirectTo }: { redirectTo: string }) {
       <div className="mx-auto max-w-sm space-y-8 text-center">
         <div className="space-y-2">
           <h1 className="text-3xl font-bold tracking-tight">
-            Buu AI Game Maker
+            Atomic Game Maker
           </h1>
           <p className="text-muted-foreground">
             Build Phaser and Three.js games with AI agents

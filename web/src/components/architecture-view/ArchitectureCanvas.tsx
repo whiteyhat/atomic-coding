@@ -169,7 +169,7 @@ export function ArchitectureCanvas({
           Static system map
         </span>
         <span className="text-xs text-white/40">
-          Buu core, 4 agents, curated service fan-out
+          Atomic core, 4 agents, curated service fan-out
         </span>
       </div>
     </div>

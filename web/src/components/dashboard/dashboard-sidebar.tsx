@@ -20,6 +20,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { PlatformAidSidebarTrigger } from "@/components/platform-aid/platform-aid-provider";
 
 const navItems = [
   { icon: Home, label: "Home", id: "home", href: "/dashboard" },
@@ -128,9 +129,8 @@ export function DashboardSidebar({
           })}
         </motion.nav>
 
-        {/* Bottom create button */}
-        {onCreateClick ? (
-          <div className="flex items-center justify-center pb-2">
+        <div className="flex flex-col items-center gap-3 pb-2">
+          {onCreateClick ? (
             <Tooltip>
               <TooltipTrigger asChild>
                 <motion.button
@@ -151,8 +151,23 @@ export function DashboardSidebar({
                 Create
               </TooltipContent>
             </Tooltip>
-          </div>
-        ) : null}
+          ) : null}
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div>
+                <PlatformAidSidebarTrigger />
+              </div>
+            </TooltipTrigger>
+            <TooltipContent
+              side="right"
+              sideOffset={14}
+              className="rounded-xl border border-cyan-300/15 bg-[#1a0a0e]/95 px-3.5 py-2 text-[13px] font-medium tracking-wide text-cyan-100 shadow-[0_8px_30px_rgba(0,0,0,0.5),0_0_15px_rgba(34,211,238,0.12)] backdrop-blur-xl"
+            >
+              Buu Guide
+            </TooltipContent>
+          </Tooltip>
+        </div>
       </motion.aside>
     </TooltipProvider>
   );

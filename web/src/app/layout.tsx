@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { PlatformAidProvider } from "@/components/platform-aid/platform-aid-provider";
 import { PrivyProvider } from "@/lib/privy-provider";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { SWRProvider } from "@/lib/swr-provider";
@@ -17,7 +18,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Buu AI Game Maker",
+  title: "Atomic Game Maker",
   description: "Build Phaser and Three.js games with AI agents",
 };
 
@@ -34,7 +35,9 @@ export default function RootLayout({
         <PrivyProvider>
           <SWRProvider>
             <TooltipProvider delayDuration={200}>
-              <ErrorBoundary>{children}</ErrorBoundary>
+              <PlatformAidProvider>
+                <ErrorBoundary>{children}</ErrorBoundary>
+              </PlatformAidProvider>
             </TooltipProvider>
           </SWRProvider>
         </PrivyProvider>

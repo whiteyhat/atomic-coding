@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useDeferredValue, useMemo } from "react";
+import { useEffect, useState, useDeferredValue, useMemo } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import { motion } from "framer-motion";
 import {
@@ -39,6 +40,9 @@ async function fetchTokensForGames(
 }
 
 export function DashboardShell() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [search, setSearch] = useState("");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [initialGenre, setInitialGenre] = useState<string | null>(null);
@@ -85,6 +89,14 @@ export function DashboardShell() {
     setInitialGenre(nextGenre ?? null);
     setIsCreateOpen(true);
   }
+
+  useEffect(() => {
+    if (searchParams.get("aid") !== "create") return;
+
+    setInitialGenre(null);
+    setIsCreateOpen(true);
+    router.replace(pathname, { scroll: false });
+  }, [pathname, router, searchParams]);
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,#3a1a1f_0%,#1b0b0f_50%,#0f0508_100%)] px-3 py-4 text-stone-50 md:px-5 md:py-5">

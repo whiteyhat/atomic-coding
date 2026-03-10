@@ -7,7 +7,7 @@ import type {
 const mockProfile = {
   id: "did:mock:nikitin-001",
   displayName: "NIKITIN",
-  email: "nikitin@buuai.com",
+  email: "nikitin@atomicgamemaker.com",
   walletAddress: "0x7a3b...9f2e",
   avatarUrl: null,
 };

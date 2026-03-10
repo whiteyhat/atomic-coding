@@ -1,6 +1,6 @@
 // ── API ───────────────────────────────────────────────────────────────────────
 
-export const APP_NAME = "Buu AI Game Maker";
+export const APP_NAME = "Atomic Game Maker";
 export const APP_DESCRIPTION = "Build Phaser and Three.js games with AI agents";
 export const GITHUB_REPO_URL = "https://github.com/Buu-AI/atomic-coding";
 export const ARCHITECTURE_DOC_URL = `${GITHUB_REPO_URL}/blob/master/docs/system-architecture.md`;

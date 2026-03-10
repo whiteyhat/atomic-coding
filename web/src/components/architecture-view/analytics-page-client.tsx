@@ -140,7 +140,7 @@ export function AnalyticsPageClient() {
                     </div>
                     <div>
                       <h1 className="text-xl font-semibold tracking-tight text-white md:text-[1.7rem]">
-                        Buu AI Game Maker architecture
+                        Atomic Game Maker architecture
                       </h1>
                       <p className="mt-1 max-w-3xl text-[13px] leading-5.5 text-white/58">
                         Static system map of the platform core, the four live Mastra agents,
