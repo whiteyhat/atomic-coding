@@ -78,20 +78,21 @@ export function GameWorkspace({
   const [tab, setTab] = useState<SidebarTab>("chat");
   const [visitedTabs, setVisitedTabs] = useState<Set<SidebarTab>>(new Set(["chat"]));
   const [activeTarget, setActiveTarget] = useState<ActiveWorkspaceTarget | null>(null);
-  const [sidebarWidth, setSidebarWidth] = useState(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("workspace-sidebar-width");
-      return saved ? Math.min(Math.max(Number(saved), 420), 780) : 520;
-    }
-    return 520;
-  });
+  const [sidebarWidth, setSidebarWidth] = useState(520);
   const [isResizing, setIsResizing] = useState(false);
-  const [isWorkstreamCollapsed, setIsWorkstreamCollapsed] = useState(() => {
-    if (typeof window !== "undefined") {
-      return localStorage.getItem("workspace-workstream-collapsed") === "true";
+  const [isWorkstreamCollapsed, setIsWorkstreamCollapsed] = useState(true);
+
+  // Hydrate from localStorage after mount to avoid SSR mismatch
+  useEffect(() => {
+    const savedWidth = localStorage.getItem("workspace-sidebar-width");
+    if (savedWidth) {
+      setSidebarWidth(Math.min(Math.max(Number(savedWidth), 420), 780));
     }
-    return true;
-  });
+    const savedCollapsed = localStorage.getItem("workspace-workstream-collapsed");
+    if (savedCollapsed !== null) {
+      setIsWorkstreamCollapsed(savedCollapsed === "true");
+    }
+  }, []);
 
   const {
     data: chatSessions = [],

@@ -59,7 +59,7 @@ export function DashboardTokenFeed({ items }: { items: TokenActivityItem[] }) {
     <motion.section variants={fadeInUp} initial="hidden" animate="visible" className="relative select-none">
       <div className="mb-4 flex items-center justify-between px-1">
         <div className="flex items-center gap-3">
-          <h2 className="text-xl font-semibold text-white/40">Token Activity Feed</h2>
+          <h2 className="text-xl font-semibold text-white/40">Games Graduating Soon</h2>
           <span className="rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-white/50">
             Coming Soon
           </span>

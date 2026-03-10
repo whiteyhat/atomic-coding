@@ -39,6 +39,44 @@ This game is grid-based building with resource management. Key boilerplate atoms
 - \`score_tracker\`: Tracks score and reports via postMessage
 Focus on: building types, resource gathering, workers, enemy waves.`,
 
+  "top-down-shooter": `
+## Genre: Top-Down Shooter
+This game is a 2D arena shooter with 360-degree movement and aiming. Key boilerplate atoms:
+- \`bullet_manager\`: Fires and updates bullet pool toward mouse target
+- \`wave_spawner\`: Spawns enemies at screen edges, moves them toward player
+- \`score_tracker\`: Tracks score and reports via postMessage
+Focus on: movement feel, weapon variety, enemy patterns, screen shake, particle effects.`,
+
+  "puzzle-match": `
+## Genre: Puzzle Match
+This game is a grid-based tile-matching puzzle. Key boilerplate atoms:
+- \`match_checker\`: Scans grid for 3+ matches, clears and cascades
+- \`score_tracker\`: Tracks score and reports via postMessage
+Focus on: swap animations, cascade chains, special tiles, move limits, combo multipliers.`,
+
+  "tower-defense-2d": `
+## Genre: Tower Defense
+This game is a path-based tower defense with wave spawning. Key boilerplate atoms:
+- \`tower_placer\`: Places towers on valid grid slots with range/damage
+- \`enemy_marcher\`: Moves enemies along waypoints, handles damage and removal
+- \`score_tracker\`: Tracks score and reports via postMessage
+Focus on: tower types, upgrade paths, wave pacing, enemy variety, projectile visuals.`,
+
+  "endless-runner": `
+## Genre: Endless Runner
+This game is an auto-scrolling obstacle dodger with increasing speed. Key boilerplate atoms:
+- \`obstacle_spawner\`: Spawns and scrolls obstacles, checks collisions
+- \`score_tracker\`: Tracks score and reports via postMessage
+Focus on: jump timing, obstacle variety, speed curves, pickups, visual polish.`,
+
+  "top-down-rpg": `
+## Genre: Top-Down RPG
+This game is a tile-based exploration RPG with NPC interaction. Key boilerplate atoms:
+- \`tile_movement\`: Grid-snapped movement with collision checking
+- \`dialog_system\`: Show/hide/advance text dialog boxes
+- \`score_tracker\`: Tracks score and reports via postMessage
+Focus on: map design, NPC dialog trees, item collection, area transitions, simple combat.`,
+
   custom: `
 ## Genre: Custom
 This is a blank Three.js canvas. The user wants to build something from scratch.
@@ -122,6 +160,59 @@ This game is a 2D platformer built for Phaser. Key boilerplate atoms:
 - \`camera_follow\`: Smooth side-scrolling camera tracking
 - \`score_tracker\`: Tracks score and reports via postMessage
 Focus on: readable sprite motion, jump timing, collectibles, hazards, and screen-space clarity.
+${runtimeContext}`;
+  }
+
+  if (genre === "top-down-shooter" && gameFormat === "2d") {
+    return `
+## Genre: Top-Down Shooter
+This game is a 2D arena shooter built for Phaser with 8-directional movement and mouse aiming. Key boilerplate atoms:
+- \`bullet_manager\`: Fires and updates bullet pool toward mouse target angle
+- \`wave_spawner\`: Spawns enemies at screen edges, moves them toward player
+- \`score_tracker\`: Tracks score and reports via postMessage
+Focus on: responsive movement, weapon variety, enemy patterns, screen shake, particle effects.
+${runtimeContext}`;
+  }
+
+  if (genre === "puzzle-match" && gameFormat === "2d") {
+    return `
+## Genre: Puzzle Match
+This game is a 2D grid-based tile-matching puzzle built for Phaser. Key boilerplate atoms:
+- \`match_checker\`: Scans grid for 3+ horizontal/vertical matches, clears and refills
+- \`score_tracker\`: Tracks score and reports via postMessage
+Focus on: smooth swap/cascade tweens, special tiles, combo multipliers, move limits, and game-over logic.
+${runtimeContext}`;
+  }
+
+  if (genre === "tower-defense-2d" && gameFormat === "2d") {
+    return `
+## Genre: Tower Defense
+This game is a 2D path-based tower defense built for Phaser. Key boilerplate atoms:
+- \`tower_placer\`: Places towers on valid grid slots with range and damage stats
+- \`enemy_marcher\`: Moves enemies along path waypoints, handles damage and removal
+- \`score_tracker\`: Tracks score and reports via postMessage
+Focus on: tower types with unique attacks, wave pacing, upgrade paths, currency system, projectile visuals.
+${runtimeContext}`;
+  }
+
+  if (genre === "endless-runner" && gameFormat === "2d") {
+    return `
+## Genre: Endless Runner
+This game is a 2D auto-scrolling runner built for Phaser. Key boilerplate atoms:
+- \`obstacle_spawner\`: Spawns obstacles from right edge, scrolls left, checks collision
+- \`score_tracker\`: Tracks score (distance-based) and reports via postMessage
+Focus on: jump timing, obstacle variety, speed ramp, pickups/coins, parallax backgrounds, game-over/restart.
+${runtimeContext}`;
+  }
+
+  if (genre === "top-down-rpg" && gameFormat === "2d") {
+    return `
+## Genre: Top-Down RPG
+This game is a 2D tile-based exploration RPG built for Phaser. Key boilerplate atoms:
+- \`tile_movement\`: Grid-snapped WASD movement with collision checking
+- \`dialog_system\`: Show/hide text dialog boxes for NPC interaction
+- \`score_tracker\`: Tracks score and reports via postMessage
+Focus on: map design, NPC dialog trees, item collection, area transitions, and simple turn-based combat.
 ${runtimeContext}`;
   }
 

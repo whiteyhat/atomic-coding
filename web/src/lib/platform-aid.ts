@@ -61,8 +61,8 @@ export type PlatformAidEvent =
   | PlatformAidDoneEvent
   | PlatformAidErrorEvent;
 
-export const PLATFORM_AID_SESSION_KEY = "buu_platform_aid_session";
-export const PLATFORM_AID_OPENED_KEY = "buu_platform_aid_opened";
+export const PLATFORM_AID_SESSION_KEY = "atomic_aid_session";
+export const PLATFORM_AID_OPENED_KEY = "atomic_aid_opened";
 
 const PAGE_SUGGESTIONS: Record<PlatformAidPageId, string[]> = {
   dashboard: [
@@ -113,7 +113,8 @@ export function isPlatformAidRoute(pathname: string): boolean {
     pathname.startsWith("/analytics") ||
     pathname.startsWith("/library") ||
     pathname.startsWith("/settings") ||
-    pathname.startsWith("/openclaw")
+    pathname.startsWith("/games/") ||
+    pathname === "/openclaw"
   );
 }
 
@@ -121,7 +122,7 @@ export function getPlatformAidPageId(pathname: string): PlatformAidPageId {
   if (pathname.startsWith("/analytics")) return "analytics";
   if (pathname.startsWith("/library")) return "library";
   if (pathname.startsWith("/settings")) return "settings";
-  if (pathname.startsWith("/openclaw")) return "openclaw";
+  if (pathname === "/openclaw") return "openclaw";
   if (pathname.startsWith("/dashboard")) return "dashboard";
   return "other";
 }
@@ -193,15 +194,15 @@ export function getPlatformAidIntro(
 
   switch (pageId) {
     case "analytics":
-      return `${namePrefix}Buu Guide is online. I can explain the architecture view, Mastra, MCP tools, and how the platform fits together.`;
+      return `${namePrefix}Atomic Aid Agent is online. I can explain the architecture view, Mastra, MCP tools, and how the platform fits together.`;
     case "library":
-      return `${namePrefix}Buu Guide is online. I can help with game management, publishing, and getting back into the right workspace fast.`;
+      return `${namePrefix}Atomic Aid Agent is online. I can help with game management, publishing, and getting back into the right workspace fast.`;
     case "settings":
-      return `${namePrefix}Buu Guide is online. I can explain profile settings, runtime health, and where account-level controls live.`;
+      return `${namePrefix}Atomic Aid Agent is online. I can explain profile settings, runtime health, and where account-level controls live.`;
     case "openclaw":
-      return `${namePrefix}Buu Guide is online. I can walk you through OpenClaw import, claim flow, API keys, webhooks, and connection health.`;
+      return `${namePrefix}Atomic Aid Agent is online. I can walk you through OpenClaw import, claim flow, API keys, webhooks, and connection health.`;
     default:
-      return `${namePrefix}Buu Guide is online. I can help you start your first game, navigate the platform, and understand what to do next.`;
+      return `${namePrefix}Atomic Aid Agent is online. I can help you start your first game, navigate the platform, and understand what to do next.`;
   }
 }
 

@@ -202,8 +202,9 @@ export function WarRoomPanel({
 
   return (
     <div className="flex h-full flex-col bg-[radial-gradient(circle_at_top,#45131d_0%,#1a090d_52%,#0d0406_100%)]">
-      <div className="shrink-0 border-b border-white/8 px-5 py-4">
-        <div className="overflow-hidden rounded-[1.8rem] border border-white/10 bg-[linear-gradient(155deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] p-5 shadow-[0_22px_60px_rgba(0,0,0,0.32)]">
+      <ScrollArea className="flex-1 min-h-0">
+        <div className="space-y-4 px-5 py-5">
+          <div className="overflow-hidden rounded-[1.8rem] border border-white/10 bg-[linear-gradient(155deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] p-5 shadow-[0_22px_60px_rgba(0,0,0,0.32)]">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
               <div className="flex items-center gap-3">
@@ -311,10 +312,6 @@ export function WarRoomPanel({
             </div>
           </div>
         </div>
-      </div>
-
-      <ScrollArea className="flex-1 min-h-0">
-        <div className="space-y-4 px-5 py-5">
           <div className="rounded-[1.7rem] border border-white/8 bg-black/20 p-4">
             <div className="mb-4 flex items-center justify-between gap-3">
               <div>

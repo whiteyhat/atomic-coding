@@ -75,6 +75,31 @@ export const saveMessagesSchema = z.object({
   messages: z.array(z.record(z.unknown())).min(1).max(200),
 });
 
+export const platformAidChatSchema = z.object({
+  message: z.string().min(1).max(2000),
+  sessionId: z.string().min(1).max(200),
+  history: z
+    .array(
+      z.object({
+        role: z.enum(["user", "assistant"]),
+        content: z.string().min(1).max(2000),
+      }),
+    )
+    .max(16)
+    .optional(),
+  clientContext: z.object({
+    pathname: z.string().min(1).max(500),
+    pageId: z.enum([
+      "dashboard",
+      "analytics",
+      "library",
+      "settings",
+      "openclaw",
+      "other",
+    ]),
+  }),
+});
+
 // =============================================================================
 // War Rooms
 // =============================================================================

@@ -12,15 +12,14 @@ import {
 } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  Atom,
   ArrowUpRight,
-  Bot,
   Loader2,
   Send,
   Sparkles,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { API_BASE } from "@/lib/constants";
 import { useAppAuth } from "@/lib/privy-provider";
 import {
@@ -65,6 +64,12 @@ type PlatformAidMessage =
       kind: PlatformAidContextKind;
       data: unknown;
     };
+
+interface DesktopPanelMetrics {
+  bottom: number;
+  left: number;
+  top: number;
+}
 
 interface PlatformAidContextValue {
   available: boolean;
@@ -196,6 +201,38 @@ function getTraceTone(trace: PlatformAidTraceEvent): string {
   return "border-sky-400/20 bg-sky-400/10 text-sky-100";
 }
 
+function getDesktopPanelMetrics(): DesktopPanelMetrics | null {
+  if (typeof window === "undefined") return null;
+
+  const sidebar = document.querySelector<HTMLElement>(
+    "[data-platform-aid-sidebar]",
+  );
+  if (!sidebar) return null;
+
+  const rect = sidebar.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) return null;
+
+  return {
+    left: Math.max(16, rect.right + 40),
+    top: Math.max(16, rect.top),
+    bottom: Math.max(16, window.innerHeight - rect.bottom),
+  };
+}
+
+function SpeechBubble({ onDismiss }: { onDismiss: () => void }) {
+  return (
+    <div
+      className="absolute -top-16 left-3 animate-[bubble-pop_0.4s_ease-out] cursor-pointer whitespace-nowrap rounded-[1.2rem] border-2 border-cyan-200/40 bg-white px-3.5 py-2 text-[11px] font-bold tracking-wide text-slate-900 shadow-[3px_3px_0px_rgba(0,0,0,0.25)] transition-transform hover:scale-105"
+      style={{ fontFamily: "'Comic Sans MS', 'Chalkboard SE', cursive" }}
+      onClick={onDismiss}
+    >
+      Hey pal! Drop me a message!
+      <div className="absolute -bottom-2 left-4 size-0 border-x-[7px] border-t-[9px] border-x-transparent border-t-white drop-shadow-[2px_2px_0px_rgba(0,0,0,0.18)]" />
+      <div className="absolute -bottom-[11px] left-[15px] size-0 border-x-[8px] border-t-[10px] border-x-transparent border-t-cyan-200/40" />
+    </div>
+  );
+}
+
 function TriggerButton({
   className,
   isFloating = false,
@@ -204,13 +241,22 @@ function TriggerButton({
   isFloating?: boolean;
 }) {
   const { available, hasBeenOpened, open, toggle } = usePlatformAid();
+  const [bubbleDismissed, setBubbleDismissed] = useState(false);
 
   if (!available) return null;
 
   const pulsing = !hasBeenOpened;
+  const showBubble = pulsing && !open && !bubbleDismissed;
+
+  function handleToggle() {
+    setBubbleDismissed(true);
+    toggle();
+  }
 
   return (
-    <div className={cn("relative", className)}>
+    <div className={cn("relative", className, !isFloating && "z-[61]")}>
+      {showBubble ? <SpeechBubble onDismiss={handleToggle} /> : null}
+
       {pulsing ? (
         <div
           className={cn(
@@ -221,25 +267,25 @@ function TriggerButton({
         />
       ) : null}
 
-      {pulsing && !isFloating ? (
-        <div className="pointer-events-none absolute right-full mr-3 top-1/2 -translate-y-1/2 whitespace-nowrap rounded-full border border-cyan-300/20 bg-[#140a0d]/95 px-3 py-1.5 text-[11px] font-medium text-cyan-100 shadow-[0_10px_35px_rgba(10,132,255,0.18)]">
-          Ask Buu Guide
-        </div>
-      ) : null}
-
       <button
         type="button"
-        onClick={toggle}
-        aria-label={open ? "Close Buu Guide" : "Open Buu Guide"}
+        onClick={handleToggle}
+        aria-label={open ? "Close Atomic Aid Agent" : "Open Atomic Aid Agent"}
         className={cn(
-          "relative flex items-center justify-center rounded-full border text-white transition-all duration-200",
+          "relative flex items-center justify-center rounded-[1.1rem] border transition-all duration-200",
           open
-            ? "border-cyan-300/35 bg-cyan-400/18 shadow-[0_0_18px_rgba(34,211,238,0.24)]"
-            : "border-white/12 bg-white/8 hover:border-white/28 hover:bg-white/12",
-          isFloating ? "size-12" : "size-11",
+            ? "border-cyan-300/35 bg-cyan-400/14 text-cyan-100 shadow-[0_0_18px_rgba(34,211,238,0.2)]"
+            : "border-white/12 bg-white/[0.04] text-white/65 hover:border-white/24 hover:bg-white/[0.08] hover:text-white",
+          isFloating ? "size-11" : "size-10",
+          pulsing && !open && "animate-pulse",
         )}
       >
-        {open ? <X className="size-4.5" /> : <Bot className="size-4.5" />}
+        <Atom
+          className={cn(
+            "size-4 transition-transform duration-300",
+            open ? "rotate-90" : "rotate-0",
+          )}
+        />
       </button>
     </div>
   );
@@ -259,6 +305,7 @@ function PlatformAidMobileTrigger() {
 
 function PlatformAidSidebarPanel({
   actions,
+  desktopPanelMetrics,
   input,
   messages,
   onAction,
@@ -269,6 +316,7 @@ function PlatformAidSidebarPanel({
   suggestions,
 }: {
   actions: PlatformAidAction[];
+  desktopPanelMetrics: DesktopPanelMetrics | null;
   input: string;
   messages: PlatformAidMessage[];
   onAction: (href: string) => void;
@@ -299,30 +347,41 @@ function PlatformAidSidebarPanel({
     void onSubmit(input);
   }
 
+  const desktopPanelStyle = desktopPanelMetrics
+    ? {
+        left: `${desktopPanelMetrics.left}px`,
+        top: `${desktopPanelMetrics.top}px`,
+        bottom: `${desktopPanelMetrics.bottom}px`,
+      }
+    : undefined;
+
   return (
     <>
       <button
         type="button"
-        aria-label="Close Buu Guide"
+        aria-label="Close Atomic Aid Agent"
         className={cn(
           "fixed inset-0 z-[59] bg-black/55 transition-opacity duration-200",
+          desktopPanelMetrics ? "lg:rounded-[2rem] lg:bg-black/42" : "",
           open ? "opacity-100" : "pointer-events-none opacity-0",
         )}
+        style={desktopPanelStyle}
         onClick={onClose}
       />
 
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-[60] flex w-full max-w-[420px] flex-col border-r border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.12),transparent_38%),radial-gradient(circle_at_bottom_right,rgba(244,63,94,0.12),transparent_42%),linear-gradient(180deg,#12070a_0%,#1a0b10_45%,#10060a_100%)] shadow-[0_24px_90px_rgba(0,0,0,0.45)] transition-transform duration-300 md:max-w-[440px] lg:left-[108px] lg:top-4 lg:bottom-4 lg:rounded-[2rem] lg:border lg:border-white/8",
-          open ? "translate-x-0" : "-translate-x-full",
+          "fixed inset-y-0 left-0 z-[60] flex w-full max-w-[420px] flex-col border-r border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.12),transparent_38%),radial-gradient(circle_at_bottom_right,rgba(244,63,94,0.12),transparent_42%),linear-gradient(180deg,#12070a_0%,#1a0b10_45%,#10060a_100%)] shadow-[0_24px_90px_rgba(0,0,0,0.45)] transition-transform duration-300 md:max-w-[440px] lg:rounded-[2rem] lg:border lg:border-white/8",
+          open ? "translate-x-0" : "-translate-x-[200%]",
         )}
+        style={desktopPanelStyle}
       >
         <div className="border-b border-white/8 px-5 py-4">
           <div className="flex items-start justify-between gap-3">
             <div>
               <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.22em] text-cyan-100/70">
                 <Sparkles className="size-3.5" />
-                Buu Guide
+                Atomic Aid Agent
               </div>
               <h2 className="mt-2 text-xl font-semibold text-white">
                 Platform aid
@@ -464,19 +523,16 @@ function PlatformAidSidebarPanel({
           </div>
 
           <div className="rounded-[1.4rem] border border-white/10 bg-black/15 p-3">
-            <Textarea
+            <textarea
               ref={textareaRef}
               value={input}
               onChange={(event) => onInputChange(event.target.value)}
               onKeyDown={handleKeyDown}
               rows={3}
               placeholder="Ask about the platform, onboarding, publishing, OpenClaw, or where something lives."
-              className="min-h-[92px] resize-none border-0 bg-transparent px-0 py-0 text-sm text-white placeholder:text-white/30 focus-visible:ring-0"
+              className="min-h-[92px] w-full resize-none border-0 bg-transparent px-0 py-0 text-sm text-white outline-none placeholder:text-white/30"
             />
-            <div className="mt-3 flex items-center justify-between gap-3">
-              <p className="text-[11px] text-white/35">
-                60-word max. Platform scope only.
-              </p>
+            <div className="mt-3 flex items-center justify-end gap-3">
               <Button
                 type="button"
                 onClick={() => void onSubmit(input)}
@@ -519,6 +575,8 @@ export function PlatformAidProvider({
   );
   const [sessionId, setSessionId] = useState("");
   const [hasBeenOpened, setHasBeenOpenedState] = useState(false);
+  const [desktopPanelMetrics, setDesktopPanelMetrics] =
+    useState<DesktopPanelMetrics | null>(null);
 
   const currentAgentMessageIdRef = useRef<number | null>(null);
   const activeTraceIdsRef = useRef<Record<string, number>>({});
@@ -535,8 +593,27 @@ export function PlatformAidProvider({
   useEffect(() => {
     if (!available) {
       setOpen(false);
+      setDesktopPanelMetrics(null);
     }
   }, [available]);
+
+  useEffect(() => {
+    if (!available || typeof window === "undefined") return;
+
+    const frameId = window.requestAnimationFrame(() => {
+      setDesktopPanelMetrics(getDesktopPanelMetrics());
+    });
+
+    const handleResize = () => {
+      setDesktopPanelMetrics(getDesktopPanelMetrics());
+    };
+
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.removeEventListener("resize", handleResize);
+    };
+  }, [available, pathname]);
 
   useEffect(() => {
     setSuggestions((current) =>
@@ -675,7 +752,7 @@ export function PlatformAidProvider({
               message.id === currentAgentMessageIdRef.current
                 ? {
                     ...message,
-                    text: rawEvent.reply ?? message.text,
+                    text: rawEvent.reply || message.text,
                     latencyMs: rawEvent.latencyMs,
                     model: rawEvent.model,
                   }
@@ -686,12 +763,13 @@ export function PlatformAidProvider({
         }
 
         if (rawEvent.reply) {
+          const reply = rawEvent.reply;
           setMessages((current) => [
             ...current,
             {
               id: getNextMessageId(),
               role: "agent",
-              text: rawEvent.reply,
+              text: reply,
               latencyMs: rawEvent.latencyMs,
               model: rawEvent.model,
             },
@@ -709,7 +787,7 @@ export function PlatformAidProvider({
           role: "agent",
           text:
             rawEvent.error ??
-            "Buu Guide is temporarily unavailable. Try again shortly.",
+            "Atomic Aid Agent is temporarily unavailable. Try again shortly.",
         },
       ]);
     },
@@ -826,7 +904,7 @@ export function PlatformAidProvider({
             text:
               error instanceof Error
                 ? error.message
-                : "Buu Guide is temporarily unavailable. Try again shortly.",
+                : "Atomic Aid Agent is temporarily unavailable. Try again shortly.",
           },
         ]);
       }
@@ -901,6 +979,7 @@ export function PlatformAidProvider({
       {available ? (
         <PlatformAidSidebarPanel
           actions={actions}
+          desktopPanelMetrics={desktopPanelMetrics}
           input={input}
           messages={messages}
           onAction={handleAction}

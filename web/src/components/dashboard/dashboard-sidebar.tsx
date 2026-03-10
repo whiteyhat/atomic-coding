@@ -8,8 +8,8 @@ import {
   Home,
   LayoutGrid,
   Layers,
-  Plus,
   Settings,
+  Coins,
   Shrimp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -31,12 +31,10 @@ const navItems = [
 ] as const;
 
 interface DashboardSidebarProps {
-  onCreateClick?: () => void;
   activeId?: string;
 }
 
 export function DashboardSidebar({
-  onCreateClick,
   activeId: activeIdProp,
 }: DashboardSidebarProps) {
   const pathname = usePathname();
@@ -58,7 +56,8 @@ export function DashboardSidebar({
         variants={slideInLeft}
         initial="hidden"
         animate="visible"
-        className="sticky top-4 hidden h-[calc(100vh-2rem)] w-[82px] shrink-0 flex-col rounded-[2.3rem] border border-white/8 bg-[#2a1014] p-3 shadow-[0_18px_55px_rgba(24,8,10,0.4)] lg:flex"
+        data-platform-aid-sidebar="true"
+        className="sticky top-4 z-[62] hidden h-[calc(100vh-2rem)] w-[82px] shrink-0 flex-col rounded-[2.3rem] border border-white/8 bg-[#2a1014] p-3 shadow-[0_18px_55px_rgba(24,8,10,0.4)] lg:flex"
       >
         {/* Logo */}
         <div className="flex items-center justify-center py-2">
@@ -127,32 +126,30 @@ export function DashboardSidebar({
               </Tooltip>
             );
           })}
+
+          {/* Bonding Curve – coming soon */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <motion.div variants={fadeInUp}>
+                <span
+                  className="relative flex size-11 cursor-not-allowed items-center justify-center rounded-2xl text-white/20"
+                  aria-disabled="true"
+                >
+                  <Coins className="size-[18px]" />
+                </span>
+              </motion.div>
+            </TooltipTrigger>
+            <TooltipContent
+              side="right"
+              sideOffset={14}
+              className="rounded-xl border border-white/10 bg-[#1a0a0e]/95 px-3.5 py-2 text-[13px] font-medium tracking-wide text-white/50 shadow-[0_8px_30px_rgba(0,0,0,0.5)] backdrop-blur-xl"
+            >
+              Bonding Curve · <span className="text-amber-400/80">COMING SOON</span>
+            </TooltipContent>
+          </Tooltip>
         </motion.nav>
 
         <div className="flex flex-col items-center gap-3 pb-2">
-          {onCreateClick ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <motion.button
-                  type="button"
-                  onClick={onCreateClick}
-                  className="flex size-12 items-center justify-center rounded-full border border-dashed border-white/20 text-white/50 transition-all hover:border-white/40 hover:bg-white/8 hover:text-white"
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.9 }}
-                >
-                  <Plus className="size-5" />
-                </motion.button>
-              </TooltipTrigger>
-              <TooltipContent
-                side="right"
-                sideOffset={14}
-                className="rounded-xl border border-rose-500/15 bg-[#1a0a0e]/95 px-3.5 py-2 text-[13px] font-medium tracking-wide text-rose-300 shadow-[0_8px_30px_rgba(0,0,0,0.5),0_0_15px_rgba(244,63,94,0.15)] backdrop-blur-xl"
-              >
-                Create
-              </TooltipContent>
-            </Tooltip>
-          ) : null}
-
           <Tooltip>
             <TooltipTrigger asChild>
               <div>
@@ -164,7 +161,7 @@ export function DashboardSidebar({
               sideOffset={14}
               className="rounded-xl border border-cyan-300/15 bg-[#1a0a0e]/95 px-3.5 py-2 text-[13px] font-medium tracking-wide text-cyan-100 shadow-[0_8px_30px_rgba(0,0,0,0.5),0_0_15px_rgba(34,211,238,0.12)] backdrop-blur-xl"
             >
-              Buu Guide
+              Atomic Aid Agent
             </TooltipContent>
           </Tooltip>
         </div>

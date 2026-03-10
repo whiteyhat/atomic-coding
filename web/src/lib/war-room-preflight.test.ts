@@ -50,19 +50,15 @@ describe("war-room-preflight", () => {
   });
 
   it("falls back cleanly when the AI output is malformed", () => {
-    const result = parseWarRoomPreflightResult("not json", {
-      assets: [],
-      gameFormat: "2d",
+    const ctx = {
+      assets: [] as AssetModel[],
+      gameFormat: "2d" as const,
+      genre: null,
       idea: "Build a roguelite with tight runs and no visual style given yet.",
-    });
+    };
+    const result = parseWarRoomPreflightResult("not json", ctx);
 
-    expect(result).toEqual(
-      getFallbackWarRoomPreflightResult({
-        assets: [],
-        gameFormat: "2d",
-        idea: "Build a roguelite with tight runs and no visual style given yet.",
-      }),
-    );
+    expect(result).toEqual(getFallbackWarRoomPreflightResult(ctx));
   });
 
   it("forces an art-direction question when the brief lacks style signals", () => {
@@ -92,6 +88,7 @@ describe("war-room-preflight", () => {
       {
         assets: [],
         gameFormat: "2d",
+        genre: null,
         idea: "Make a fast arena survival game.",
       },
     );
@@ -133,6 +130,9 @@ describe("war-room-preflight", () => {
           label: "Core Loop",
           question: "What happens every wave?",
           placeholder: "",
+          suggestions: [],
+          recommendedIndex: 0,
+          recommendedReason: "",
           answer: "Survive escalating enemy waves and cash in combos.",
         },
         {
@@ -140,6 +140,9 @@ describe("war-room-preflight", () => {
           label: "Style",
           question: "How should it feel?",
           placeholder: "",
+          suggestions: [],
+          recommendedIndex: 0,
+          recommendedReason: "",
           answer: "Readable neon cockpit HUD with punchy camera shake.",
         },
         {
@@ -147,6 +150,9 @@ describe("war-room-preflight", () => {
           label: "Constraints",
           question: "What stays in scope?",
           placeholder: "",
+          suggestions: [],
+          recommendedIndex: 0,
+          recommendedReason: "",
           answer: "Single arena, one boss, and no meta progression in v1.",
         },
       ],

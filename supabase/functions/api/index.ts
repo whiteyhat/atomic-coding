@@ -15,6 +15,7 @@ import * as warrooms from "../_shared/services/warrooms.ts";
 import { verifyAuthToken, requireAuth } from "../_shared/auth.ts";
 import { checkRateLimit } from "../_shared/rate-limit.ts";
 import { publishWithRetry } from "../_shared/qstash.ts";
+import { streamPlatformAidChatResponse } from "../_shared/platform-aid.ts";
 import * as schemas from "../_shared/schemas.ts";
 import { openClawRouter } from "../_shared/openclaw-router.ts";
 import { ZodError } from "npm:zod@^3.23.0";
@@ -130,6 +131,21 @@ app.put("/users/me", requireAuth(), async (c) => {
     const body = schemas.updateMyProfileSchema.parse(await c.req.json());
     const profile = await users.updateUserProfile(authUser.userId, body);
     return c.json(profile);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 400);
+  }
+});
+
+// =============================================================================
+// Platform Aid
+// =============================================================================
+
+/** POST /assistant/chat -- authenticated platform-help SSE chat */
+app.post("/assistant/chat", requireAuth(), async (c) => {
+  try {
+    const authUser = c.get("authUser") as { userId: string };
+    const body = schemas.platformAidChatSchema.parse(await c.req.json());
+    return await streamPlatformAidChatResponse(authUser.userId, body);
   } catch (err) {
     return c.json({ error: (err as Error).message }, 400);
   }

@@ -27,7 +27,7 @@ export function DashboardHero({ onOpenCreate }: DashboardHeroProps) {
             className="max-w-lg text-3xl font-bold leading-tight tracking-tight text-white md:text-4xl lg:text-[2.75rem]"
           >
             Turn Your Wildest Idea Into a{" "}
-            <span className="text-rose-400">Playable 3D Game</span> in Seconds
+            <span className="text-rose-400">Playable Game</span> in Seconds
           </motion.h2>
 
           <motion.p

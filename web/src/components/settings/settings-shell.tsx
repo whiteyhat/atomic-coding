@@ -339,7 +339,7 @@ export function SettingsShell() {
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,#3a1a1f_0%,#1b0b0f_50%,#0f0508_100%)] px-3 py-4 text-stone-50 md:px-5 md:py-5">
       <div className="mx-auto flex max-w-[1920px] gap-5">
-        <DashboardSidebar onCreateClick={() => setIsCreateOpen(true)} />
+        <DashboardSidebar />
 
         <main className="min-w-0 flex-1 space-y-5">
           <DashboardHeader displayName={displayName} />

@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useDeferredValue, useMemo } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import useSWR from "swr";
 import { motion } from "framer-motion";
 import {
@@ -39,14 +39,17 @@ async function fetchTokensForGames(
   return map;
 }
 
-export function DashboardShell() {
+interface DashboardShellProps {
+  openCreateFromAid?: boolean;
+}
+
+export function DashboardShell({
+  openCreateFromAid = false,
+}: DashboardShellProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const [search, setSearch] = useState("");
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isCreateOpen, setIsCreateOpen] = useState(openCreateFromAid);
   const [initialGenre, setInitialGenre] = useState<string | null>(null);
-  const deferredSearch = useDeferredValue(search);
   const { user, ready, authenticated } = useAppAuth();
   const shouldLoadGames = ready && authenticated && !!user?.id;
   const { data: userGames, error, isLoading } = useSWR(
@@ -54,7 +57,7 @@ export function DashboardShell() {
     listMyGames,
   );
 
-  const games = userGames ?? [];
+  const games = useMemo(() => userGames ?? [], [userGames]);
 
   const { data: tokensByGame } = useSWR(
     games.length > 0 ? ["tokens-for-games", games.map((g) => g.name).join(",")] : null,
@@ -67,7 +70,7 @@ export function DashboardShell() {
   const filtered = filterDashboardCollections(
     creations,
     MOCK_DASHBOARD_SUMMARY.activity,
-    deferredSearch,
+    "",
   );
 
   const displayName = getDashboardDisplayName({
@@ -91,18 +94,15 @@ export function DashboardShell() {
   }
 
   useEffect(() => {
-    if (searchParams.get("aid") !== "create") return;
-
-    setInitialGenre(null);
-    setIsCreateOpen(true);
+    if (!openCreateFromAid) return;
     router.replace(pathname, { scroll: false });
-  }, [pathname, router, searchParams]);
+  }, [openCreateFromAid, pathname, router]);
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,#3a1a1f_0%,#1b0b0f_50%,#0f0508_100%)] px-3 py-4 text-stone-50 md:px-5 md:py-5">
 
       <div className="mx-auto flex max-w-[1920px] gap-5">
-        <DashboardSidebar onCreateClick={() => handleOpenCreate(null)} />
+        <DashboardSidebar />
 
         <motion.main
           variants={staggerContainer}

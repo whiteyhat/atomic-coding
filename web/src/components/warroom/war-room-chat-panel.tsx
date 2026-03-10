@@ -1,13 +1,15 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowLeft,
   ArrowRight,
   Bot,
   Box,
+  Check,
   Loader2,
+  PenLine,
   Sparkles,
   Swords,
   WandSparkles,
@@ -98,6 +100,7 @@ function WarRoomDraftPanel({
   const [error, setError] = useState<string | null>(null);
   const [isGeneratingQuestions, setIsGeneratingQuestions] = useState(false);
   const [isDispatching, setIsDispatching] = useState(false);
+  const [customModeQuestions, setCustomModeQuestions] = useState<Set<string>>(new Set());
 
   const answerEntries = useMemo<WarRoomPreflightAnswer[]>(
     () =>
@@ -135,6 +138,7 @@ function WarRoomDraftPanel({
       const fallback = getFallbackWarRoomPreflightResult({
         assets: selectedAssets,
         gameFormat,
+        genre,
         idea: idea.trim(),
       });
       setQuestions(fallback.questions);
@@ -342,37 +346,180 @@ function WarRoomDraftPanel({
                 </Badge>
               </div>
 
-              {questions.map((question, index) => (
-                <div
-                  key={question.id}
-                  className="rounded-[1.65rem] border border-white/10 bg-[linear-gradient(155deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02))] p-5"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-[11px] uppercase tracking-[0.2em] text-white/35">
-                        {`0${index + 1}`} {question.label}
-                      </p>
-                      <p className="mt-2 text-base font-medium text-white">
-                        {question.question}
-                      </p>
+              {questions.map((question, index) => {
+                const currentAnswer = answers[question.id] ?? "";
+                const selectedSuggestionIndex = question.suggestions.findIndex(
+                  (s) => s === currentAnswer
+                );
+                const isCustomMode =
+                  (customModeQuestions.has(question.id) || (currentAnswer.length > 0 && selectedSuggestionIndex === -1));
+
+                return (
+                  <div
+                    key={question.id}
+                    className="rounded-[1.65rem] border border-white/10 bg-[linear-gradient(155deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02))] p-5"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-[11px] uppercase tracking-[0.2em] text-white/35">
+                          {`0${index + 1}`} {question.label}
+                        </p>
+                        <p className="mt-2 text-base font-medium text-white">
+                          {question.question}
+                        </p>
+                      </div>
+                      <Sparkles className="mt-1 size-4 text-rose-200/70" />
                     </div>
-                    <Sparkles className="mt-1 size-4 text-rose-200/70" />
+
+                    <div className="mt-4 space-y-2">
+                      {question.suggestions.map((suggestion, sIndex) => {
+                        const isRecommended =
+                          sIndex === question.recommendedIndex;
+                        const isSelected = selectedSuggestionIndex === sIndex;
+
+                        return (
+                          <motion.button
+                            key={sIndex}
+                            type="button"
+                            onClick={() => {
+                              setCustomModeQuestions((prev) => {
+                                const next = new Set(prev);
+                                next.delete(question.id);
+                                return next;
+                              });
+                              setAnswers((current) => ({
+                                ...current,
+                                [question.id]: isSelected ? "" : suggestion,
+                              }));
+                            }}
+                            className={cn(
+                              "group relative w-full rounded-[1.15rem] border px-4 py-3 text-left text-sm leading-6 transition-all",
+                              isSelected
+                                ? "border-rose-400/35 bg-rose-500/15 text-white"
+                                : "border-white/10 bg-[#11070a]/60 text-white/72 hover:border-white/18 hover:bg-white/[0.06]"
+                            )}
+                            whileHover={{ scale: 1.005 }}
+                            whileTap={{ scale: 0.995 }}
+                            {...(isRecommended && !isSelected
+                              ? {
+                                  animate: {
+                                    borderColor: [
+                                      "rgba(251,113,133,0.12)",
+                                      "rgba(251,113,133,0.35)",
+                                      "rgba(251,113,133,0.12)",
+                                    ],
+                                  },
+                                  transition: {
+                                    duration: 2.4,
+                                    repeat: Infinity,
+                                    ease: "easeInOut",
+                                  },
+                                }
+                              : {})}
+                          >
+                            <div className="flex items-start gap-3">
+                              <div
+                                className={cn(
+                                  "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border transition-all",
+                                  isSelected
+                                    ? "border-rose-400 bg-rose-500"
+                                    : "border-white/20 bg-white/[0.04]"
+                                )}
+                              >
+                                {isSelected && (
+                                  <Check className="size-3 text-white" />
+                                )}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                {isRecommended && (
+                                  <div className="mb-1.5 flex flex-wrap items-center gap-2">
+                                    <span className="inline-block rounded-full bg-rose-500/20 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-rose-300">
+                                      Recommended
+                                    </span>
+                                    {question.recommendedReason && (
+                                      <span className="text-[11px] italic text-white/40">
+                                        {question.recommendedReason}
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                                <p>{suggestion}</p>
+                              </div>
+                            </div>
+                          </motion.button>
+                        );
+                      })}
+
+                      {/* Custom answer option */}
+                      <motion.button
+                        type="button"
+                        onClick={() => {
+                          if (!isCustomMode) {
+                            setCustomModeQuestions((prev) => new Set(prev).add(question.id));
+                            setAnswers((current) => ({
+                              ...current,
+                              [question.id]: "",
+                            }));
+                          }
+                        }}
+                        className={cn(
+                          "group relative w-full rounded-[1.15rem] border px-4 py-3 text-left text-sm transition-all",
+                          isCustomMode
+                            ? "border-rose-400/35 bg-rose-500/15 text-white"
+                            : "border-white/10 bg-[#11070a]/60 text-white/72 hover:border-white/18 hover:bg-white/[0.06]"
+                        )}
+                        whileHover={{ scale: 1.005 }}
+                        whileTap={{ scale: 0.995 }}
+                      >
+                        <div className="flex items-start gap-3">
+                          <div
+                            className={cn(
+                              "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border transition-all",
+                              isCustomMode
+                                ? "border-rose-400 bg-rose-500"
+                                : "border-white/20 bg-white/[0.04]"
+                            )}
+                          >
+                            {isCustomMode ? (
+                              <Check className="size-3 text-white" />
+                            ) : (
+                              <PenLine className="size-2.5 text-white/40" />
+                            )}
+                          </div>
+                          <span className="text-white/55">
+                            Describe your own answer
+                          </span>
+                        </div>
+                      </motion.button>
+
+                      <AnimatePresence>
+                        {isCustomMode && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: "auto" }}
+                            exit={{ opacity: 0, height: 0 }}
+                            transition={{ duration: 0.2 }}
+                          >
+                            <Textarea
+                              autoFocus
+                              value={currentAnswer}
+                              onChange={(event) => {
+                                const val = event.currentTarget.value;
+                                setAnswers((current) => ({
+                                  ...current,
+                                  [question.id]: val,
+                                }));
+                              }}
+                              placeholder={question.placeholder}
+                              className="min-h-24 rounded-[1.15rem] border-white/10 bg-[#11070a]/75 px-4 py-3 text-sm leading-6 text-white placeholder:text-white/28"
+                            />
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
                   </div>
-                  <Textarea
-                    value={answers[question.id] ?? ""}
-                    onChange={(event) => {
-                      const val = event.currentTarget.value;
-                      setAnswers((current) => ({
-                        ...current,
-                        [question.id]: val,
-                      }));
-                    }}
-                    }
-                    placeholder={question.placeholder}
-                    className="mt-4 min-h-28 rounded-[1.25rem] border-white/10 bg-[#11070a]/75 px-4 py-3 text-sm leading-6 text-white placeholder:text-white/28"
-                  />
-                </div>
-              ))}
+                );
+              })}
             </motion.div>
           )}
 

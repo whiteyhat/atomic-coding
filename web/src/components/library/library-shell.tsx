@@ -787,10 +787,7 @@ export function LibraryShell() {
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,#3a1a1f_0%,#1b0b0f_48%,#0f0508_100%)] px-3 py-4 text-stone-50 md:px-5 md:py-5">
       <div className="mx-auto flex max-w-[1920px] gap-5">
-        <DashboardSidebar
-          activeId="library"
-          onCreateClick={() => setIsCreateOpen(true)}
-        />
+        <DashboardSidebar activeId="library" />
 
         <motion.main
           variants={staggerContainer}

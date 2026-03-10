@@ -38,7 +38,7 @@ export async function POST(req: Request) {
   }
 
   if (!MASTRA_SERVER_URL) {
-    return Response.json(getFallbackWarRoomPreflightResult({ assets, gameFormat, idea }));
+    return Response.json(getFallbackWarRoomPreflightResult({ assets, gameFormat, genre, idea }));
   }
 
   try {
@@ -74,13 +74,14 @@ export async function POST(req: Request) {
       console.warn("[warroom-preflight] Mastra preflight failed", {
         status: response.status,
       });
-      return Response.json(getFallbackWarRoomPreflightResult({ assets, gameFormat, idea }));
+      return Response.json(getFallbackWarRoomPreflightResult({ assets, gameFormat, genre, idea }));
     }
 
     const payload = (await response.json().catch(() => ({}))) as { text?: string };
     const result = parseWarRoomPreflightResult(payload.text ?? "", {
       assets,
       gameFormat,
+      genre,
       idea,
     });
     return Response.json(result);
@@ -88,6 +89,6 @@ export async function POST(req: Request) {
     console.warn("[warroom-preflight] Falling back after fetch error", {
       error: error instanceof Error ? error.message : "Unknown error",
     });
-    return Response.json(getFallbackWarRoomPreflightResult({ assets, gameFormat, idea }));
+    return Response.json(getFallbackWarRoomPreflightResult({ assets, gameFormat, genre, idea }));
   }
 }
