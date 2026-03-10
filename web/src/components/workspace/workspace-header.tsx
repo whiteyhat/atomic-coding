@@ -2,16 +2,16 @@
 
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { ArrowLeft, Globe } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getGameGenre } from "@/lib/game-genres";
 import { PublishDialog } from "@/components/games/publish-dialog";
-import { AgentStatusDropdown } from "./agent-status-dropdown";
 import { headerSlideDown } from "./workspace-animations";
 
 interface WorkspaceHeaderProps {
   gameName: string;
   genre: string | null;
+  gameFormat: "2d" | "3d" | null;
   isPublished: boolean;
   publicSlug: string | null;
   onRefresh: () => void;
@@ -20,6 +20,7 @@ interface WorkspaceHeaderProps {
 export function WorkspaceHeader({
   gameName,
   genre,
+  gameFormat,
   isPublished,
   publicSlug,
   onRefresh,
@@ -34,7 +35,7 @@ export function WorkspaceHeader({
       className="flex items-center gap-3 h-12 px-4 rounded-t-[1.25rem] border-b border-white/8 shrink-0 bg-[#2a1014]/80 backdrop-blur-xl"
     >
       {/* Back button */}
-      <Link href="/dashboard">
+      <Link href="/library">
         <motion.div whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.95 }}>
           <Button
             variant="ghost"
@@ -61,6 +62,12 @@ export function WorkspaceHeader({
         </span>
       )}
 
+      {gameFormat && (
+        <span className="hidden sm:inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-medium text-white/65">
+          {gameFormat === "2d" ? "2D · Phaser" : "3D · Three.js"}
+        </span>
+      )}
+
       {/* Right section */}
       <div className="ml-auto flex items-center gap-2">
         {/* Publish button - rose accent */}
@@ -70,9 +77,6 @@ export function WorkspaceHeader({
           publicSlug={publicSlug}
           onPublished={onRefresh}
         />
-
-        {/* Agent status */}
-        <AgentStatusDropdown activeAgent={null} />
       </div>
     </motion.header>
   );

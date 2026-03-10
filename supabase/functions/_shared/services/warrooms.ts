@@ -1,5 +1,6 @@
 import { getSupabaseClient } from "../supabase-client.ts";
 import { log } from "../logger.ts";
+import { emitOpenClawEvent } from "./openclaw.ts";
 
 // =============================================================================
 // Types
@@ -30,6 +31,7 @@ export interface WarRoom {
   user_id: string | null;
   prompt: string;
   genre: string | null;
+  game_format: "2d" | "3d" | null;
   status: WarRoomStatus;
   scope: Record<string, unknown> | null;
   suggested_prompts: string[] | null;
@@ -75,6 +77,11 @@ export interface WarRoomWithTasks extends WarRoom {
   tasks: WarRoomTask[];
 }
 
+export interface WarRoomWithFeed extends WarRoomWithTasks {
+  events: WarRoomEvent[];
+  heartbeats: AgentHeartbeat[];
+}
+
 // =============================================================================
 // The 12 fixed pipeline tasks
 // =============================================================================
@@ -90,7 +97,7 @@ const PIPELINE_TASKS: Omit<WarRoomTask, "id" | "war_room_id" | "status" | "outpu
   {
     task_number: 2,
     title: "Load genre boilerplate",
-    description: "Load the genre template and read existing atom structure.",
+    description: "Verify seeded boilerplate atoms, customize for game scope, and report atom structure.",
     assigned_agent: "forge",
     depends_on: [1],
   },
@@ -120,21 +127,21 @@ const PIPELINE_TASKS: Omit<WarRoomTask, "id" | "war_room_id" | "status" | "outpu
     title: "Implement core atoms",
     description: "Create core atoms (game_loop, create_scene) that wire features together.",
     assigned_agent: "forge",
-    depends_on: [5],
+    depends_on: [2, 3, 5],
   },
   {
     task_number: 7,
     title: "Generate UI assets",
-    description: "Generate menus, HUDs, and button sprites for Three.js overlay.",
+    description: "Establish design system, build component inventory, and generate production-ready UI packs (HUD, menus, buttons, overlays) with interaction states.",
     assigned_agent: "pixel",
     depends_on: [1],
   },
   {
     task_number: 8,
     title: "Generate game sprites",
-    description: "Generate character sprites, textures, and environment assets.",
+    description: "Generate character sprites, textures, and environment assets aligned with the Task 7 design system for visual coherence.",
     assigned_agent: "pixel",
-    depends_on: [1, 5],
+    depends_on: [1, 5, 7],
   },
   {
     task_number: 9,
@@ -177,6 +184,7 @@ function mapWarRoom(row: any): WarRoom {
     user_id: row.user_id || null,
     prompt: row.prompt,
     genre: row.genre || null,
+    game_format: row.game_format || null,
     status: row.status,
     scope: row.scope || null,
     suggested_prompts: row.suggested_prompts || null,
@@ -225,6 +233,44 @@ function mapHeartbeat(row: any): AgentHeartbeat {
   };
 }
 
+function buildTaskEventPayload(
+  task: WarRoomTask,
+  status: TaskStatus,
+  output?: Record<string, unknown>,
+  extraPayload?: Record<string, unknown>,
+): Record<string, unknown> {
+  const payload: Record<string, unknown> = {
+    title: task.title,
+    ...(extraPayload ?? {}),
+  };
+
+  if (task.started_at) {
+    payload.started_at = task.started_at;
+  }
+
+  if (task.completed_at) {
+    payload.completed_at = task.completed_at;
+  }
+
+  if (task.started_at && task.completed_at) {
+    payload.duration_ms =
+      new Date(task.completed_at).getTime() - new Date(task.started_at).getTime();
+  }
+
+  if (output) {
+    payload.output_keys = Object.keys(output);
+    if (typeof output.error === "string") {
+      payload.error = output.error;
+    }
+  }
+
+  if (status === "running" && !payload.started_at) {
+    payload.started_at = new Date().toISOString();
+  }
+
+  return payload;
+}
+
 // =============================================================================
 // War Room CRUD
 // =============================================================================
@@ -235,6 +281,7 @@ export async function createWarRoom(
   userId: string | null,
   prompt: string,
   genre: string | null,
+  gameFormat: "2d" | "3d" | null,
 ): Promise<WarRoomWithTasks> {
   const supabase = getSupabaseClient();
 
@@ -257,6 +304,7 @@ export async function createWarRoom(
       user_id: userId || null,
       prompt,
       genre: genre || null,
+      game_format: gameFormat || null,
     })
     .select("*")
     .single();
@@ -271,6 +319,7 @@ export async function createWarRoom(
     description: t.description,
     assigned_agent: t.assigned_agent,
     depends_on: t.depends_on,
+    status: t.depends_on.length === 0 ? "assigned" : "blocked",
   }));
 
   const { data: tasks, error: taskErr } = await supabase
@@ -285,6 +334,7 @@ export async function createWarRoom(
   await recordEvent(room.id, "war_room_created", "jarvis", null, {
     prompt,
     genre,
+    game_format: gameFormat,
     task_count: taskRows.length,
   });
 
@@ -292,8 +342,18 @@ export async function createWarRoom(
     warRoomId: room.id,
     gameId,
     genre,
+    gameFormat,
     taskCount: taskRows.length,
   });
+
+  if (room.user_id) {
+    await emitOpenClawEvent(room.user_id, "warroom:created", {
+      war_room_id: room.id,
+      game_id: room.game_id,
+      status: room.status,
+      prompt: room.prompt,
+    });
+  }
 
   return {
     ...mapWarRoom(room),
@@ -327,6 +387,23 @@ export async function getWarRoom(warRoomId: string): Promise<WarRoomWithTasks | 
   return {
     ...mapWarRoom(room),
     tasks: (tasks || []).map(mapTask),
+  };
+}
+
+/** Get a war room with its tasks, events, and heartbeats for UI hydration. */
+export async function getWarRoomFeed(warRoomId: string): Promise<WarRoomWithFeed | null> {
+  const room = await getWarRoom(warRoomId);
+  if (!room) return null;
+
+  const [events, heartbeats] = await Promise.all([
+    getEvents(warRoomId),
+    getHeartbeats(warRoomId),
+  ]);
+
+  return {
+    ...room,
+    events,
+    heartbeats,
   };
 }
 
@@ -374,6 +451,14 @@ export async function updateWarRoomStatus(
   if (error) throw new Error(`Failed to update war room: ${error.message}`);
 
   await recordEvent(warRoomId, `war_room_${status}`, null, null, { status });
+  if (data.user_id) {
+    await emitOpenClawEvent(data.user_id, `warroom:${status}`, {
+      war_room_id: data.id,
+      game_id: data.game_id,
+      status,
+      final_build_id: data.final_build_id,
+    });
+  }
 
   log("info", "war room status updated", { warRoomId, status });
   return mapWarRoom(data);
@@ -417,15 +502,25 @@ export async function updateTaskStatus(
   taskNumber: number,
   status: TaskStatus,
   output?: Record<string, unknown>,
+  eventPayload?: Record<string, unknown>,
 ): Promise<WarRoomTask> {
   const supabase = getSupabaseClient();
 
   const updates: Record<string, unknown> = { status };
-  if (output !== undefined) updates.output = output;
-  if (status === "running") updates.started_at = new Date().toISOString();
+  if (status === "pending" || status === "assigned" || status === "blocked") {
+    updates.started_at = null;
+    updates.completed_at = null;
+    updates.output = null;
+  }
+  if (status === "running") {
+    updates.started_at = new Date().toISOString();
+    updates.completed_at = null;
+    updates.output = null;
+  }
   if (status === "completed" || status === "failed") {
     updates.completed_at = new Date().toISOString();
   }
+  if (output !== undefined) updates.output = output;
 
   const { data, error } = await supabase
     .from("war_room_tasks")
@@ -437,13 +532,17 @@ export async function updateTaskStatus(
 
   if (error) throw new Error(`Failed to update task: ${error.message}`);
 
-  await recordEvent(warRoomId, `task_${status}`, data.assigned_agent, taskNumber, {
-    title: data.title,
-    ...(output ? { output_summary: Object.keys(output) } : {}),
-  });
+  const mappedTask = mapTask(data);
+  await recordEvent(
+    warRoomId,
+    `task_${status}`,
+    data.assigned_agent,
+    taskNumber,
+    buildTaskEventPayload(mappedTask, status, output, eventPayload),
+  );
 
   log("info", "task status updated", { warRoomId, taskNumber, status });
-  return mapTask(data);
+  return mappedTask;
 }
 
 /** Get all tasks for a war room. */
@@ -566,4 +665,59 @@ export async function getHeartbeats(
 
   if (error) throw new Error(`Failed to get heartbeats: ${error.message}`);
   return (data || []).map(mapHeartbeat);
+}
+
+// =============================================================================
+// Stuck War Room Cleanup
+// =============================================================================
+
+const PLANNING_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
+const RUNNING_TIMEOUT_MS = 25 * 60 * 1000; // 25 minutes
+
+/**
+ * Find and auto-fail war rooms stuck in planning or running state.
+ * Returns the number of war rooms that were cleaned up.
+ */
+export async function cleanupStuckWarRooms(): Promise<number> {
+  const supabase = getSupabaseClient();
+  const now = new Date();
+  let cleaned = 0;
+
+  // 1. Fail war rooms stuck in "planning" (trigger never fired)
+  const planningCutoff = new Date(now.getTime() - PLANNING_TIMEOUT_MS).toISOString();
+  const { data: stuckPlanning } = await supabase
+    .from("war_rooms")
+    .select("id")
+    .eq("status", "planning")
+    .lt("created_at", planningCutoff);
+
+  for (const room of stuckPlanning || []) {
+    await updateWarRoomStatus(room.id, "failed");
+    await recordEvent(room.id, "pipeline_stuck", "jarvis", null, {
+      reason: "War room stuck in planning — trigger likely failed",
+      timeout_ms: PLANNING_TIMEOUT_MS,
+    });
+    cleaned++;
+    log("warn", "cleaned up stuck planning war room", { warRoomId: room.id });
+  }
+
+  // 2. Fail war rooms stuck in "running" (pipeline crashed or timed out)
+  const runningCutoff = new Date(now.getTime() - RUNNING_TIMEOUT_MS).toISOString();
+  const { data: stuckRunning } = await supabase
+    .from("war_rooms")
+    .select("id")
+    .eq("status", "running")
+    .lt("created_at", runningCutoff);
+
+  for (const room of stuckRunning || []) {
+    await updateWarRoomStatus(room.id, "failed");
+    await recordEvent(room.id, "pipeline_stuck", "jarvis", null, {
+      reason: "War room stuck in running — pipeline likely crashed",
+      timeout_ms: RUNNING_TIMEOUT_MS,
+    });
+    cleaned++;
+    log("warn", "cleaned up stuck running war room", { warRoomId: room.id });
+  }
+
+  return cleaned;
 }

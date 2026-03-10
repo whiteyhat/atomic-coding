@@ -1,6 +1,7 @@
 import { getSupabaseClient } from "../supabase-client.ts";
 import { generateEmbedding } from "../openai.ts";
 import { log } from "../logger.ts";
+import { emitOpenClawEvent } from "./openclaw.ts";
 import {
   validateScoreSystemRules,
   type ValidationReport,
@@ -139,6 +140,12 @@ export async function rollbackBuild(
   buildId: string,
 ): Promise<{ checkpointBuildId: string; restoredAtomCount: number }> {
   const supabase = getSupabaseClient();
+  const { data: gameMeta } = await supabase
+    .from("games")
+    .select("name, user_id")
+    .eq("id", gameId)
+    .limit(1)
+    .maybeSingle();
 
   // 1. Fetch target build
   const { data: targetBuild, error: buildError } = await supabase
@@ -269,6 +276,15 @@ export async function rollbackBuild(
     checkpointBuildId: checkpointBuild.id,
     restoredAtoms: snapshot.atoms.length,
   });
+
+  if (gameMeta?.user_id) {
+    await emitOpenClawEvent(gameMeta.user_id, "build:rollback", {
+      game_id: gameId,
+      game_name: gameMeta.name,
+      build_id: buildId,
+      checkpoint_build_id: checkpointBuild.id,
+    });
+  }
 
   return {
     checkpointBuildId: checkpointBuild.id,

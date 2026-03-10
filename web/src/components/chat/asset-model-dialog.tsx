@@ -44,7 +44,7 @@ export function AssetModelDialog({
       <DialogContent className="sm:max-w-2xl p-0 gap-0">
         <DialogHeader className="px-4 pt-4 pb-3 border-b border-white/[0.06]">
           <DialogTitle className="text-sm">
-            3D Model Library
+            Visual Reference Library
             {selected.length > 0 && (
               <span className="ml-2 text-white/40 font-normal">
                 {selected.length} selected
@@ -58,7 +58,7 @@ export function AssetModelDialog({
           <Search className="size-3.5 text-white/40 shrink-0" />
           <input
             type="text"
-            placeholder="Search models..."
+            placeholder="Search references..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="flex-1 bg-transparent text-sm text-white/70 placeholder:text-white/30 outline-none"
@@ -75,7 +75,7 @@ export function AssetModelDialog({
 
           {!error && filteredItems.length === 0 && !isLoading && (
             <div className="p-8 text-center text-sm text-white/40">
-              No models found
+              No references found
             </div>
           )}
 

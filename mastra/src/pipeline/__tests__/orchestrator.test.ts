@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { getNextRunnableTasks, isPipelineComplete } from "../orchestrator.js";
+import {
+  getNextRunnableTasks,
+  getTaskGraphTransitions,
+  isPipelineComplete,
+} from "../orchestrator.js";
 import type { WarRoomTask } from "../types.js";
 
 function makeTask(overrides: Partial<WarRoomTask> & { task_number: number }): WarRoomTask {
@@ -91,6 +95,111 @@ describe("getNextRunnableTasks", () => {
     ];
     const runnable = getNextRunnableTasks(tasks);
     expect(runnable).toHaveLength(0);
+  });
+});
+
+describe("getTaskGraphTransitions", () => {
+  it("marks only task 1 assigned and dependent tasks blocked on initial graph", () => {
+    const tasks = [
+      makeTask({ task_number: 1, status: "pending" }),
+      makeTask({ task_number: 2, status: "pending", depends_on: [1] }),
+      makeTask({ task_number: 7, status: "pending", depends_on: [1] }),
+    ];
+
+    const transitions = getTaskGraphTransitions(tasks);
+
+    expect(transitions).toEqual([
+      {
+        taskNumber: 1,
+        status: "assigned",
+        dependsOn: [],
+        waitingOn: [],
+        resolvedDependencies: [],
+      },
+      {
+        taskNumber: 2,
+        status: "blocked",
+        dependsOn: [1],
+        waitingOn: [1],
+        resolvedDependencies: [],
+      },
+      {
+        taskNumber: 7,
+        status: "blocked",
+        dependsOn: [1],
+        waitingOn: [1],
+        resolvedDependencies: [],
+      },
+    ]);
+  });
+
+  it("promotes newly unlocked tasks to assigned after task 1 completes", () => {
+    const tasks = [
+      makeTask({ task_number: 1, status: "completed" }),
+      makeTask({ task_number: 2, status: "blocked", depends_on: [1] }),
+      makeTask({ task_number: 7, status: "blocked", depends_on: [1] }),
+      makeTask({ task_number: 3, status: "blocked", depends_on: [1, 2] }),
+    ];
+
+    const transitions = getTaskGraphTransitions(tasks);
+
+    expect(transitions).toEqual([
+      {
+        taskNumber: 2,
+        status: "assigned",
+        dependsOn: [1],
+        waitingOn: [],
+        resolvedDependencies: [1],
+      },
+      {
+        taskNumber: 7,
+        status: "assigned",
+        dependsOn: [1],
+        waitingOn: [],
+        resolvedDependencies: [1],
+      },
+    ]);
+  });
+
+  it("keeps non-retryable descendants blocked when a dependency fails", () => {
+    const tasks = [
+      makeTask({ task_number: 1, status: "failed" }),
+      makeTask({ task_number: 2, status: "pending", depends_on: [1] }),
+    ];
+
+    const transitions = getTaskGraphTransitions(tasks);
+
+    expect(transitions).toEqual([
+      {
+        taskNumber: 2,
+        status: "blocked",
+        dependsOn: [1],
+        waitingOn: [1],
+        resolvedDependencies: [],
+      },
+    ]);
+  });
+
+  it("re-blocks task 10 when task 9 is reset for another retry cycle", () => {
+    const tasks = [
+      makeTask({ task_number: 4, status: "completed" }),
+      makeTask({ task_number: 5, status: "completed" }),
+      makeTask({ task_number: 6, status: "completed" }),
+      makeTask({ task_number: 9, status: "assigned", depends_on: [4, 5, 6] }),
+      makeTask({ task_number: 10, status: "pending", depends_on: [9] }),
+    ];
+
+    const transitions = getTaskGraphTransitions(tasks);
+
+    expect(transitions).toEqual([
+      {
+        taskNumber: 10,
+        status: "blocked",
+        dependsOn: [9],
+        waitingOn: [9],
+        resolvedDependencies: [],
+      },
+    ]);
   });
 });
 

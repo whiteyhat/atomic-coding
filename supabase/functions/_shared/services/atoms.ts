@@ -1,6 +1,7 @@
 import { getSupabaseClient } from "../supabase-client.ts";
 import { generateEmbedding } from "../openai.ts";
 import { log } from "../logger.ts";
+import { emitOpenClawEvent } from "./openclaw.ts";
 
 // =============================================================================
 // Types
@@ -88,6 +89,14 @@ export async function triggerRebuild(gameId: string): Promise<void> {
   }
 
   try {
+    const supabase = getSupabaseClient();
+    const { data: game } = await supabase
+      .from("games")
+      .select("name, user_id")
+      .eq("id", gameId)
+      .limit(1)
+      .maybeSingle();
+
     const res = await fetch(`${supabaseUrl}/functions/v1/rebuild-bundle`, {
       method: "POST",
       headers: {
@@ -97,6 +106,13 @@ export async function triggerRebuild(gameId: string): Promise<void> {
       body: JSON.stringify({ game_id: gameId }),
     });
     log("info", "triggerRebuild: response", { gameId, status: res.status });
+    if (game?.user_id) {
+      await emitOpenClawEvent(game.user_id, "build:triggered", {
+        game_id: gameId,
+        game_name: game.name,
+        queued: res.ok,
+      });
+    }
   } catch (err) {
     log("error", "triggerRebuild: failed", {
       error: err instanceof Error ? err.message : String(err),

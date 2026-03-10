@@ -6,8 +6,8 @@ export const pixel = new Agent({
   id: "pixel",
   name: "Pixel",
   description:
-    "Visual asset generation agent. Generates UI elements, sprites, textures, and HUD components for Three.js games.",
+    "Visual design system and asset generation agent. Produces production-ready UI packs, sprites, textures, and HUD components for Phaser and Three.js games using a design-system-first workflow.",
   instructions: buildPixelSystemPrompt(),
-  model: "openrouter/google/gemini-2.0-flash-001",
+  model: "openrouter/anthropic/claude-sonnet-4.6",
   tools: pixelTools,
 });

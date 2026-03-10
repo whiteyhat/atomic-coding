@@ -35,7 +35,7 @@ export function LoginPageClient({ redirectTo }: { redirectTo: string }) {
             Buu AI Game Maker
           </h1>
           <p className="text-muted-foreground">
-            Build Three.js games with AI agents
+            Build Phaser and Three.js games with AI agents
           </p>
         </div>
         <Button size="lg" className="w-full" onClick={login}>

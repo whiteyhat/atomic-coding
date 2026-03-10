@@ -26,6 +26,8 @@ const app = new Hono();
 app.post("/stream", async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const { messages, gameId, gameName, genre } = body;
+  const gameFormat =
+    body.gameFormat === "2d" || body.gameFormat === "3d" ? body.gameFormat : null;
 
   if (!messages || !Array.isArray(messages)) {
     return c.json({ error: "messages array is required" }, 400);
@@ -35,12 +37,13 @@ app.post("/stream", async (c) => {
   const gameContext = gameId
     ? `\n\n## Current Game\n- **Game ID (UUID)**: \`${gameId}\`\n- **Game Name**: \`${gameName ?? "unknown"}\`\nAlways use the Game ID above when calling tools (get-code-structure, read-atoms, upsert-atom).`
     : "";
-  const instructions = SYSTEM_PROMPT + getGenreContext(genre ?? null) + gameContext;
+  const instructions = SYSTEM_PROMPT + getGenreContext(genre ?? null, gameFormat) + gameContext;
 
   console.log("[chat] streaming with jarvis", {
     messageCount: messages.length,
     gameId,
     genre,
+    gameFormat,
   });
 
   try {

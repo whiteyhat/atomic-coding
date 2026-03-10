@@ -46,9 +46,86 @@ This is a blank Three.js canvas. The user wants to build something from scratch.
 Build whatever the user requests. Start with the basics and iterate.`,
 };
 
-export function getGenreContext(genre: string | null): string {
-  if (!genre) return "";
-  return GENRE_CONTEXT[genre] || "";
+function getRuntimeContext(gameFormat: "2d" | "3d" | null | undefined): string {
+  if (gameFormat === "2d") {
+    return `
+## Runtime Target: Phaser 3.90.0
+- This game runs on Phaser, not Three.js.
+- Read the \`phaser_js\` external before writing Phaser-specific code.
+- 2D \`create_scene\` atoms should initialize a Phaser game with \`canvas: window.GAME.canvas\`.
+- Prefer scenes, sprites, cameras, tweens, tilemaps, and Arcade-style gameplay structure.
+- Do not plan Three.js render loops, meshes, or 3D camera math for 2D games unless the user explicitly asks for hybrid rendering.
+
+## Optional 2D Externals (available on request)
+- \`matter_js\` — Advanced 2D physics: polygon collisions, joints, constraints (Phaser Matter plugin)
+- \`howler_js\` — Audio library with spatial sound, crossfades, and sound sprites
+- \`rot_js\` — Roguelike toolkit: dungeon generation, FOV, pathfinding, turn scheduling
+- \`seedrandom_js\` — Seeded PRNG for reproducible procedural generation and replays
+- \`noisejs\` — Perlin and Simplex noise for terrain, textures, and organic randomness
+- \`planck_js\` — Box2D physics port for precise 2D simulation (billiards, pinball)
+- \`socket_io_client\` — Real-time multiplayer via WebSocket with auto-reconnection
+`;
+  }
+
+  if (gameFormat === "3d") {
+    return `
+## Runtime Target: Three.js
+- This game runs on Three.js.
+- Read the \`three_js\` external before writing Three-specific code.
+- 3D \`create_scene\` atoms should initialize scene, camera, and renderer state for \`window.GAME.canvas\`.
+
+## Default 3D Externals (auto-installed)
+- \`three_js\` — Three.js core (scene, camera, renderer, geometry, materials, lights)
+- \`atomic_assets\` — Universal asset loader with fallbacks (images, textures, audio, placeholder meshes)
+- \`buu_assets\` — 3D asset loading via BUU.loadModel(modelId) and BUU.loadWorldSplat(worldId)
+- \`gaussian_splats_3d\` — Gaussian splat renderer for photorealistic 3D worlds (.spz, .ply, .splat)
+- \`three_gltf_loader\` — GLTF/GLB model loader addon for Three.js
+
+## Optional 3D Externals (available on request)
+- \`cannon_es\` — 3D physics engine (rigid bodies, gravity, collisions, constraints)
+- \`howler_js\` — Audio library with spatial 3D sound support
+- \`three_orbit_controls\` — Camera orbit/pan/zoom controls
+- \`simplex_noise\` — Procedural noise for terrain and texture generation
+- \`gsap\` — Professional animation/tweening with timelines and easing
+- \`pathfinding_js\` — A* grid-based pathfinding for AI navigation
+
+## 3D Asset Strategy
+- 3D games do NOT use 2D sprites. Task 8 (sprite generation) is skipped.
+- Use BUU.loadModel() for 3D models and BUU.loadWorldSplat() for 3D environments.
+- Use atomic_assets for textures and audio fallbacks.
+`;
+  }
+
+  return "";
+}
+
+export function getGenreContext(
+  genre: string | null,
+  gameFormat: "2d" | "3d" | null = null,
+): string {
+  const runtimeContext = getRuntimeContext(gameFormat);
+
+  if (genre === "custom" && gameFormat === "2d") {
+    return `
+## Genre: Custom
+This is a blank Phaser canvas. The user wants to build something from scratch.
+- \`score_tracker\`: Available for tracking score via postMessage
+Build whatever the user requests. Start with the basics and iterate.
+${runtimeContext}`;
+  }
+
+  if (genre === "side-scroller-2d-3d" && gameFormat === "2d") {
+    return `
+## Genre: Side-Scroller
+This game is a 2D platformer built for Phaser. Key boilerplate atoms:
+- \`platform_physics\`: Gravity, jumping, and ground collision
+- \`camera_follow\`: Smooth side-scrolling camera tracking
+- \`score_tracker\`: Tracks score and reports via postMessage
+Focus on: readable sprite motion, jump timing, collectibles, hazards, and screen-space clarity.
+${runtimeContext}`;
+  }
+
+  return `${genre ? GENRE_CONTEXT[genre] || "" : ""}${runtimeContext}`;
 }
 
 export const SYSTEM_PROMPT = `You build games using the **Buu AI Game Maker** platform. Code lives as **atoms** (small JS functions, max 2KB) managed via tools, not in files.
@@ -121,7 +198,7 @@ Every game must remain leaderboard-ready.
 
 ## External Dependencies
 
-External libraries (Three.js, cannon-es, etc.) are not atoms. They are managed by the user via the actions console (not by you).
+External libraries (Phaser, Three.js, cannon-es, etc.) are not atoms. They are managed by the user via the actions console (not by you).
 
 - \`get-code-structure\` returns atoms along with their dependencies -- use this to see what externals are available.
 - If a needed external is not installed, tell the user to install it via the Externals tab in the actions console.
@@ -140,7 +217,7 @@ The game player provides \`window.GAME\` globally before any atom code runs. Use
 
 ### Mouse
 - \`window.GAME.mouse.x\`, \`y\` -- pixel coords relative to canvas.
-- \`window.GAME.mouse.normX\`, \`normY\` -- normalized (-1 to 1), suitable for Three.js raycasting.
+- \`window.GAME.mouse.normX\`, \`normY\` -- normalized (-1 to 1), useful for pointing math and 3D raycasting.
 - \`window.GAME.mouse.buttons\` -- bitmask (1=left, 2=right, 4=middle).
 - \`window.GAME.mouse.justDown\`, \`justUp\` -- true for one frame on primary button press/release.
 

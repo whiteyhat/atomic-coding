@@ -6,5 +6,5 @@ export function useGames() {
 }
 
 export function useGame(name: string | null) {
-  return useSWR(name ? `game:${name}` : null, () => getGame(name!));
+  return useSWR(name ? `game:${name}` : null, () => getGame(name!), { keepPreviousData: true });
 }

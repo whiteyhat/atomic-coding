@@ -54,12 +54,19 @@ function getGenreBadgeColor(genre: string | null): string {
   return "bg-white/15 text-white";
 }
 
+function getGameFormatBadgeColor(gameFormat: DashboardGameSummary["gameFormat"]): string {
+  return gameFormat === "2d"
+    ? "border-cyan-300/30 bg-cyan-400/15 text-cyan-50"
+    : "border-fuchsia-300/30 bg-fuchsia-400/15 text-fuchsia-50";
+}
+
 function CreationCard({ creation }: { creation: DashboardGameSummary }) {
   const progress = getTokenProgress(creation);
   const workspaceHref = `/games/${encodeURIComponent(creation.name)}`;
   const genreInfo = getGameGenre(creation.genre);
   const emoji = genreInfo?.emoji ?? "🎮";
   const genreDisplayName = genreInfo?.displayName ?? creation.genre?.replace(/-/g, " ") ?? "Game";
+  const gameFormatLabel = creation.gameFormat === "2d" ? "2D" : "3D";
 
   return (
     <motion.div
@@ -84,10 +91,12 @@ function CreationCard({ creation }: { creation: DashboardGameSummary }) {
             </span>
           </div>
 
-          {/* Genre badge */}
-          <div className="absolute left-4 top-4">
+          <div className="absolute left-4 right-4 top-4 flex items-start justify-between gap-2">
             <Badge className={cn("rounded-md border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider", getGenreBadgeColor(creation.genre))}>
               {genreDisplayName}
+            </Badge>
+            <Badge className={cn("rounded-md border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider", getGameFormatBadgeColor(creation.gameFormat))}>
+              {gameFormatLabel}
             </Badge>
           </div>
 
@@ -191,42 +200,47 @@ export function DashboardCreations({
     <motion.section variants={fadeInUp} initial="hidden" animate="visible">
       <div className="mb-4 flex items-center justify-between px-1">
         <h2 className="text-xl font-semibold text-white">My Creations</h2>
-        <Link href="/dashboard" className="text-sm text-white/50 transition hover:text-white/80">
-          View Dashboard
+        <Link href="/library" className="text-sm text-white/50 transition hover:text-white/80">
+          Open Library
         </Link>
       </div>
 
-      <motion.div
-        variants={staggerContainer}
-        initial="hidden"
-        animate="visible"
-        className="-mx-1 flex gap-4 overflow-x-auto px-1 pb-4 scrollbar-hide"
-        style={{ scrollSnapType: "x mandatory" }}
-      >
-        {isLoading
-          ? ["creation-skeleton-1", "creation-skeleton-2"].map((keyId) => (
-              <CreationSkeleton key={keyId} keyId={keyId} />
-            ))
-          : null}
+      <div className="relative">
+        <motion.div
+          variants={staggerContainer}
+          initial="hidden"
+          animate="visible"
+          className="-mx-1 flex gap-4 overflow-x-auto px-1 pb-4 scrollbar-hide"
+          style={{ scrollSnapType: "x mandatory" }}
+        >
+          {isLoading
+            ? ["creation-skeleton-1", "creation-skeleton-2"].map((keyId) => (
+                <CreationSkeleton key={keyId} keyId={keyId} />
+              ))
+            : null}
 
-        {!isLoading && errorMessage ? (
-          <div className="w-full rounded-[1.75rem] border border-white/8 bg-[#311519]/95 p-6 text-sm text-white/70">
-            {errorMessage}
-          </div>
-        ) : null}
+          {!isLoading && errorMessage ? (
+            <div className="w-full rounded-[1.75rem] border border-white/8 bg-[#311519]/95 p-6 text-sm text-white/70">
+              {errorMessage}
+            </div>
+          ) : null}
 
-        {showEmptyState ? (
-          <div className="w-full rounded-[1.75rem] border border-dashed border-white/12 bg-[#311519]/70 p-6 text-sm text-white/65">
-            No creations yet. Start a game from the dashboard to see it here.
-          </div>
-        ) : null}
+          {showEmptyState ? (
+            <div className="w-full rounded-[1.75rem] border border-dashed border-white/12 bg-[#311519]/70 p-6 text-sm text-white/65">
+              No creations yet. Start a game from the dashboard to see it here.
+            </div>
+          ) : null}
 
-        {!isLoading && !errorMessage
-          ? creations.map((creation) => (
-              <CreationCard key={creation.id} creation={creation} />
-            ))
-          : null}
-      </motion.div>
+          {!isLoading && !errorMessage
+            ? creations.map((creation) => (
+                <CreationCard key={creation.id} creation={creation} />
+              ))
+            : null}
+        </motion.div>
+
+        {/* Right fade gradient for carousel scroll hint */}
+        <div className="pointer-events-none absolute -right-1 top-0 h-full w-20 bg-gradient-to-l from-[#0e0406] to-transparent" />
+      </div>
     </motion.section>
   );
 }

@@ -44,15 +44,36 @@ export async function POST(req: Request) {
     warRoomFlag: !!body.war_room,
   });
 
-  // Fetch game to get genre for system prompt context
-  let genre: string | null = null;
-  if (body.gameName) {
+  const clientProvidedGenre = Object.prototype.hasOwnProperty.call(body, "genre");
+  const clientProvidedGameFormat = Object.prototype.hasOwnProperty.call(body, "gameFormat");
+  let genre: string | null =
+    typeof body.genre === "string" ? body.genre : body.genre === null ? null : null;
+  let gameFormat: "2d" | "3d" | null =
+    body.gameFormat === "2d" || body.gameFormat === "3d" ? body.gameFormat : null;
+
+  if (clientProvidedGenre) {
+    console.log(`[chat][${reqId}] genre accepted from client`, { genre });
+  }
+  if (clientProvidedGameFormat) {
+    console.log(`[chat][${reqId}] game format accepted from client`, { gameFormat });
+  }
+
+  if ((!clientProvidedGenre || !clientProvidedGameFormat) && body.gameName) {
     try {
       const game = await getGame(body.gameName);
-      genre = game?.genre ?? null;
-      console.log(`[chat][${reqId}] genre resolved`, { gameName: body.gameName, genre });
+      if (!clientProvidedGenre) {
+        genre = game?.genre ?? null;
+      }
+      if (!clientProvidedGameFormat) {
+        gameFormat = game?.game_format ?? null;
+      }
+      console.log(`[chat][${reqId}] game context resolved`, {
+        gameName: body.gameName,
+        genre,
+        gameFormat,
+      });
     } catch (err) {
-      console.warn(`[chat][${reqId}] genre fetch failed, continuing without`, { error: (err as Error).message });
+      console.warn(`[chat][${reqId}] game context fetch failed, continuing without`, { error: (err as Error).message });
     }
   }
 
@@ -61,7 +82,9 @@ export async function POST(req: Request) {
   // its ID so the frontend can switch to the war room view.
   if (body.war_room && isMastraConfigured() && body.gameName) {
     console.log(`[chat][${reqId}] routing → war room creation`);
-    return handleWarRoomCreation(body, gameId, genre, authUser.userId, reqId);
+    // Extract the raw auth token to forward to the Supabase edge function
+    const rawToken = req.headers.get("Authorization")?.replace("Bearer ", "");
+    return handleWarRoomCreation(body, gameId, genre, gameFormat, authUser.userId, reqId, rawToken);
   }
 
   // ── Mastra Gateway Mode ────────────────────────────────────────────────────
@@ -69,7 +92,7 @@ export async function POST(req: Request) {
   // Otherwise, fall back to the local Vercel AI SDK agent.
   if (isMastraConfigured()) {
     console.log(`[chat][${reqId}] routing → mastra proxy`);
-    return handleMastraProxy(body, gameId, genre, sessionId, reqId);
+    return handleMastraProxy(body, gameId, genre, gameFormat, sessionId, reqId);
   }
 
   // ── Local Agent Mode (fallback) ────────────────────────────────────────────
@@ -110,7 +133,7 @@ export async function POST(req: Request) {
   }
 
   const agentStart = Date.now();
-  const { agent, cleanup } = await createAtomicAgent(selectedModel, gameId, genre);
+  const { agent, cleanup } = await createAtomicAgent(selectedModel, gameId, genre, gameFormat);
   console.log(`[chat][${reqId}] agent created`, { durationMs: Date.now() - agentStart });
 
   const streamStart = Date.now();
@@ -154,6 +177,7 @@ async function handleMastraProxy(
   body: Record<string, unknown>,
   gameId: string,
   genre: string | null,
+  gameFormat: "2d" | "3d" | null,
   sessionId: string | null,
   reqId: string
 ): Promise<Response> {
@@ -163,7 +187,7 @@ async function handleMastraProxy(
   const mastraMessages: MastraMessage[] = [
     {
       role: "system",
-      content: SYSTEM_PROMPT + getGenreContext(genre),
+      content: SYSTEM_PROMPT + getGenreContext(genre, gameFormat),
     },
   ];
 
@@ -186,6 +210,7 @@ async function handleMastraProxy(
     systemPromptLength: mastraMessages[0]?.content?.length ?? 0,
     gameId,
     genre,
+    gameFormat,
     sessionId,
   });
 
@@ -196,6 +221,7 @@ async function handleMastraProxy(
       gameId,
       gameName: (body.gameName as string) ?? "",
       genre,
+      gameFormat,
       sessionId,
       assetModelIds: (body.assetModelIds as string[]) ?? [],
     });
@@ -241,8 +267,10 @@ async function handleWarRoomCreation(
   body: Record<string, unknown>,
   gameId: string,
   genre: string | null,
+  gameFormat: "2d" | "3d" | null,
   userId: string,
-  reqId: string
+  reqId: string,
+  authToken?: string,
 ): Promise<Response> {
   const messages = body.messages as { parts?: { type: string; text: string }[] }[] | undefined;
 
@@ -267,6 +295,7 @@ async function handleWarRoomCreation(
   console.log(`[chat:warroom][${reqId}] creating war room`, {
     gameId,
     genre,
+    gameFormat,
     promptLength: prompt.length,
     promptPreview: prompt.slice(0, 100),
   });
@@ -277,7 +306,9 @@ async function handleWarRoomCreation(
       body.gameName as string,
       prompt,
       userId,
-      genre ?? undefined
+      genre ?? undefined,
+      gameFormat,
+      authToken,
     );
 
     console.log(`[chat:warroom][${reqId}] war room created`, {

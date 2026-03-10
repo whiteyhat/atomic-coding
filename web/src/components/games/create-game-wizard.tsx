@@ -6,15 +6,22 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowLeft,
   ArrowRight,
+  Box,
   Check,
   Loader2,
   Sparkles,
+  Square,
   Wand2,
   X,
 } from "lucide-react";
 import type { Game } from "@/lib/types";
 import { createGame } from "@/lib/api";
-import { getGameGenre } from "@/lib/game-genres";
+import {
+  type GameFormat,
+  getDefaultGameFormatForGenre,
+  getGameGenre,
+  isGenreSupportedInFormat,
+} from "@/lib/game-genres";
 import { useAppAuth } from "@/lib/privy-provider";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -30,11 +37,31 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { GenreSelector } from "./genre-selector";
 
-const STEP_LABELS = ["Name", "Genre", "Review"] as const;
+const STEP_LABELS = ["Name", "Format", "Genre", "Review"] as const;
 const MAX_NAME_LENGTH = 100;
 const MAX_DESCRIPTION_LENGTH = 500;
 const REVIEW_FALLBACK_COPY =
   "A polished new playground for AI-assisted mechanics, bold visuals, and instant iteration.";
+const GAME_FORMAT_OPTIONS = [
+  {
+    value: "2d" as const,
+    label: "2D Game",
+    description: "Sprite-led movement, side views, top-down spaces, and tighter arcade framing.",
+    icon: Square,
+    badgeClass: "border-cyan-300/30 bg-cyan-400/15 text-cyan-50",
+    iconClass: "text-cyan-100",
+    gradientClass: "from-cyan-400/30 via-sky-300/15 to-transparent",
+  },
+  {
+    value: "3d" as const,
+    label: "3D Game",
+    description: "Full-scene depth, spatial cameras, and worlds built around movement through space.",
+    icon: Box,
+    badgeClass: "border-fuchsia-300/30 bg-fuchsia-400/15 text-fuchsia-50",
+    iconClass: "text-fuchsia-100",
+    gradientClass: "from-fuchsia-400/30 via-violet-300/15 to-transparent",
+  },
+] as const;
 
 function isDuplicateNameError(message: string): boolean {
   const normalized = message.toLowerCase();
@@ -63,6 +90,7 @@ export function CreateGameWizard({
   const [step, setStep] = useState(0);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [gameFormat, setGameFormat] = useState<GameFormat | null>(null);
   const [genre, setGenre] = useState<string | null>(null);
   const [nameError, setNameError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -75,9 +103,11 @@ export function CreateGameWizard({
   useEffect(() => {
     if (open && !wasOpenRef.current) {
       const safeInitialGenre = getGameGenre(initialGenre)?.slug ?? null;
-      setStep(safeInitialGenre ? 1 : 0);
+      const safeInitialFormat = getDefaultGameFormatForGenre(safeInitialGenre);
+      setStep(safeInitialGenre && safeInitialFormat ? 2 : 0);
       setName("");
       setDescription("");
+      setGameFormat(safeInitialFormat);
       setGenre(safeInitialGenre);
       setNameError(null);
       setSubmitError(null);
@@ -87,23 +117,38 @@ export function CreateGameWizard({
     wasOpenRef.current = open;
   }, [open, initialGenre]);
 
+  useEffect(() => {
+    if (!gameFormat || !genre || isGenreSupportedInFormat(genre, gameFormat)) {
+      return;
+    }
+
+    setGenre(null);
+  }, [gameFormat, genre]);
+
   const selectedGenre = useMemo(() => getGameGenre(genre), [genre]);
+  const selectedGameFormat = useMemo(
+    () => GAME_FORMAT_OPTIONS.find((option) => option.value === gameFormat) ?? null,
+    [gameFormat],
+  );
   const previewName = name.trim() || "my-awesome-game";
   const previewDescription = description.trim() || REVIEW_FALLBACK_COPY;
   const isNameValid = name.trim().length > 0 && name.trim().length <= MAX_NAME_LENGTH;
-  const canReview = isNameValid && !!selectedGenre;
+  const canReview = isNameValid && !!selectedGameFormat && !!selectedGenre;
   const isPrevDisabled = step === 0 || loading;
   const isNextDisabled =
     loading ||
-    step === 2 ||
+    step === 3 ||
     (step === 0 && !isNameValid) ||
-    (step === 1 && !selectedGenre);
+    (step === 1 && !selectedGameFormat) ||
+    (step === 2 && !selectedGenre);
   const keyboardHint =
     step === 0
       ? "Press Enter to continue. Use Cmd/Ctrl+Enter in the description box."
       : step === 1
-        ? "Choose a template, then press Enter to continue."
-        : "Press Enter to create once everything looks right.";
+        ? "Choose 2D or 3D, then press Enter to continue."
+        : step === 2
+          ? "Choose a template, then press Enter to continue."
+          : "Press Enter to create once everything looks right.";
 
   useEffect(() => {
     if (!open) {
@@ -117,22 +162,15 @@ export function CreateGameWizard({
     }
 
     const shouldTriggerPulse =
-      (step === 0 || step === 1) &&
+      (step === 0 || step === 1 || step === 2) &&
       previousNextDisabledRef.current &&
       !isNextDisabled;
 
     if (shouldTriggerPulse) {
-      setShouldPulseNext(true);
-      if (pulseTimeoutRef.current) {
-        clearTimeout(pulseTimeoutRef.current);
-      }
-      pulseTimeoutRef.current = setTimeout(() => {
-        setShouldPulseNext(false);
-        pulseTimeoutRef.current = null;
-      }, 2200);
+      triggerNextPulse();
     }
 
-    if (step === 2 || isNextDisabled) {
+    if (step === 3 || isNextDisabled) {
       setShouldPulseNext(false);
     }
 
@@ -147,6 +185,17 @@ export function CreateGameWizard({
     };
   }, []);
 
+  function triggerNextPulse() {
+    setShouldPulseNext(true);
+    if (pulseTimeoutRef.current) {
+      clearTimeout(pulseTimeoutRef.current);
+    }
+    pulseTimeoutRef.current = setTimeout(() => {
+      setShouldPulseNext(false);
+      pulseTimeoutRef.current = null;
+    }, 2200);
+  }
+
   function handleNameChange(value: string) {
     setName(value);
     if (nameError) setNameError(null);
@@ -156,6 +205,23 @@ export function CreateGameWizard({
   function handleDescriptionChange(value: string) {
     setDescription(value);
     if (submitError) setSubmitError(null);
+  }
+
+  function handleGameFormatChange(value: GameFormat) {
+    const shouldPulseOnSelection =
+      open && step === 1 && !loading && value !== gameFormat;
+
+    if (shouldPulseOnSelection) {
+      // Prevent the generic effect from immediately retriggering the same pulse.
+      previousNextDisabledRef.current = false;
+    }
+
+    setGameFormat(value);
+    if (submitError) setSubmitError(null);
+
+    if (shouldPulseOnSelection) {
+      triggerNextPulse();
+    }
   }
 
   function validateName(nextMessage?: string): boolean {
@@ -175,7 +241,7 @@ export function CreateGameWizard({
     return true;
   }
 
-  function goToGenreStep() {
+  function goToFormatStep() {
     if (!validateName()) {
       setStep(0);
       return;
@@ -184,8 +250,28 @@ export function CreateGameWizard({
     setStep(1);
   }
 
+  function goToGenreStep() {
+    if (!validateName("Give your game a name before choosing a genre.")) {
+      setStep(0);
+      return;
+    }
+
+    if (!selectedGameFormat) {
+      setStep(1);
+      return;
+    }
+
+    setStep(2);
+  }
+
   function goToReviewStep() {
+    if (!selectedGameFormat) {
+      setStep(1);
+      return;
+    }
+
     if (!selectedGenre) {
+      setStep(2);
       return;
     }
 
@@ -194,7 +280,7 @@ export function CreateGameWizard({
       return;
     }
 
-    setStep(2);
+    setStep(3);
   }
 
   function handlePreviousStep() {
@@ -206,11 +292,39 @@ export function CreateGameWizard({
     if (isNextDisabled) return;
 
     if (step === 0) {
-      goToGenreStep();
+      goToFormatStep();
       return;
     }
 
     if (step === 1) {
+      goToGenreStep();
+      return;
+    }
+
+    if (step === 2) {
+      goToReviewStep();
+    }
+  }
+
+  function handleStepSelection(nextStep: number) {
+    if (loading) return;
+
+    if (nextStep <= step) {
+      setStep(nextStep);
+      return;
+    }
+
+    if (nextStep === 1) {
+      goToFormatStep();
+      return;
+    }
+
+    if (nextStep === 2) {
+      goToGenreStep();
+      return;
+    }
+
+    if (nextStep === 3) {
       goToReviewStep();
     }
   }
@@ -236,23 +350,33 @@ export function CreateGameWizard({
     event.preventDefault();
 
     if (step === 0) {
-      goToGenreStep();
+      goToFormatStep();
       return;
     }
 
     if (step === 1) {
-      goToReviewStep();
+      goToGenreStep();
       return;
     }
 
     if (step === 2) {
+      goToReviewStep();
+      return;
+    }
+
+    if (step === 3) {
       void handleCreate();
     }
   }
 
   async function handleCreate() {
-    if (!selectedGenre) {
+    if (!selectedGameFormat) {
       setStep(1);
+      return;
+    }
+
+    if (!selectedGenre) {
+      setStep(2);
       return;
     }
 
@@ -274,6 +398,7 @@ export function CreateGameWizard({
         name.trim(),
         description.trim() || undefined,
         selectedGenre.slug,
+        selectedGameFormat.value,
       );
 
       onCreated?.(game);
@@ -312,10 +437,10 @@ export function CreateGameWizard({
                 Create Flow
               </div>
               <DialogTitle className="text-2xl font-semibold tracking-tight text-white sm:text-[2rem]">
-                Launch a new game in three sharp moves
+                Launch a new game in four sharp moves
               </DialogTitle>
               <DialogDescription className="max-w-2xl text-sm leading-6 text-white/60">
-                Shape the concept, pick a starter scaffold, and ship directly into the editor.
+                Shape the concept, choose 2D or 3D, pick a starter scaffold, and ship directly into the editor.
               </DialogDescription>
             </DialogHeader>
 
@@ -389,21 +514,18 @@ export function CreateGameWizard({
           </div>
 
           <div className="border-b border-white/8 px-5 py-4 sm:px-7">
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               {STEP_LABELS.map((label, index) => {
                 const isCurrent = index === step;
                 const isComplete = index < step;
-                const isClickable = index <= step || (index === 1 && step === 0);
+                const isClickable = index <= step || index === step + 1;
 
                 return (
                   <button
                     key={label}
                     type="button"
                     disabled={!isClickable || loading}
-                    onClick={() => {
-                      if (index === 2 && !canReview) return;
-                      setStep(index);
-                    }}
+                    onClick={() => handleStepSelection(index)}
                     className={cn(
                       "group rounded-[1.4rem] border px-4 py-3 text-left transition-all",
                       isCurrent
@@ -431,8 +553,10 @@ export function CreateGameWizard({
                           {index === 0
                             ? "Identity first"
                             : index === 1
-                              ? "Choose your scaffold"
-                              : "Final pass"}
+                              ? "Pick dimension"
+                              : index === 2
+                                ? "Choose scaffold"
+                                : "Final pass"}
                         </p>
                       </div>
                     </div>
@@ -501,7 +625,7 @@ export function CreateGameWizard({
                               value={description}
                               onChange={(event) => handleDescriptionChange(event.target.value)}
                               maxLength={MAX_DESCRIPTION_LENGTH}
-                              placeholder="A 3D platformer with physics"
+                              placeholder="A fast-paced platformer with physics"
                               disabled={loading}
                               className="mt-3 min-h-32 rounded-[1.35rem] border-white/10 bg-[#1f0c11] text-base leading-7 text-white placeholder:text-white/25 focus-visible:border-rose-300/30 focus-visible:ring-rose-300/20"
                             />
@@ -521,20 +645,67 @@ export function CreateGameWizard({
                             Step 2
                           </p>
                           <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">
-                            Choose a genre
+                            Choose the game format
                           </h2>
                           <p className="mt-3 text-sm leading-6 text-white/60">
-                            Pick a starting template. Each genre comes with pre-built atoms and a Three.js scaffold.
+                            Set the project direction first. The next step only shows starter genres that fit the format you pick.
                           </p>
                         </div>
 
-                        <GenreSelector
-                          value={genre}
-                          onChange={(nextGenre) => {
-                            setGenre(nextGenre);
-                            if (submitError) setSubmitError(null);
-                          }}
-                        />
+                        <div className="grid gap-4 md:grid-cols-2">
+                          {GAME_FORMAT_OPTIONS.map((option) => {
+                            const Icon = option.icon;
+                            const isSelected = selectedGameFormat?.value === option.value;
+
+                            return (
+                              <motion.button
+                                key={option.value}
+                                type="button"
+                                onClick={() => handleGameFormatChange(option.value)}
+                                disabled={loading}
+                                whileHover={{ y: -3, scale: 1.01 }}
+                                whileTap={{ scale: 0.985 }}
+                                className={cn(
+                                  "group relative overflow-hidden rounded-[1.6rem] border p-5 text-left transition-all",
+                                  isSelected
+                                    ? "border-white/20 bg-white/[0.08] shadow-[0_0_36px_rgba(244,63,94,0.12)]"
+                                    : "border-white/10 bg-white/[0.03] hover:border-white/20 hover:bg-white/[0.05]",
+                                  loading && "cursor-not-allowed opacity-70",
+                                )}
+                              >
+                                <div className={cn("absolute inset-0 bg-gradient-to-br opacity-80", option.gradientClass)} />
+                                <div className="absolute inset-0 bg-[linear-gradient(165deg,rgba(11,4,6,0.0)_0%,rgba(11,4,6,0.82)_85%)]" />
+
+                                <div className="relative flex h-full flex-col justify-between gap-6">
+                                  <div className="flex items-start justify-between gap-4">
+                                    <div className="flex size-12 items-center justify-center rounded-[1rem] border border-white/10 bg-white/5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+                                      <Icon className={cn("size-5", isSelected ? option.iconClass : "text-white/70")} />
+                                    </div>
+                                    <Badge
+                                      className={cn(
+                                        "rounded-full border px-2.5 py-1 text-[9px] uppercase tracking-[0.22em]",
+                                        isSelected
+                                          ? option.badgeClass
+                                          : "border-white/10 bg-white/5 text-white/45",
+                                      )}
+                                    >
+                                      {isSelected ? "Selected" : "Format"}
+                                    </Badge>
+                                  </div>
+
+                                  <div>
+                                    <p className="text-xl font-semibold tracking-tight text-white">
+                                      {option.label}
+                                    </p>
+                                    <p className="mt-3 max-w-md text-sm leading-6 text-white/65">
+                                      {option.description}
+                                    </p>
+                                  </div>
+                                </div>
+                              </motion.button>
+                            );
+                          })}
+                        </div>
                       </div>
                     ) : null}
 
@@ -545,6 +716,33 @@ export function CreateGameWizard({
                             Step 3
                           </p>
                           <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">
+                            Choose a genre
+                          </h2>
+                          <p className="mt-3 text-sm leading-6 text-white/60">
+                            Pick a starting template for your{" "}
+                            {selectedGameFormat?.label.toLowerCase() ?? "game"}. Each genre comes
+                            with pre-built atoms and a scaffold matched to that direction.
+                          </p>
+                        </div>
+
+                        <GenreSelector
+                          value={genre}
+                          gameFormat={selectedGameFormat?.value ?? null}
+                          onChange={(nextGenre) => {
+                            setGenre(nextGenre);
+                            if (submitError) setSubmitError(null);
+                          }}
+                        />
+                      </div>
+                    ) : null}
+
+                    {step === 3 ? (
+                      <div className="space-y-8 pb-2">
+                        <div className="max-w-2xl">
+                          <p className="text-sm uppercase tracking-[0.28em] text-white/35">
+                            Step 4
+                          </p>
+                          <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">
                             Review and confirm
                           </h2>
                           <p className="mt-3 text-sm leading-6 text-white/60">
@@ -552,12 +750,20 @@ export function CreateGameWizard({
                           </p>
                         </div>
 
-                        <div className="grid gap-4 md:grid-cols-3">
+                        <div className="grid gap-4 md:grid-cols-2">
                           <div className="rounded-[1.6rem] border border-white/10 bg-white/[0.03] p-4">
                             <p className="text-[11px] uppercase tracking-[0.24em] text-white/35">
                               Name
                             </p>
                             <p className="mt-3 text-lg font-semibold text-white">{previewName}</p>
+                          </div>
+                          <div className="rounded-[1.6rem] border border-white/10 bg-white/[0.03] p-4">
+                            <p className="text-[11px] uppercase tracking-[0.24em] text-white/35">
+                              Game type
+                            </p>
+                            <p className="mt-3 text-lg font-semibold text-white">
+                              {selectedGameFormat?.label ?? "Choose 2D or 3D"}
+                            </p>
                           </div>
                           <div className="rounded-[1.6rem] border border-white/10 bg-white/[0.03] p-4">
                             <p className="text-[11px] uppercase tracking-[0.24em] text-white/35">
@@ -592,7 +798,7 @@ export function CreateGameWizard({
                 </div>
 
                 <div className="flex min-h-12 items-center justify-end">
-                  {step === 2 ? (
+                  {step === 3 ? (
                     <Button
                       type="button"
                       onClick={handleCreate}
@@ -629,7 +835,7 @@ export function CreateGameWizard({
                     </p>
                   </div>
                   <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] uppercase tracking-[0.24em] text-white/45">
-                    {step + 1}/3
+                    {step + 1}/4
                   </div>
                 </div>
 
@@ -637,20 +843,27 @@ export function CreateGameWizard({
                   layout
                   className="relative flex min-h-[320px] flex-col overflow-hidden rounded-[2rem] border border-white/10 bg-[#220d13] shadow-[0_20px_60px_rgba(0,0,0,0.35)] lg:min-h-0 lg:self-start"
                 >
-                  <div className={cn("absolute inset-0 bg-gradient-to-br", selectedGenre?.gradientClass ?? "from-white/10 via-transparent to-transparent")} />
+                  <div className={cn("absolute inset-0 bg-gradient-to-br", selectedGenre?.gradientClass ?? selectedGameFormat?.gradientClass ?? "from-white/10 via-transparent to-transparent")} />
                   <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.04)_0%,rgba(11,4,6,0.0)_35%,rgba(11,4,6,0.88)_100%)]" />
 
                   <div className="relative flex min-h-24 items-start justify-between px-5 py-4 sm:min-h-28 sm:px-6 sm:py-5">
-                    <Badge className={cn("rounded-full border px-3 py-1 text-[11px] font-medium tracking-[0.2em] uppercase", selectedGenre?.pillClass ?? "border-white/15 bg-white/10 text-white/80")}>
-                      {selectedGenre?.displayName ?? "Choose a genre"}
-                    </Badge>
+                    <div className="flex flex-wrap gap-2">
+                      <Badge className={cn("rounded-full border px-3 py-1 text-[11px] font-medium tracking-[0.2em] uppercase", selectedGenre?.pillClass ?? "border-white/15 bg-white/10 text-white/80")}>
+                        {selectedGenre?.displayName ?? "Choose a genre"}
+                      </Badge>
+                      <Badge className={cn("rounded-full border px-3 py-1 text-[11px] font-medium tracking-[0.2em] uppercase", selectedGameFormat?.badgeClass ?? "border-white/15 bg-white/10 text-white/60")}>
+                        {selectedGameFormat?.label ?? "Choose 2D or 3D"}
+                      </Badge>
+                    </div>
                     <div className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-[11px] uppercase tracking-[0.22em] text-white/45">
                       Review card
                     </div>
                   </div>
 
                   <div className="relative flex items-center justify-center px-6 py-1 text-[3.4rem] sm:text-[4rem]">
-                    <span aria-hidden="true">{selectedGenre?.emoji ?? "🎮"}</span>
+                    <span aria-hidden="true">
+                      {selectedGenre?.emoji ?? (selectedGameFormat?.value === "2d" ? "🕹️" : selectedGameFormat?.value === "3d" ? "🎲" : "🎮")}
+                    </span>
                   </div>
 
                   <div className="relative space-y-3 px-5 pb-5 pt-2 sm:px-6">
@@ -669,7 +882,7 @@ export function CreateGameWizard({
 
                     <div className="flex flex-wrap gap-2 pt-1">
                       <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/65">
-                        Three.js scaffold
+                        {selectedGameFormat?.label ?? "Pick a format"}
                       </div>
                       <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/65">
                         Genre atoms

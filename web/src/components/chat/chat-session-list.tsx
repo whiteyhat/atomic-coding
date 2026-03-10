@@ -1,7 +1,12 @@
 "use client";
 
-import { createChatSession, deleteChatSession } from "@/lib/api";
+import { deleteChatSession } from "@/lib/api";
 import { useChatSessions } from "@/lib/hooks";
+import {
+  createDraftChatSession,
+  createPersistedChatSession,
+  type ActiveChatSession,
+} from "@/lib/chat-session-state";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Loader2, MessageSquare, Plus, Trash2 } from "lucide-react";
@@ -10,7 +15,7 @@ import { useAppAuth } from "@/lib/privy-provider";
 
 interface ChatSessionListProps {
   gameName: string;
-  onSelect: (sessionId: string) => void;
+  onSelect: (session: ActiveChatSession) => void;
 }
 
 function modelName(modelId: string | null): string | null {
@@ -27,19 +32,8 @@ export function ChatSessionList({ gameName, onSelect }: ChatSessionListProps) {
       login();
       return;
     }
-    // Optimistic: navigate immediately with a temp ID, create session in background
-    const tempId = crypto.randomUUID();
-    onSelect(tempId);
 
-    createChatSession(gameName)
-      .then((session) => {
-        // Replace temp ID with the real session ID
-        onSelect(session.id);
-        mutate();
-      })
-      .catch((err) => {
-        console.error("[chat] Failed to create session:", err);
-      });
+    onSelect(createDraftChatSession());
   }
 
   async function handleDelete(
@@ -102,7 +96,7 @@ export function ChatSessionList({ gameName, onSelect }: ChatSessionListProps) {
             {items.map((session) => (
               <button
                 key={session.id}
-                onClick={() => onSelect(session.id)}
+                onClick={() => onSelect(createPersistedChatSession(session.id))}
                 className="group w-full text-left px-3 py-2.5 hover:bg-white/[0.06] transition-colors border-b border-white/[0.06] last:border-b-0"
               >
                 <div className="flex items-start justify-between gap-2">

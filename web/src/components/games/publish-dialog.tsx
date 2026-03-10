@@ -22,6 +22,10 @@ interface PublishDialogProps {
   isPublished: boolean;
   publicSlug: string | null;
   onPublished?: () => void;
+  triggerVariant?: React.ComponentProps<typeof Button>["variant"];
+  triggerSize?: React.ComponentProps<typeof Button>["size"];
+  triggerClassName?: string;
+  triggerLabel?: string;
 }
 
 export function PublishDialog({
@@ -29,6 +33,10 @@ export function PublishDialog({
   isPublished,
   publicSlug,
   onPublished,
+  triggerVariant,
+  triggerSize,
+  triggerClassName,
+  triggerLabel,
 }: PublishDialogProps) {
   const [open, setOpen] = useState(false);
   const [slug, setSlug] = useState(publicSlug ?? gameName.toLowerCase().replace(/[^a-z0-9-]/g, "-"));
@@ -68,9 +76,13 @@ export function PublishDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant={isPublished ? "outline" : "default"} size="sm">
+        <Button
+          variant={triggerVariant ?? (isPublished ? "outline" : "default")}
+          size={triggerSize ?? "sm"}
+          className={triggerClassName}
+        >
           <Globe className="size-3.5 mr-1.5" />
-          {isPublished ? "Published" : "Publish"}
+          {triggerLabel ?? (isPublished ? "Published" : "Publish")}
         </Button>
       </DialogTrigger>
       <DialogContent>

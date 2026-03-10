@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import {
   BarChart3,
   Home,
@@ -9,6 +10,7 @@ import {
   Plus,
   Settings,
   Gamepad2,
+  Shrimp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { slideInLeft, fadeInUp, staggerContainer } from "./workspace-animations";
@@ -21,9 +23,10 @@ import {
 
 const navItems = [
   { icon: Home, label: "Home", id: "home", href: "/dashboard" },
-  { icon: BarChart3, label: "Analytics", id: "stats", href: "/dashboard" },
-  { icon: Gamepad2, label: "Library", id: "library", href: "/dashboard" },
-  { icon: Settings, label: "Settings", id: "settings", href: "/dashboard" },
+  { icon: BarChart3, label: "Analytics", id: "stats", href: "/analytics" },
+  { icon: Gamepad2, label: "Library", id: "library", href: "/library" },
+  { icon: Shrimp, label: "OpenClaw", id: "openclaw", href: "/openclaw" },
+  { icon: Settings, label: "Settings", id: "settings", href: "/settings" },
 ] as const;
 
 interface AppNavSidebarProps {
@@ -32,6 +35,20 @@ interface AppNavSidebarProps {
 }
 
 export function AppNavSidebar({ activeId = "library", onCreateClick }: AppNavSidebarProps) {
+  const pathname = usePathname();
+  const resolvedActiveId =
+    pathname.startsWith("/analytics")
+      ? "stats"
+      : pathname.startsWith("/library") || pathname.startsWith("/games/")
+        ? "library"
+        : pathname.startsWith("/openclaw")
+          ? "openclaw"
+          : pathname.startsWith("/settings")
+            ? "settings"
+            : pathname.startsWith("/dashboard")
+              ? "home"
+              : activeId;
+
   return (
     <TooltipProvider delayDuration={150}>
       <motion.aside
@@ -68,7 +85,7 @@ export function AppNavSidebar({ activeId = "library", onCreateClick }: AppNavSid
           className="mt-4 flex flex-1 flex-col items-center gap-1"
         >
           {navItems.map(({ icon: Icon, label, id, href }) => {
-            const isActive = id === activeId;
+            const isActive = id === resolvedActiveId;
 
             return (
               <Tooltip key={id}>

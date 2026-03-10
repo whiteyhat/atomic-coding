@@ -39,6 +39,45 @@ export interface ExternalDetail extends InstalledExternal {
 // Service functions
 // =============================================================================
 
+/** Register a custom external library into the registry */
+export async function registerCustomExternal(input: {
+  display_name: string;
+  cdn_url: string;
+  global_name: string;
+  version?: string;
+}): Promise<RegistryEntry> {
+  const supabase = getSupabaseClient();
+
+  // Derive a unique name from display_name
+  const name = `custom_${input.display_name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")}`;
+  const version = input.version || "0.0.0";
+  const packageName = name; // custom externals don't have real npm packages
+
+  const { data, error } = await supabase
+    .from("external_registry")
+    .upsert(
+      {
+        name,
+        display_name: input.display_name,
+        package_name: packageName,
+        version,
+        cdn_url: input.cdn_url,
+        global_name: input.global_name,
+        description: `Custom library: ${input.display_name}`,
+        load_type: "script",
+        api_surface: `// ${input.display_name} — Custom external\n// Available as window.${input.global_name}`,
+      },
+      { onConflict: "name" },
+    )
+    .select("id, name, display_name, package_name, version, cdn_url, global_name, description")
+    .single();
+
+  if (error) throw new Error(`Failed to register custom external: ${error.message}`);
+  log("info", "custom external registered", { name });
+
+  return data as RegistryEntry;
+}
+
 /** List all available libraries from the curated registry */
 export async function listRegistry(): Promise<RegistryEntry[]> {
   return cached("registry:externals", 300, async () => {

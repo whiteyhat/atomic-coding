@@ -18,6 +18,7 @@ const mockCreations: DashboardGameSummary[] = [
     name: "Neon Kingdom Tactics",
     description: "A cyberpunk hex-strategy game with AI-driven opponents and neon-lit battlefields.",
     genre: "hex-strategy",
+    gameFormat: "3d",
     thumbnailUrl: null,
     isPublished: true,
     publicSlug: "neon-kingdom-tactics",
@@ -34,6 +35,7 @@ const mockCreations: DashboardGameSummary[] = [
     name: "Cyber Quest II",
     description: "An open-world adventure where players explore procedurally generated cyber-realms.",
     genre: "rpg",
+    gameFormat: "3d",
     thumbnailUrl: null,
     isPublished: false,
     publicSlug: null,
@@ -56,6 +58,7 @@ const mockCreations: DashboardGameSummary[] = [
     name: "Velocity Rush",
     description: "High-speed racing through neon cityscapes with drift mechanics and power-ups.",
     genre: "racing",
+    gameFormat: "3d",
     thumbnailUrl: null,
     isPublished: true,
     publicSlug: "velocity-rush",
@@ -72,6 +75,7 @@ const mockCreations: DashboardGameSummary[] = [
     name: "Shadow Fortress",
     description: "A tower-defense game set in a dark fantasy world with summoning mechanics.",
     genre: "tower-defense",
+    gameFormat: "3d",
     thumbnailUrl: null,
     isPublished: false,
     publicSlug: null,
@@ -158,4 +162,3 @@ export const MOCK_TOKEN_ACTIVITY: TokenActivityItem[] = [
   { id: "tok-004", tokenSymbol: "$SHADOW", tokenColor: "#10b981", action: "launched", changePercent: 0, timeAgo: "1h ago", detail: "Initial mint" },
   { id: "tok-005", tokenSymbol: "$NEON", tokenColor: "#f43f5e", action: "bonding", changePercent: 6, timeAgo: "2h ago", detail: "0.8 ETH Buy" },
 ];
-

@@ -1,5 +1,6 @@
 import { getSupabaseClient } from "../supabase-client.ts";
 import { log } from "../logger.ts";
+import { emitOpenClawEvent } from "./openclaw.ts";
 
 // =============================================================================
 // Types
@@ -68,6 +69,13 @@ export async function upsertTokenLaunch(
 
   if (error) throw new Error(`Failed to upsert token launch: ${error.message}`);
   log("info", "token launch upserted", { gameId, tokenName, tokenSymbol });
+  await emitOpenClawEvent(creatorId, "token:updated", {
+    game_id: gameId,
+    launch_id: data.id,
+    token_name: data.token_name,
+    token_symbol: data.token_symbol,
+    status: data.status,
+  });
   return data as TokenLaunch;
 }
 

@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect, useRef, Fragment, useCallback } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, isToolUIPart } from "ai";
 import type { UIMessage } from "ai";
+import { useSWRConfig } from "swr";
 import {
   Conversation,
   ConversationContent,
@@ -15,180 +16,218 @@ import {
   MessageContent,
   MessageResponse,
 } from "@/components/ai-elements/message";
-import { ToolCall } from "./tool-call";
 import {
   PromptInput,
   PromptInputBody,
-  PromptInputTextarea,
   PromptInputFooter,
-  PromptInputTools,
-  PromptInputSubmit,
+  PromptInputMessage,
+  PromptInputProvider,
   PromptInputSelect,
-  PromptInputSelectTrigger,
   PromptInputSelectContent,
   PromptInputSelectItem,
+  PromptInputSelectTrigger,
   PromptInputSelectValue,
-  type PromptInputMessage,
+  PromptInputSubmit,
+  PromptInputTextarea,
+  PromptInputTools,
 } from "@/components/ai-elements/prompt-input";
-import { MODELS, DEFAULT_MODEL } from "@/lib/constants";
+import { AssetModelDialog } from "./asset-model-dialog";
+import { ToolCall } from "./tool-call";
+import { Box, MessageSquare, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { DEFAULT_MODEL, MODELS } from "@/lib/constants";
 import {
+  createChatSession,
   getChatMessages,
   saveChatMessages,
-  createWarRoom,
 } from "@/lib/api";
-import { cn } from "@/lib/utils";
-import { ArrowLeft, Box, MessageSquare, Swords, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { AssetModelDialog } from "./asset-model-dialog";
+import { shouldLoadPersistedChatHistory } from "@/lib/chat-session-state";
+import { getChatSessionsKey } from "@/lib/hooks/use-chat-sessions";
 import type { AssetModel } from "@/lib/types";
 import { useAppAuth } from "@/lib/privy-provider";
+import { cn } from "@/lib/utils";
 
 interface ChatPanelProps {
   gameId: string;
   gameName: string;
-  sessionId: string;
-  onBack?: () => void;
-  onWarRoomCreated?: (warRoomId: string) => void;
+  gameFormat: "2d" | "3d" | null;
+  genre: string | null;
+  sessionClientId: string;
+  sessionId: string | null;
+  initialPrompt?: string | null;
+  onSessionReady?: (sessionId: string) => void;
 }
 
-/**
- * Outer wrapper: loads messages from DB, then renders ChatPanelContent
- * once ready so that useChat initializes with the correct messages.
- */
-export function ChatPanel({ gameId, gameName, sessionId, onBack, onWarRoomCreated }: ChatPanelProps) {
-  const [initialMessages, setInitialMessages] = useState<UIMessage[] | null>(null);
-  const [initialSavedCount, setInitialSavedCount] = useState(0);
+export function ChatPanel({
+  gameId,
+  gameName,
+  gameFormat,
+  genre,
+  sessionClientId,
+  sessionId,
+  initialPrompt,
+  onSessionReady,
+}: ChatPanelProps) {
+  const shouldLoadHistory = shouldLoadPersistedChatHistory(sessionClientId, sessionId);
+  const [persistedHistory, setPersistedHistory] = useState<{
+    sessionId: string;
+    messages: UIMessage[];
+    savedCount: number;
+  } | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
+    if (!shouldLoadHistory || !sessionId || persistedHistory?.sessionId === sessionId) {
+      return;
+    }
 
+    let cancelled = false;
     getChatMessages(gameName, sessionId)
       .then((dbMessages) => {
         if (cancelled) return;
-        if (dbMessages.length > 0) {
-          const uiMessages: UIMessage[] = dbMessages.map((m) => ({
-            id: m.message_id,
-            role: m.role as "user" | "assistant",
-            parts: m.parts as UIMessage["parts"],
-          }));
-          setInitialMessages(uiMessages);
-          setInitialSavedCount(dbMessages.length);
-        } else {
-          setInitialMessages([]);
-        }
+        const uiMessages: UIMessage[] = dbMessages.map((message) => ({
+          id: message.message_id,
+          role: message.role as "user" | "assistant",
+          parts: message.parts as UIMessage["parts"],
+        }));
+        setPersistedHistory({
+          sessionId,
+          messages: uiMessages,
+          savedCount: dbMessages.length,
+        });
       })
-      .catch((err) => {
-        console.error("[chat] Failed to load messages:", err);
-        if (!cancelled) setInitialMessages([]);
+      .catch((error) => {
+        console.error("[chat] Failed to load messages:", error);
+        if (cancelled) return;
+        setPersistedHistory({
+          sessionId,
+          messages: [],
+          savedCount: 0,
+        });
       });
 
-    return () => { cancelled = true; };
-  }, [gameName, sessionId]);
+    return () => {
+      cancelled = true;
+    };
+  }, [gameName, persistedHistory?.sessionId, sessionId, shouldLoadHistory]);
+
+  const initialMessages =
+    shouldLoadHistory && persistedHistory?.sessionId !== sessionId
+      ? null
+      : persistedHistory?.messages ?? [];
+  const initialSavedCount =
+    shouldLoadHistory && persistedHistory?.sessionId === sessionId
+      ? persistedHistory.savedCount
+      : 0;
 
   if (initialMessages === null) {
     return (
-      <div className="flex flex-col h-full">
-        {onBack && (
-          <div className="flex items-center gap-2 px-3 py-1.5 border-b border-white/[0.06] shrink-0">
-            <Button variant="ghost" size="icon" className="size-6" onClick={onBack}>
-              <ArrowLeft className="size-3.5" />
-            </Button>
-            <span className="text-xs text-white/40">Back to sessions</span>
-          </div>
-        )}
-        <div className="flex items-center justify-center flex-1 text-muted-foreground text-sm">
-          Loading chat...
-        </div>
+      <div className="flex h-full items-center justify-center text-sm text-white/45">
+        Loading chat...
       </div>
     );
   }
 
   return (
-    <ChatPanelContent
-      gameId={gameId}
-      gameName={gameName}
-      sessionId={sessionId}
-      initialMessages={initialMessages}
-      initialSavedCount={initialSavedCount}
-      onBack={onBack}
-      onWarRoomCreated={onWarRoomCreated}
-    />
+    <PromptInputProvider initialInput={initialPrompt ?? ""}>
+      <ChatPanelContent
+        gameId={gameId}
+        gameName={gameName}
+        gameFormat={gameFormat}
+        genre={genre}
+        initialMessages={initialMessages}
+        initialSavedCount={initialSavedCount}
+        onSessionReady={onSessionReady}
+        sessionClientId={sessionClientId}
+        sessionId={sessionId}
+      />
+    </PromptInputProvider>
   );
 }
 
-/**
- * Inner component: useChat initializes here with the correct messages already loaded.
- */
 interface ChatPanelContentProps {
   gameId: string;
   gameName: string;
-  sessionId: string;
+  gameFormat: "2d" | "3d" | null;
+  genre: string | null;
   initialMessages: UIMessage[];
   initialSavedCount: number;
-  onBack?: () => void;
-  onWarRoomCreated?: (warRoomId: string) => void;
-}
-
-function buildWarRoomPrompt(
-  prompt: string,
-  selectedAssets: AssetModel[]
-): string {
-  const trimmed = prompt.trim();
-  if (selectedAssets.length === 0) return trimmed;
-
-  const visualRefs = selectedAssets
-    .slice(0, 5)
-    .map((asset, index) => {
-      const style = asset.style?.trim() ? ` | style: ${asset.style.trim()}` : "";
-      return `${index + 1}. ${asset.prompt.trim()}${style}`;
-    })
-    .join("\n");
-
-  return [
-    trimmed,
-    "",
-    "Visual references to consider for Pixel:",
-    visualRefs,
-    "",
-    "Use these references for art direction, cohesion, and polish, not as hard requirements.",
-  ].join("\n");
+  onSessionReady?: (sessionId: string) => void;
+  sessionClientId: string;
+  sessionId: string | null;
 }
 
 function ChatPanelContent({
   gameId,
   gameName,
-  sessionId,
+  gameFormat,
+  genre,
   initialMessages,
   initialSavedCount,
-  onBack,
-  onWarRoomCreated,
+  onSessionReady,
+  sessionClientId,
+  sessionId,
 }: ChatPanelContentProps) {
   const { getAccessToken } = useAppAuth();
+  const { mutate } = useSWRConfig();
   const [model, setModel] = useState(DEFAULT_MODEL);
   const modelRef = useRef(model);
   modelRef.current = model;
-
-  const [warRoomMode, setWarRoomMode] = useState(false);
-  const [isCreatingWarRoom, setIsCreatingWarRoom] = useState(false);
 
   const [selectedAssets, setSelectedAssets] = useState<AssetModel[]>([]);
   const [assetDialogOpen, setAssetDialogOpen] = useState(false);
   const assetsRef = useRef<AssetModel[]>([]);
   assetsRef.current = selectedAssets;
 
-  const sessionIdRef = useRef(sessionId);
-  sessionIdRef.current = sessionId;
+  const [persistedSessionId, setPersistedSessionId] = useState(sessionId);
+  const persistedSessionIdRef = useRef(persistedSessionId);
+  persistedSessionIdRef.current = persistedSessionId;
+
+  useEffect(() => {
+    if (!sessionId) return;
+    setPersistedSessionId((current) => current ?? sessionId);
+  }, [sessionId]);
+
+  const sessionCreatePromiseRef = useRef<Promise<string> | null>(null);
   const savedCountRef = useRef(initialSavedCount);
   const isPersistingRef = useRef(false);
   const tokenCacheRef = useRef<{ token: string | null; ts: number }>({ token: null, ts: 0 });
 
+  const syncPersistedSessionId = useCallback(
+    (nextSessionId: string) => {
+      persistedSessionIdRef.current = nextSessionId;
+      setPersistedSessionId((current) => current ?? nextSessionId);
+      onSessionReady?.(nextSessionId);
+      void mutate(getChatSessionsKey(gameName));
+    },
+    [gameName, mutate, onSessionReady],
+  );
+
+  const ensurePersistedSession = useCallback(async (): Promise<string> => {
+    if (persistedSessionIdRef.current) {
+      return persistedSessionIdRef.current;
+    }
+
+    if (!sessionCreatePromiseRef.current) {
+      sessionCreatePromiseRef.current = createChatSession(gameName, modelRef.current)
+        .then((session) => {
+          syncPersistedSessionId(session.id);
+          return session.id;
+        })
+        .catch((error) => {
+          console.error("[chat] Failed to create session:", error);
+          throw error;
+        })
+        .finally(() => {
+          sessionCreatePromiseRef.current = null;
+        });
+    }
+
+    return sessionCreatePromiseRef.current;
+  }, [gameName, syncPersistedSessionId]);
+
   const { messages, status, sendMessage } = useChat({
-    id: sessionId,
+    id: sessionClientId,
     messages: initialMessages.length > 0 ? initialMessages : undefined,
     transport: new DefaultChatTransport({
       api: "/api/chat",
@@ -196,9 +235,11 @@ function ChatPanelContent({
         model: modelRef.current,
         gameId,
         gameName,
-        sessionId: sessionIdRef.current,
+        gameFormat,
+        genre,
+        sessionId: persistedSessionIdRef.current,
         ...(assetsRef.current.length > 0
-          ? { assetModelIds: assetsRef.current.map((a) => a._id) }
+          ? { assetModelIds: assetsRef.current.map((asset) => asset._id) }
           : {}),
       }),
       headers: async (): Promise<Record<string, string>> => {
@@ -206,6 +247,7 @@ function ChatPanelContent({
         if (now - tokenCacheRef.current.ts < 30_000 && tokenCacheRef.current.token) {
           return { Authorization: `Bearer ${tokenCacheRef.current.token}` };
         }
+
         const token = await getAccessToken();
         tokenCacheRef.current = { token, ts: now };
         return token ? { Authorization: `Bearer ${token}` } : {};
@@ -213,118 +255,66 @@ function ChatPanelContent({
     }),
   });
 
-  // Also persist when messages change and status goes back to ready
-  const prevStatusRef = useRef(status);
-  useEffect(() => {
-    if (
-      prevStatusRef.current !== "ready" &&
-      status === "ready" &&
-      messages.length > 0 &&
-      sessionId
-    ) {
-      persistMessages(messages);
-    }
-    prevStatusRef.current = status;
-  }, [status, messages, sessionId]);
-
   const persistMessages = useCallback(
-    async (msgs: UIMessage[]) => {
-      if (!sessionId || msgs.length === 0) return;
-      if (isPersistingRef.current) return;
-      const unsaved = msgs.slice(savedCountRef.current);
+    async (nextMessages: UIMessage[]) => {
+      if (nextMessages.length === 0 || isPersistingRef.current) return;
+
+      const unsaved = nextMessages.slice(savedCountRef.current);
       if (unsaved.length === 0) return;
 
       isPersistingRef.current = true;
       try {
+        const resolvedSessionId = await ensurePersistedSession();
         await saveChatMessages(
           gameName,
-          sessionId,
-          unsaved.map((m) => ({
-            message_id: m.id,
-            role: m.role,
-            parts: m.parts as unknown[],
-          }))
+          resolvedSessionId,
+          unsaved.map((message) => ({
+            message_id: message.id,
+            role: message.role,
+            parts: message.parts as unknown[],
+          })),
         );
-        savedCountRef.current = msgs.length;
-        console.log("[chat] Persisted", unsaved.length, "new messages");
-      } catch (err) {
-        console.error("[chat] Failed to persist messages:", err);
+        savedCountRef.current = nextMessages.length;
+        void mutate(getChatSessionsKey(gameName));
+      } catch (error) {
+        console.error("[chat] Failed to persist messages:", error);
       } finally {
         isPersistingRef.current = false;
       }
     },
-    [sessionId, gameName]
+    [ensurePersistedSession, gameName, mutate],
   );
+
+  const previousStatusRef = useRef(status);
+  useEffect(() => {
+    if (previousStatusRef.current !== "ready" && status === "ready" && messages.length > 0) {
+      void persistMessages(messages);
+    }
+    previousStatusRef.current = status;
+  }, [messages, persistMessages, status]);
 
   const handleSubmit = async (message: PromptInputMessage) => {
     if (!message.text?.trim()) return;
-    const promptText = message.text.trim();
-
-    if (warRoomMode) {
-      setIsCreatingWarRoom(true);
-      try {
-        const warRoom = await createWarRoom(
-          gameName,
-          buildWarRoomPrompt(promptText, assetsRef.current)
-        );
-        console.log("[chat] War room created:", warRoom.id);
-
-        // Trigger pipeline via local Next.js route (confirmed, not fire-and-forget).
-        // The orchestrator has idempotency guards so double-triggering is safe.
-        try {
-          const triggerRes = await fetch("/api/warroom/trigger", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ war_room_id: warRoom.id }),
-          });
-          if (!triggerRes.ok) {
-            console.error("[chat] Pipeline trigger failed:", triggerRes.status, await triggerRes.text());
-          } else {
-            console.log("[chat] Pipeline triggered successfully for", warRoom.id);
-          }
-        } catch (triggerErr) {
-          console.error("[chat] Pipeline trigger network error:", triggerErr);
-        }
-
-        setWarRoomMode(false);
-        setSelectedAssets([]);
-        onWarRoomCreated?.(warRoom.id);
-      } catch (err) {
-        console.error("[chat] War room creation failed:", err);
-        throw err;
-      } finally {
-        setIsCreatingWarRoom(false);
-      }
-      return;
-    }
-
-    sendMessage({ text: promptText });
+    void ensurePersistedSession().catch(() => undefined);
+    sendMessage({ text: message.text.trim() });
     setSelectedAssets([]);
   };
 
   return (
-    <div className="flex flex-col h-full">
-      {onBack && (
-        <div className="flex items-center gap-2 px-3 py-1.5 border-b border-white/[0.06] shrink-0">
-          <Button variant="ghost" size="icon" className="size-6" onClick={onBack}>
-            <ArrowLeft className="size-3.5" />
-          </Button>
-          <span className="text-xs text-white/40">Back to sessions</span>
-        </div>
-      )}
-      <Conversation className="flex-1 min-h-0">
+    <div className="flex h-full flex-col bg-[linear-gradient(180deg,rgba(40,15,20,0.66),rgba(16,8,10,0.82))]">
+      <Conversation className="flex-1 h-0">
         <ConversationContent>
           {messages.length === 0 ? (
             <ConversationEmptyState
               icon={<MessageSquare className="size-10" />}
-              title="Start building"
-              description="Describe what you want to create and the AI agent will build it using atoms."
+              title="New feature thread"
+              description="Describe a focused feature, fix, or gameplay improvement and the builder chat will work directly in atoms."
             />
           ) : (
             messages.map((message) => (
               <Fragment key={message.id}>
-                {message.parts.map((part, i) => {
-                  const key = `${message.id}-${i}`;
+                {message.parts.map((part, index) => {
+                  const key = `${message.id}-${index}`;
 
                   if (part.type === "text" && part.text.trim()) {
                     return (
@@ -349,13 +339,10 @@ function ChatPanelContent({
         <ConversationScrollButton />
       </Conversation>
 
-      <div className={cn(
-        "p-3 border-t shrink-0",
-        warRoomMode ? "border-amber-500/30 bg-amber-500/5" : "border-white/[0.06] bg-[#2a1014]/60"
-      )}>
+      <div className="shrink-0 border-t border-white/[0.06] bg-[#2a1014]/65 p-3">
         <PromptInput onSubmit={handleSubmit}>
           {selectedAssets.length > 0 && (
-            <div className="flex flex-wrap items-center gap-1.5 px-3 py-1.5 border-b border-white/[0.05]">
+            <div className="flex flex-wrap items-center gap-1.5 border-b border-white/[0.05] px-3 py-1.5">
               {selectedAssets.map((asset) => (
                 <div
                   key={asset._id}
@@ -365,16 +352,17 @@ function ChatPanelContent({
                   <img
                     src={asset.image?.url}
                     alt=""
-                    className="size-4 rounded object-cover shrink-0"
+                    className="size-4 shrink-0 rounded object-cover"
                   />
-                  <span className="text-[11px] text-white/50 truncate max-w-25">
+                  <span className="max-w-25 truncate text-[11px] text-white/50">
                     {asset.prompt ?? "3D Model"}
                   </span>
                   <button
-                    className="shrink-0 text-white/40 hover:text-white/70 transition-colors"
+                    type="button"
+                    className="shrink-0 text-white/40 transition-colors hover:text-white/70"
                     onClick={() =>
-                      setSelectedAssets((prev) =>
-                        prev.filter((a) => a._id !== asset._id)
+                      setSelectedAssets((current) =>
+                        current.filter((entry) => entry._id !== asset._id),
                       )
                     }
                   >
@@ -384,57 +372,39 @@ function ChatPanelContent({
               ))}
             </div>
           )}
+
           <PromptInputBody>
             <PromptInputTextarea placeholder="Describe what to build..." />
           </PromptInputBody>
+
           <PromptInputFooter>
             <PromptInputTools>
-              <PromptInputSelect
-                value={model}
-                onValueChange={setModel}
-              >
+              <PromptInputSelect value={model} onValueChange={setModel}>
                 <PromptInputSelectTrigger>
                   <PromptInputSelectValue />
                 </PromptInputSelectTrigger>
                 <PromptInputSelectContent>
-                  {MODELS.map((m) => (
-                    <PromptInputSelectItem key={m.id} value={m.id}>
+                  {MODELS.map((entry) => (
+                    <PromptInputSelectItem key={entry.id} value={entry.id}>
                       <span className="flex items-center gap-2">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={m.icon} alt="" className="size-4 shrink-0" />
-                        {m.name}
+                        <img src={entry.icon} alt="" className="size-4 shrink-0" />
+                        {entry.name}
                       </span>
                     </PromptInputSelectItem>
                   ))}
                 </PromptInputSelectContent>
               </PromptInputSelect>
+
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
+                    type="button"
                     variant="ghost"
                     size="icon"
                     className={cn(
                       "size-7",
-                      warRoomMode && "text-amber-400 bg-amber-400/10"
-                    )}
-                    onClick={() => setWarRoomMode((prev) => !prev)}
-                    disabled={isCreatingWarRoom}
-                  >
-                    <Swords className="size-3.5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  {warRoomMode ? "War Room mode (active)" : "War Room mode"}
-                </TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className={cn(
-                      "size-7",
-                      selectedAssets.length > 0 && "text-blue-400 bg-blue-400/10"
+                      selectedAssets.length > 0 && "bg-blue-400/10 text-blue-400",
                     )}
                     onClick={() => setAssetDialogOpen(true)}
                   >
@@ -448,7 +418,8 @@ function ChatPanelContent({
                 </TooltipContent>
               </Tooltip>
             </PromptInputTools>
-            <PromptInputSubmit status={isCreatingWarRoom ? "submitted" : status} />
+
+            <PromptInputSubmit status={status} size="icon-sm" />
           </PromptInputFooter>
         </PromptInput>
       </div>
@@ -458,10 +429,10 @@ function ChatPanelContent({
         onOpenChange={setAssetDialogOpen}
         selected={selectedAssets}
         onToggle={(model) =>
-          setSelectedAssets((prev) =>
-            prev.some((a) => a._id === model._id)
-              ? prev.filter((a) => a._id !== model._id)
-              : [...prev, model]
+          setSelectedAssets((current) =>
+            current.some((entry) => entry._id === model._id)
+              ? current.filter((entry) => entry._id !== model._id)
+              : [...current, model],
           )
         }
       />

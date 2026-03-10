@@ -2,7 +2,8 @@
 
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { LogOut, User } from "lucide-react";
+import Link from "next/link";
+import { LogOut, Settings, User } from "lucide-react";
 import { getTimeOfDayGreeting } from "@/lib/dashboard";
 import { useAppAuth } from "@/lib/privy-provider";
 import { fadeInUp } from "./dashboard-animations";
@@ -83,6 +84,14 @@ export function DashboardHeader({ displayName }: DashboardHeaderProps) {
 
               {/* Actions */}
               <div className="p-1.5">
+                <Link
+                  href="/settings"
+                  onClick={() => setMenuOpen(false)}
+                  className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm text-white/60 transition hover:bg-white/8 hover:text-white"
+                >
+                  <Settings className="size-4" />
+                  Settings
+                </Link>
                 <button
                   type="button"
                   onClick={() => {

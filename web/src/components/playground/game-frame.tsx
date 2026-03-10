@@ -7,17 +7,19 @@ import { useAppAuth } from "@/lib/privy-provider";
 
 interface GameFrameProps {
   gameName: string;
+  gameFormat?: "2d" | "3d" | null;
   showScoreLoginPrompt?: boolean;
   onLoad?: () => void;
 }
 
 export function GameFrame({
   gameName,
+  gameFormat = null,
   showScoreLoginPrompt = false,
   onLoad,
 }: GameFrameProps) {
   const { authenticated, ready, login, isDevBypass } = useAppAuth();
-  const iframeSrc = `/game-player.html?game=${encodeURIComponent(gameName)}&supabaseUrl=${encodeURIComponent(SUPABASE_URL)}&supabaseKey=${encodeURIComponent(SUPABASE_ANON_KEY)}`;
+  const iframeSrc = `/game-player.html?game=${encodeURIComponent(gameName)}&supabaseUrl=${encodeURIComponent(SUPABASE_URL)}&supabaseKey=${encodeURIComponent(SUPABASE_ANON_KEY)}&format=${encodeURIComponent(gameFormat ?? "")}`;
 
   return (
     <div className="relative h-full w-full bg-black">

@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import { HomeLandingPage } from "@/components/home/home-landing-page";
 
 export const metadata: Metadata = {
-  title: "Buu AI Game Maker | Build Playable Games Fast",
+  title: "Buu AI Game Maker | Create Games with AI — No Code Required",
   description:
-    "Build browser games fast with Buu AI Game Maker. Direct the agent swarm, keep builds moving, and line up public play from one command center.",
+    "Turn your game ideas into playable browser games in minutes. Describe what you want, AI builds it, and publish it for the world — no coding needed.",
 };
 
 export default function LandingPage() {

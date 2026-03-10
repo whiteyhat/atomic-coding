@@ -1,20 +1,25 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 import { getSupabaseBrowserClient } from "./supabase";
 import type {
-  WarRoomWithTasks,
-  WarRoomTask,
-  WarRoomEvent,
   AgentHeartbeat,
+  WarRoomEvent,
   WarRoomStatus,
+  WarRoomWithFeed,
 } from "./types";
 import { getWarRoom as fetchWarRoom } from "./api";
-import type { RealtimeChannel } from "@supabase/supabase-js";
+import {
+  applyWarRoomEvent,
+  hydrateWarRoomFeed,
+  type WarRoomTaskState,
+  upsertHeartbeatState,
+} from "./war-room-state";
 
 interface UseWarRoomReturn {
-  warRoom: WarRoomWithTasks | null;
-  tasks: WarRoomTask[];
+  warRoom: WarRoomWithFeed | null;
+  tasks: WarRoomTaskState[];
   events: WarRoomEvent[];
   heartbeats: AgentHeartbeat[];
   suggestedPrompts: string[];
@@ -26,16 +31,12 @@ interface UseWarRoomReturn {
 
 const TERMINAL_STATUSES: WarRoomStatus[] = ["completed", "failed", "cancelled"];
 
-/**
- * Hook that subscribes to Supabase Realtime for war room updates
- * and maintains live state for tasks, events, and agent heartbeats.
- */
 export function useWarRoom(
   gameName: string | null,
   warRoomId: string | null
 ): UseWarRoomReturn {
-  const [warRoom, setWarRoom] = useState<WarRoomWithTasks | null>(null);
-  const [tasks, setTasks] = useState<WarRoomTask[]>([]);
+  const [warRoom, setWarRoom] = useState<WarRoomWithFeed | null>(null);
+  const [tasks, setTasks] = useState<WarRoomTaskState[]>([]);
   const [events, setEvents] = useState<WarRoomEvent[]>([]);
   const [heartbeats, setHeartbeats] = useState<AgentHeartbeat[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -48,18 +49,24 @@ export function useWarRoom(
 
   const suggestedPrompts = warRoom?.suggested_prompts ?? [];
 
-  // Fetch initial war room state
   const refresh = useCallback(async () => {
     if (!gameName || !warRoomId) return;
-    console.log("[useWarRoom] fetching war room:", { gameName, warRoomId });
+
     setIsLoading(true);
     setError(null);
+
     try {
       const room = await fetchWarRoom(gameName, warRoomId);
-      console.log("[useWarRoom] fetched:", room.status, "tasks:", room.tasks.length,
-        "statuses:", room.tasks.map((t) => `#${t.task_number}:${t.status}`).join(", "));
-      setWarRoom(room);
-      setTasks(room.tasks);
+      const hydrated = hydrateWarRoomFeed(room);
+      setWarRoom({
+        ...room,
+        tasks: Array.isArray(room.tasks) ? room.tasks : [],
+        events: hydrated.events,
+        heartbeats: hydrated.heartbeats,
+      });
+      setTasks(hydrated.tasks);
+      setEvents(hydrated.events);
+      setHeartbeats(hydrated.heartbeats);
     } catch (err) {
       console.error("[useWarRoom] fetch error:", err);
       setError(err instanceof Error ? err.message : "Failed to load war room");
@@ -68,69 +75,34 @@ export function useWarRoom(
     }
   }, [gameName, warRoomId]);
 
-  // Initial load
   useEffect(() => {
     refresh();
   }, [refresh]);
 
-  // Process a war room event and update local state
-  const processEvent = useCallback((evt: WarRoomEvent) => {
-    console.log("[useWarRoom] event:", evt.event_type, {
-      taskNumber: evt.task_number,
-      agent: evt.agent,
-      payloadKeys: evt.payload ? Object.keys(evt.payload) : [],
-    });
+  const processEvent = useCallback((event: WarRoomEvent) => {
+    setEvents((prev) => [...prev, event]);
+    setTasks((prev) => applyWarRoomEvent(prev, event));
 
-    setEvents((prev) => [...prev, evt]);
-
-    if (evt.event_type === "war_room_cancelled") {
-      setWarRoom((prev) => prev ? { ...prev, status: "cancelled" } : prev);
+    if (event.event_type === "war_room_cancelled") {
+      setWarRoom((prev) => (prev ? { ...prev, status: "cancelled" } : prev));
+      return;
     }
-    if (evt.event_type === "war_room_completed") {
-      setWarRoom((prev) => prev ? { ...prev, status: "completed" } : prev);
+    if (event.event_type === "war_room_completed") {
+      setWarRoom((prev) => (prev ? { ...prev, status: "completed" } : prev));
+      return;
     }
-    if (evt.event_type === "war_room_failed") {
-      setWarRoom((prev) => prev ? { ...prev, status: "failed" } : prev);
-    }
-
-    // Update task state from events
-    if (evt.task_number != null) {
-      setTasks((prev) =>
-        prev.map((t) => {
-          if (t.task_number !== evt.task_number) return t;
-          const updates: Partial<WarRoomTask> = {};
-          if (evt.event_type === "task_running") updates.status = "running";
-          if (evt.event_type === "task_completed") {
-            updates.status = "completed";
-            if (evt.payload?.output_summary) {
-              updates.output = evt.payload as Record<string, unknown>;
-            }
-          }
-          if (evt.event_type === "task_failed") {
-            updates.status = "failed";
-            if (evt.payload) {
-              updates.output = evt.payload as Record<string, unknown>;
-            }
-          }
-          if (evt.event_type === "task_assigned") updates.status = "assigned";
-          if (evt.event_type === "task_retry") updates.status = "pending";
-          // agent_thinking confirms the task is still running (no status change needed)
-          return { ...t, ...updates };
-        })
-      );
+    if (event.event_type === "war_room_failed") {
+      setWarRoom((prev) => (prev ? { ...prev, status: "failed" } : prev));
     }
   }, []);
 
-  // Supabase Realtime subscription
   useEffect(() => {
     if (!warRoomId || isComplete) return;
 
-    console.log("[useWarRoom] subscribing to realtime:", warRoomId);
     const supabase = getSupabaseBrowserClient();
 
     const channel = supabase
       .channel(`war-room:${warRoomId}`)
-      // Subscribe to new war room events
       .on(
         "postgres_changes",
         {
@@ -140,11 +112,9 @@ export function useWarRoom(
           filter: `war_room_id=eq.${warRoomId}`,
         },
         (payload) => {
-          const evt = payload.new as WarRoomEvent;
-          processEvent(evt);
+          processEvent(payload.new as WarRoomEvent);
         }
       )
-      // Subscribe to heartbeat updates
       .on(
         "postgres_changes",
         {
@@ -154,20 +124,10 @@ export function useWarRoom(
           filter: `war_room_id=eq.${warRoomId}`,
         },
         (payload) => {
-          const hb = payload.new as AgentHeartbeat;
-          console.log("[useWarRoom] heartbeat:", hb.agent, hb.status, hb.metadata);
-          setHeartbeats((prev) => {
-            const existing = prev.findIndex((h) => h.agent === hb.agent);
-            if (existing >= 0) {
-              const updated = [...prev];
-              updated[existing] = hb;
-              return updated;
-            }
-            return [...prev, hb];
-          });
+          const heartbeat = payload.new as AgentHeartbeat;
+          setHeartbeats((prev) => upsertHeartbeatState(prev, heartbeat));
         }
       )
-      // Subscribe to war room status changes
       .on(
         "postgres_changes",
         {
@@ -177,8 +137,11 @@ export function useWarRoom(
           filter: `id=eq.${warRoomId}`,
         },
         (payload) => {
-          const updated = payload.new as { status: WarRoomStatus; suggested_prompts?: string[] };
-          console.log("[useWarRoom] war room status changed:", updated.status);
+          const updated = payload.new as {
+            status: WarRoomStatus;
+            suggested_prompts?: string[];
+          };
+
           setWarRoom((prev) => {
             if (!prev) return prev;
             return {
@@ -187,25 +150,26 @@ export function useWarRoom(
               suggested_prompts: updated.suggested_prompts ?? prev.suggested_prompts,
             };
           });
-          // On terminal status, refresh to get full final state
+
           if (TERMINAL_STATUSES.includes(updated.status)) {
             refresh();
           }
         }
       )
-      .subscribe((status, err) => {
+      .subscribe((status, subscribeError) => {
+        if (subscribeError) {
+          console.error("[useWarRoom] subscription error:", subscribeError);
+        }
         console.log("[useWarRoom] subscription status:", status, warRoomId);
-        if (err) console.error("[useWarRoom] subscription error:", err);
       });
 
     channelRef.current = channel;
 
     return () => {
-      console.log("[useWarRoom] unsubscribing from", warRoomId);
       supabase.removeChannel(channel);
       channelRef.current = null;
     };
-  }, [warRoomId, isComplete, processEvent, refresh]);
+  }, [isComplete, processEvent, refresh, warRoomId]);
 
   return {
     warRoom,

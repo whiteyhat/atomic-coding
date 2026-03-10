@@ -68,3 +68,51 @@ export async function getUserProfile(
 
   return data as UserProfile;
 }
+
+/** Update editable fields on a user profile, creating the row if needed. */
+export async function updateUserProfile(
+  userId: string,
+  updates: {
+    display_name?: string;
+    avatar_url?: string | null;
+  },
+): Promise<UserProfile> {
+  const supabase = getSupabaseClient();
+  let profile = await getUserProfile(userId);
+
+  if (!profile) {
+    profile = await upsertUserProfile({ id: userId });
+  }
+
+  const payload: Record<string, string | null> = {};
+
+  if ("display_name" in updates) {
+    payload.display_name = updates.display_name?.trim() || null;
+  }
+
+  if ("avatar_url" in updates) {
+    payload.avatar_url = updates.avatar_url ?? null;
+  }
+
+  if (Object.keys(payload).length === 0) {
+    return profile;
+  }
+
+  const { data, error } = await supabase
+    .from("user_profiles")
+    .update(payload)
+    .eq("id", userId)
+    .select("*")
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to update user profile: ${error.message}`);
+  }
+
+  log("info", "user profile updated", {
+    id: userId,
+    updatedFields: Object.keys(payload),
+  });
+
+  return data as UserProfile;
+}

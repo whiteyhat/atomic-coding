@@ -7,6 +7,7 @@ export interface Game {
   active_build_id: string | null;
   user_id: string | null;
   genre: string | null;
+  game_format: "2d" | "3d" | null;
   thumbnail_url: string | null;
   is_published: boolean;
   published_at: string | null;
@@ -24,6 +25,7 @@ export interface GameWithBuild extends Game {
 
 export interface BoilerplateSummary {
   slug: string;
+  game_format: "2d" | "3d";
   display_name: string;
   description: string | null;
   thumbnail_url: string | null;
@@ -116,6 +118,211 @@ export interface LeaderboardEntry {
 
 export type LeaderboardPeriod = "day" | "week" | "lifetime";
 
+// ── User Profiles ────────────────────────────────────────────────────────────
+
+export interface UserProfile {
+  id: string;
+  email: string | null;
+  display_name: string | null;
+  avatar_url: string | null;
+  wallet_address: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ── OpenClaw ────────────────────────────────────────────────────────────────
+
+export type OpenClawConnectionStatus =
+  | "pending"
+  | "connected"
+  | "disconnected"
+  | "error"
+  | "replaced";
+
+export type OpenClawOnboardingStatus =
+  | "pending_claim"
+  | "claimed"
+  | "expired"
+  | "failed"
+  | "cancelled";
+
+export interface OpenClawAgent {
+  id: string;
+  user_id: string;
+  name: string;
+  avatar_emoji: string;
+  description: string | null;
+  agent_url: string;
+  endpoint_url: string | null;
+  delivery_channel: "custom" | "telegram";
+  telegram_chat_id: string | null;
+  webhook_events: string[];
+  connection_status: OpenClawConnectionStatus;
+  last_heartbeat: string | null;
+  last_error: string | null;
+  capabilities: string[];
+  api_key_prefix: string | null;
+  claimed_at: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OpenClawWebhookEventOption {
+  key: string;
+  label: string;
+  description: string;
+}
+
+export interface OpenClawCapabilityOperation {
+  method: string;
+  path: string;
+  summary: string;
+}
+
+export interface OpenClawCapabilityGroup {
+  key: string;
+  label: string;
+  description: string;
+  operations: OpenClawCapabilityOperation[];
+}
+
+export interface OpenClawAgentEnvelope {
+  agent: OpenClawAgent | null;
+  api_base_url: string;
+  skill_manifest_url: string;
+  skill_json_url: string;
+  heartbeat_url: string;
+  docs_url: string;
+  capabilities: OpenClawCapabilityGroup[];
+  webhook_events: OpenClawWebhookEventOption[];
+}
+
+export interface OpenClawOnboardingSession {
+  session_id: string;
+  status: OpenClawOnboardingStatus;
+  mode: "import" | "replace";
+  expires_at: string;
+  claimed_at: string | null;
+  agent_id: string | null;
+  replaces_agent_id: string | null;
+  identity: {
+    name: string;
+    description: string | null;
+    avatar: string;
+  } | null;
+  agent_url: string | null;
+  endpoint_url: string | null;
+  webhook_events: string[];
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
+  onboarding_url?: string;
+}
+
+export interface OpenClawApiKeySummary {
+  id: string;
+  key_prefix: string;
+  scopes: string[];
+  rate_limit_tier: string;
+  created_at: string;
+  revoked_at: string | null;
+  last_used_at: string | null;
+  active: boolean;
+}
+
+export interface OpenClawApiKeySecret {
+  api_key: string;
+  summary: OpenClawApiKeySummary;
+}
+
+export interface OpenClawActivityEntry {
+  tool_name: string;
+  method: string;
+  status_code: number;
+  latency_ms: number;
+  created_at: string;
+}
+
+export interface OpenClawActivityResponse {
+  entries: OpenClawActivityEntry[];
+  hasMore: boolean;
+}
+
+export interface OpenClawWebhookDelivery {
+  event: string;
+  url: string;
+  status_code: number | null;
+  latency_ms: number;
+  attempt: number;
+  error: string | null;
+  created_at: string;
+}
+
+export interface OpenClawWebhookConfig {
+  delivery_channel: "custom" | "telegram";
+  endpoint_url: string | null;
+  telegram_bot_token: string | null;
+  telegram_chat_id: string | null;
+  webhook_events: string[];
+}
+
+export interface OpenClawHealthScore {
+  status: "healthy" | "degraded" | "critical" | "insufficient_data";
+  score: number | null;
+  grade: "A" | "B" | "C" | "D" | "F" | null;
+  components: {
+    uptime: number | null;
+    error_rate: number | null;
+    latency: number | null;
+    connection: number | null;
+  };
+  total_requests_24h: number;
+  error_count_24h: number;
+  avg_latency_ms: number | null;
+  heartbeat_samples_24h: number;
+  connection_status: OpenClawConnectionStatus;
+  message: string;
+}
+
+export interface OpenClawWebhookTestResult {
+  ok: boolean;
+  status_code: number | null;
+  latency_ms: number;
+  error?: string;
+}
+
+export interface OpenClawPlatformHealth {
+  status: "ok" | "degraded";
+  checks: {
+    api: "ok";
+    supabase: "ok" | "error";
+    mastra: "ok" | "error" | "not_configured";
+  };
+  config: {
+    mastraConfigured: boolean;
+  };
+}
+
+export interface OpenClawSkillManifest {
+  name: string;
+  version: string;
+  workflow: string;
+  api_base_url: string;
+  docs_url: string;
+  skill_manifest_url: string;
+  skill_json_url: string;
+  create_session_path: string;
+  replace_session_path: string;
+  claim_path_template: string;
+  heartbeat_url: string;
+  claim_required_fields: string[];
+  claim_optional_fields: string[];
+  webhook_events: OpenClawWebhookEventOption[];
+  scopes: string[];
+  capabilities: OpenClawCapabilityGroup[];
+}
+
 // ── Token Launches ──────────────────────────────────────────────────────────
 
 export interface TokenLaunch {
@@ -158,6 +365,7 @@ export interface WarRoom {
   user_id: string | null;
   prompt: string;
   genre: string | null;
+  game_format: "2d" | "3d" | null;
   status: WarRoomStatus;
   scope: Record<string, unknown> | null;
   suggested_prompts: string[] | null;
@@ -182,6 +390,11 @@ export interface WarRoomTask {
 
 export interface WarRoomWithTasks extends WarRoom {
   tasks: WarRoomTask[];
+}
+
+export interface WarRoomWithFeed extends WarRoomWithTasks {
+  events: WarRoomEvent[];
+  heartbeats: AgentHeartbeat[];
 }
 
 export interface WarRoomEvent {
@@ -244,6 +457,26 @@ export interface BuildSummary {
   created_at: string;
 }
 
+// ── Health ───────────────────────────────────────────────────────────────────
+
+export type HealthCheckStatus = "ok" | "error" | "not_configured";
+
+export interface AppHealthStatus {
+  status: "ok" | "degraded";
+  checks: {
+    web: HealthCheckStatus;
+    supabase: HealthCheckStatus;
+    mastra: HealthCheckStatus;
+  };
+  config: {
+    apiBaseHost: string;
+    supabaseHost: string | null;
+    mastraHost: string | null;
+    privyConfigured: boolean;
+    mastraConfigured: boolean;
+  };
+}
+
 // ── Dashboard ────────────────────────────────────────────────────────────────
 
 export type DashboardTokenStatus =
@@ -273,6 +506,7 @@ export interface DashboardGameSummary {
   name: string;
   description: string | null;
   genre: string | null;
+  gameFormat: "2d" | "3d";
   thumbnailUrl: string | null;
   isPublished: boolean;
   publicSlug: string | null;

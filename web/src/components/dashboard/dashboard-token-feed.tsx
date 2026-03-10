@@ -56,24 +56,31 @@ function TokenCard({ item }: { item: TokenActivityItem }) {
 
 export function DashboardTokenFeed({ items }: { items: TokenActivityItem[] }) {
   return (
-    <motion.section variants={fadeInUp} initial="hidden" animate="visible">
+    <motion.section variants={fadeInUp} initial="hidden" animate="visible" className="relative select-none">
       <div className="mb-4 flex items-center justify-between px-1">
-        <h2 className="text-xl font-semibold text-white">Token Activity Feed</h2>
-        <Link href="/dashboard" className="text-sm text-white/50 transition hover:text-white/80">
-          Open Dashboard
-        </Link>
+        <div className="flex items-center gap-3">
+          <h2 className="text-xl font-semibold text-white/40">Token Activity Feed</h2>
+          <span className="rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-white/50">
+            Coming Soon
+          </span>
+        </div>
       </div>
-      <motion.div
-        variants={staggerContainer}
-        initial="hidden"
-        animate="visible"
-        className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-4 scrollbar-hide"
-        style={{ scrollSnapType: "x mandatory" }}
-      >
-        {items.map((item) => (
-          <TokenCard key={item.id} item={item} />
-        ))}
-      </motion.div>
+      <div className="relative pointer-events-none opacity-40 grayscale">
+        <motion.div
+          variants={staggerContainer}
+          initial="hidden"
+          animate="visible"
+          className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-4 scrollbar-hide"
+          style={{ scrollSnapType: "x mandatory" }}
+        >
+          {items.map((item) => (
+            <TokenCard key={item.id} item={item} />
+          ))}
+        </motion.div>
+
+        {/* Right fade gradient for carousel scroll hint */}
+        <div className="pointer-events-none absolute -right-1 top-0 h-full w-40 bg-gradient-to-l from-[#0e0406] to-transparent" />
+      </div>
     </motion.section>
   );
 }

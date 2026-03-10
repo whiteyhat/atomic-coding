@@ -18,7 +18,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Buu AI Game Maker",
-  description: "Build Three.js games with AI agents",
+  description: "Build Phaser and Three.js games with AI agents",
 };
 
 export default function RootLayout({

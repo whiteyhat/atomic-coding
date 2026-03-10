@@ -2,18 +2,21 @@
 
 import { motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
-import { GAME_GENRES } from "@/lib/game-genres";
+import { type GameFormat, getGameGenresForFormat } from "@/lib/game-genres";
 import { cn } from "@/lib/utils";
 
 interface GenreSelectorProps {
   value: string | null;
   onChange: (slug: string) => void;
+  gameFormat?: GameFormat | null;
 }
 
-export function GenreSelector({ value, onChange }: GenreSelectorProps) {
+export function GenreSelector({ value, onChange, gameFormat = null }: GenreSelectorProps) {
+  const genres = getGameGenresForFormat(gameFormat);
+
   return (
     <div className="grid gap-2.5 sm:grid-cols-2">
-      {GAME_GENRES.map((genre) => {
+      {genres.map((genre) => {
         const Icon = genre.icon;
         const isSelected = value === genre.slug;
 
@@ -71,5 +74,3 @@ export function GenreSelector({ value, onChange }: GenreSelectorProps) {
     </div>
   );
 }
-
-export { GAME_GENRES as GENRES };

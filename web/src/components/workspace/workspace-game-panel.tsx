@@ -10,9 +10,13 @@ import { cn } from "@/lib/utils";
 
 interface WorkspaceGamePanelProps {
   gameName: string;
+  gameFormat: "2d" | "3d" | null;
 }
 
-export function WorkspaceGamePanel({ gameName }: WorkspaceGamePanelProps) {
+export function WorkspaceGamePanel({
+  gameName,
+  gameFormat,
+}: WorkspaceGamePanelProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [shouldLoadIframe, setShouldLoadIframe] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -51,6 +55,8 @@ export function WorkspaceGamePanel({ gameName }: WorkspaceGamePanelProps) {
       setIsFullscreen(false);
     }
   }, []);
+
+  const runtimeLabel = gameFormat === "2d" ? "Phaser" : "Three.js";
 
   return (
     <motion.div
@@ -103,7 +109,9 @@ export function WorkspaceGamePanel({ gameName }: WorkspaceGamePanelProps) {
             >
               <Loader2 className="size-6 text-rose-400" />
             </motion.div>
-            <span className="text-xs text-white/40">Loading game...</span>
+            <span className="text-xs text-white/40">
+              Loading {runtimeLabel} game...
+            </span>
           </div>
         </div>
       )}
@@ -113,6 +121,7 @@ export function WorkspaceGamePanel({ gameName }: WorkspaceGamePanelProps) {
         <GameFrame
           key={refreshKey}
           gameName={gameName}
+          gameFormat={gameFormat}
           onLoad={handleIframeLoad}
         />
       )}

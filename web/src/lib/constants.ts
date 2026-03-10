@@ -1,5 +1,12 @@
 // ── API ───────────────────────────────────────────────────────────────────────
 
+export const APP_NAME = "Buu AI Game Maker";
+export const APP_DESCRIPTION = "Build Phaser and Three.js games with AI agents";
+export const GITHUB_REPO_URL = "https://github.com/Buu-AI/atomic-coding";
+export const ARCHITECTURE_DOC_URL = `${GITHUB_REPO_URL}/blob/master/docs/system-architecture.md`;
+export const LOCAL_DEV_DOC_URL = `${GITHUB_REPO_URL}/blob/master/docs/local-development.md`;
+export const DEPLOYMENTS_DOC_URL = `${GITHUB_REPO_URL}/blob/master/docs/deployments.md`;
+
 export const SUPABASE_URL =
   process.env.NEXT_PUBLIC_SUPABASE_URL ??
   "https://dhnwlfbvyffmnnkqtcdw.supabase.co";

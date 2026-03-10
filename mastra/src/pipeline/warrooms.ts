@@ -22,6 +22,7 @@ function mapWarRoom(row: any): WarRoom {
     user_id: row.user_id || null,
     prompt: row.prompt,
     genre: row.genre || null,
+    game_format: row.game_format || null,
     status: row.status,
     scope: row.scope || null,
     suggested_prompts: row.suggested_prompts || null,
@@ -68,6 +69,44 @@ function mapHeartbeat(row: any): AgentHeartbeat {
     last_ping: row.last_ping,
     metadata: row.metadata || {},
   };
+}
+
+function buildTaskEventPayload(
+  task: WarRoomTask,
+  status: TaskStatus,
+  output?: Record<string, unknown>,
+  extraPayload?: Record<string, unknown>
+): Record<string, unknown> {
+  const payload: Record<string, unknown> = {
+    title: task.title,
+    ...(extraPayload ?? {}),
+  };
+
+  if (task.started_at) {
+    payload.started_at = task.started_at;
+  }
+
+  if (task.completed_at) {
+    payload.completed_at = task.completed_at;
+  }
+
+  if (task.started_at && task.completed_at) {
+    payload.duration_ms =
+      new Date(task.completed_at).getTime() - new Date(task.started_at).getTime();
+  }
+
+  if (output) {
+    payload.output_keys = Object.keys(output);
+    if (typeof output.error === "string") {
+      payload.error = output.error;
+    }
+  }
+
+  if (status === "running" && !payload.started_at) {
+    payload.started_at = new Date().toISOString();
+  }
+
+  return payload;
 }
 
 // =============================================================================
@@ -147,16 +186,26 @@ export async function updateTaskStatus(
   warRoomId: string,
   taskNumber: number,
   status: TaskStatus,
-  output?: Record<string, unknown>
+  output?: Record<string, unknown>,
+  eventPayload?: Record<string, unknown>
 ): Promise<WarRoomTask> {
   const supabase = getSupabaseClient();
 
   const updates: Record<string, unknown> = { status };
-  if (output !== undefined) updates.output = output;
-  if (status === "running") updates.started_at = new Date().toISOString();
+  if (status === "pending" || status === "assigned" || status === "blocked") {
+    updates.started_at = null;
+    updates.completed_at = null;
+    updates.output = null;
+  }
+  if (status === "running") {
+    updates.started_at = new Date().toISOString();
+    updates.completed_at = null;
+    updates.output = null;
+  }
   if (status === "completed" || status === "failed") {
     updates.completed_at = new Date().toISOString();
   }
+  if (output !== undefined) updates.output = output;
 
   const { data, error } = await supabase
     .from("war_room_tasks")
@@ -168,19 +217,17 @@ export async function updateTaskStatus(
 
   if (error) throw new Error(`Failed to update task: ${error.message}`);
 
+  const mappedTask = mapTask(data);
   await recordEvent(
     warRoomId,
     `task_${status}`,
     data.assigned_agent,
     taskNumber,
-    {
-      title: data.title,
-      ...(output ? { output_summary: Object.keys(output) } : {}),
-    }
+    buildTaskEventPayload(mappedTask, status, output, eventPayload)
   );
 
   console.log("[warrooms] task updated", { warRoomId, taskNumber, status });
-  return mapTask(data);
+  return mappedTask;
 }
 
 export async function getTasks(warRoomId: string): Promise<WarRoomTask[]> {
@@ -223,6 +270,35 @@ export async function recordEvent(
 
   if (error) throw new Error(`Failed to record event: ${error.message}`);
   return mapEvent(data);
+}
+
+export async function getWarRoomEvents(
+  warRoomId: string,
+  filters?: {
+    eventTypes?: string[];
+    taskNumbers?: number[];
+    limit?: number;
+  }
+): Promise<WarRoomEvent[]> {
+  const supabase = getSupabaseClient();
+
+  let query = supabase
+    .from("war_room_events")
+    .select("*")
+    .eq("war_room_id", warRoomId)
+    .order("created_at", { ascending: false });
+
+  if (filters?.eventTypes?.length) {
+    query = query.in("event_type", filters.eventTypes);
+  }
+  if (filters?.taskNumbers?.length) {
+    query = query.in("task_number", filters.taskNumbers);
+  }
+  query = query.limit(filters?.limit ?? 50);
+
+  const { data, error } = await query;
+  if (error) throw new Error(`Failed to get events: ${error.message}`);
+  return (data || []).map(mapEvent);
 }
 
 // =============================================================================

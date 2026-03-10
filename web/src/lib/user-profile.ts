@@ -4,10 +4,10 @@
  */
 export async function ensureUserProfile(
   userId: string,
-  _email?: string,
-  _displayName?: string,
-  _avatarUrl?: string,
-  _walletAddress?: string
+  email?: string,
+  displayName?: string,
+  avatarUrl?: string,
+  walletAddress?: string
 ): Promise<void> {
   const { API_BASE } = await import("./constants");
 
@@ -16,6 +16,10 @@ export async function ensureUserProfile(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       id: userId,
+      email,
+      display_name: displayName,
+      avatar_url: avatarUrl,
+      wallet_address: walletAddress,
     }),
   });
 

@@ -153,12 +153,16 @@ export const upsertAtomTool = createTool({
       .array(z.string())
       .default([])
       .describe("Names of atoms this depends on"),
+    skipRebuild: z
+      .boolean()
+      .default(false)
+      .describe("Skip rebuild trigger (pass true in pipeline mode — orchestrator handles final rebuild)"),
   }),
   outputSchema: z.object({
     success: z.boolean(),
     atom: z.object({ name: z.string(), type: z.string() }),
   }),
-  execute: async ({ gameId, name, type, code, description, inputs, outputs, depends_on }) => {
+  execute: async ({ gameId, name, type, code, description, inputs, outputs, depends_on, skipRebuild }) => {
     const supabase = getSupabaseClient();
 
     // 1. Validate code size
@@ -212,8 +216,10 @@ export const upsertAtomTool = createTool({
       }
     }
 
-    // 4. Trigger rebuild (fire-and-forget)
-    triggerRebuild(gameId);
+    // 4. Trigger rebuild (fire-and-forget) — skipped in pipeline mode
+    if (!skipRebuild) {
+      triggerRebuild(gameId);
+    }
 
     return { success: true, atom: data };
   },

@@ -14,7 +14,8 @@ export interface AgentContext {
 export async function createAtomicAgent(
   modelId: string,
   gameId: string,
-  genre?: string | null
+  genre?: string | null,
+  gameFormat?: "2d" | "3d" | null,
 ): Promise<AgentContext> {
   const clients: MCPClient[] = [];
 
@@ -60,7 +61,7 @@ export async function createAtomicAgent(
 
   const agent = new ToolLoopAgent({
     model: openrouter(modelId),
-    instructions: SYSTEM_PROMPT + getGenreContext(genre ?? null),
+    instructions: SYSTEM_PROMPT + getGenreContext(genre ?? null, gameFormat ?? null),
     tools: {
       ...atomicTools,
       ...buuTools,

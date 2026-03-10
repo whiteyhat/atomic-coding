@@ -16,6 +16,7 @@ import { verifyAuthToken, requireAuth } from "../_shared/auth.ts";
 import { checkRateLimit } from "../_shared/rate-limit.ts";
 import { publishWithRetry } from "../_shared/qstash.ts";
 import * as schemas from "../_shared/schemas.ts";
+import { openClawRouter } from "../_shared/openclaw-router.ts";
 import { ZodError } from "npm:zod@^3.23.0";
 
 // =============================================================================
@@ -70,6 +71,8 @@ app.onError((err, c) => {
   throw err;
 });
 
+app.route("/", openClawRouter);
+
 // =============================================================================
 // Health check
 // =============================================================================
@@ -104,6 +107,34 @@ app.get("/users/profile/:id", async (c) => {
   }
 });
 
+/** GET /users/me -- get the authenticated user's profile */
+app.get("/users/me", requireAuth(), async (c) => {
+  try {
+    const authUser = c.get("authUser") as { userId: string };
+    let profile = await users.getUserProfile(authUser.userId);
+
+    if (!profile) {
+      profile = await users.upsertUserProfile({ id: authUser.userId });
+    }
+
+    return c.json(profile);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 500);
+  }
+});
+
+/** PUT /users/me -- update editable profile fields for the authenticated user */
+app.put("/users/me", requireAuth(), async (c) => {
+  try {
+    const authUser = c.get("authUser") as { userId: string };
+    const body = schemas.updateMyProfileSchema.parse(await c.req.json());
+    const profile = await users.updateUserProfile(authUser.userId, body);
+    return c.json(profile);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 400);
+  }
+});
+
 // =============================================================================
 // Boilerplates
 // =============================================================================
@@ -121,7 +152,10 @@ app.get("/boilerplates", async (c) => {
 /** GET /boilerplates/:slug -- get a single boilerplate */
 app.get("/boilerplates/:slug", async (c) => {
   try {
-    const bp = await boilerplates.getBoilerplate(c.req.param("slug"));
+    const queryFormat = c.req.query("game_format");
+    const gameFormat =
+      queryFormat === "2d" || queryFormat === "3d" ? queryFormat : null;
+    const bp = await boilerplates.getBoilerplate(c.req.param("slug"), gameFormat);
     if (!bp) return c.json({ error: "Boilerplate not found" }, 404);
     return c.json(bp);
   } catch (err) {
@@ -149,12 +183,17 @@ app.post("/games", requireAuth(), async (c) => {
       body.description,
       authUser.userId,
       body.genre,
+      body.game_format,
     );
 
     // Seed atoms and externals from boilerplate if genre is specified
     if (body.genre) {
       try {
-        await boilerplates.seedGameFromBoilerplate(game.id, body.genre);
+        await boilerplates.seedGameFromBoilerplate(
+          game.id,
+          body.genre,
+          body.game_format ?? null,
+        );
         atoms.triggerRebuild(game.id);
       } catch (seedErr) {
         log("error", "Failed to seed boilerplate", {
@@ -240,6 +279,17 @@ app.get("/registry/externals", async (c) => {
     return c.json(list);
   } catch (err) {
     return c.json({ error: (err as Error).message }, 500);
+  }
+});
+
+/** POST /registry/externals/custom -- register a custom external library */
+app.post("/registry/externals/custom", requireAuth(), async (c) => {
+  try {
+    const body = schemas.registerCustomExternalSchema.parse(await c.req.json());
+    const entry = await externals.registerCustomExternal(body);
+    return c.json(entry, 201);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 400);
   }
 });
 
@@ -606,13 +656,30 @@ app.post("/games/:name/chat/sessions/:sessionId/messages", requireAuth(), async 
 // =============================================================================
 
 /** Trigger the Mastra pipeline orchestrator with retries via QStash. */
-function triggerOrchestrator(warRoomId: string): void {
+async function triggerOrchestrator(warRoomId: string): Promise<void> {
   const mastraUrl = Deno.env.get("MASTRA_SERVER_URL");
   if (!mastraUrl) {
     log("warn", "triggerOrchestrator: MASTRA_SERVER_URL not set, skipping");
+    await warrooms.recordEvent(warRoomId, "trigger_failed", "jarvis", null, {
+      error: "MASTRA_SERVER_URL not configured",
+    });
+    await warrooms.updateWarRoomStatus(warRoomId, "failed");
     return;
   }
-  publishWithRetry(`${mastraUrl}/pipeline/run`, { war_room_id: warRoomId }, { retries: 3 });
+
+  try {
+    await publishWithRetry(`${mastraUrl}/pipeline/run`, { war_room_id: warRoomId }, { retries: 3 });
+    log("info", "triggerOrchestrator: dispatched", { warRoomId, mastraUrl });
+  } catch (err) {
+    log("error", "triggerOrchestrator: failed to dispatch", {
+      warRoomId,
+      error: (err as Error).message,
+    });
+    await warrooms.recordEvent(warRoomId, "trigger_failed", "jarvis", null, {
+      error: (err as Error).message,
+    });
+    await warrooms.updateWarRoomStatus(warRoomId, "failed");
+  }
 }
 
 /** POST /games/:name/warrooms -- create a war room (+ 12 pipeline tasks) */
@@ -632,26 +699,22 @@ app.post("/games/:name/warrooms", requireAuth(), async (c) => {
       await users.upsertUserProfile({ id: authUser.userId });
     }
 
-    // Resolve genre: prefer client-provided genre, fall back to the game's genre
-    let genre = body.genre || null;
-    if (!genre) {
-      try {
-        const game = await games.validateGameId(gameId);
-        genre = game?.genre ?? null;
-      } catch {
-        // Continue without genre
-      }
-    }
+    const game = await games.validateGameId(gameId);
+
+    // Resolve genre and format: prefer explicit payload, fall back to the persisted game
+    const genre = body.genre || game.genre || null;
+    const gameFormat = body.game_format || game.game_format || null;
 
     const room = await warrooms.createWarRoom(
       gameId,
       authUser.userId,
       body.prompt,
       genre,
+      gameFormat,
     );
 
-    // Fire-and-forget: trigger orchestrator pipeline
-    triggerOrchestrator(room.id);
+    // Trigger orchestrator pipeline (awaited so failures are recorded)
+    await triggerOrchestrator(room.id);
 
     return c.json(room, 201);
   } catch (err) {
@@ -674,7 +737,7 @@ app.get("/games/:name/warrooms", async (c) => {
 /** GET /games/:name/warrooms/:id -- get war room with tasks */
 app.get("/games/:name/warrooms/:id", async (c) => {
   try {
-    const room = await warrooms.getWarRoom(c.req.param("id"));
+    const room = await warrooms.getWarRoomFeed(c.req.param("id"));
     if (!room) return c.json({ error: "War room not found" }, 404);
     return c.json(room);
   } catch (err) {
@@ -696,6 +759,16 @@ app.post("/games/:name/warrooms/:id/cancel", requireAuth(), async (c) => {
       previous_status: room.status,
     });
     return c.json(updated);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 500);
+  }
+});
+
+/** POST /warrooms/cleanup -- auto-fail stuck war rooms */
+app.post("/warrooms/cleanup", async (c) => {
+  try {
+    const cleaned = await warrooms.cleanupStuckWarRooms();
+    return c.json({ cleaned });
   } catch (err) {
     return c.json({ error: (err as Error).message }, 500);
   }

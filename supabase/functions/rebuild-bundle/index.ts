@@ -1,6 +1,7 @@
 import { getSupabaseClient } from "../_shared/supabase-client.ts";
 import { topologicalSort } from "../_shared/topological-sort.ts";
 import { log } from "../_shared/logger.ts";
+import { emitOpenClawEvent } from "../_shared/services/openclaw.ts";
 import { snapshotCurrentAtoms } from "../_shared/services/builds.ts";
 import { getInstalledExternals } from "../_shared/services/externals.ts";
 import { validateScoreSystemRules } from "../../../mastra/src/shared/atom-validation.ts";
@@ -26,11 +27,13 @@ Deno.serve(async (req: Request) => {
 
   const supabase = getSupabaseClient();
   let buildId: string | null = null;
+  let requestedGameId: string | null = null;
 
   try {
     // 0. Parse game_id from request body
     const body = await req.json().catch(() => ({}));
     const gameId: string | undefined = body.game_id;
+    requestedGameId = typeof gameId === "string" ? gameId : null;
     if (!gameId) {
       return new Response(
         JSON.stringify({ status: "error", error: "game_id is required" }),
@@ -41,7 +44,7 @@ Deno.serve(async (req: Request) => {
     // Resolve game name for storage paths
     const { data: game, error: gameError } = await supabase
       .from("games")
-      .select("id, name")
+      .select("id, name, game_format, user_id")
       .eq("id", gameId)
       .single();
 
@@ -151,7 +154,9 @@ Deno.serve(async (req: Request) => {
 
     // 7. Fetch installed externals and generate manifest
     const installed = await getInstalledExternals(gameId);
+    const runtime = game.game_format === "2d" ? "phaser" : "three";
     const manifest = {
+      runtime,
       externals: installed.map((ext) => ({
         name: ext.name,
         cdn_url: ext.cdn_url,
@@ -233,6 +238,16 @@ Deno.serve(async (req: Request) => {
       order: sortedNames,
     });
 
+    if (game.user_id) {
+      await emitOpenClawEvent(game.user_id, "build:success", {
+        build_id: buildId,
+        game_id: gameId,
+        game_name: game.name,
+        atom_count: atoms.length,
+        bundle_url: bundleUrl,
+      });
+    }
+
     return new Response(
       JSON.stringify({
         status: "success",
@@ -256,6 +271,27 @@ Deno.serve(async (req: Request) => {
           error_message: message,
         })
         .eq("id", buildId);
+    }
+
+    try {
+      if (requestedGameId) {
+        const { data: game } = await supabase
+          .from("games")
+          .select("name, user_id")
+          .eq("id", requestedGameId)
+          .limit(1)
+          .maybeSingle();
+        if (game?.user_id) {
+          await emitOpenClawEvent(game.user_id, "build:error", {
+            build_id: buildId,
+            game_id: requestedGameId,
+            game_name: game.name,
+            error: message,
+          });
+        }
+      }
+    } catch {
+      // Ignore OpenClaw webhook failures in the rebuild error path.
     }
 
     return new Response(

@@ -5,9 +5,12 @@ const nextConfig: NextConfig = {
   /* config options here */
 };
 
-export default withSentryConfig(nextConfig, {
-  // Suppresses source map upload logs during build
-  silent: true,
-  // Automatically tree-shake Sentry logger statements to reduce bundle size
-  disableLogger: true,
-});
+// Only wrap with Sentry in production builds to avoid breaking Turbopack HMR in dev
+const isDev = process.env.NODE_ENV !== "production";
+
+export default isDev
+  ? nextConfig
+  : withSentryConfig(nextConfig, {
+      silent: true,
+      disableLogger: true,
+    });

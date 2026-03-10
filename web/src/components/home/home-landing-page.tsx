@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -27,6 +27,12 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   fadeInUp,
   scaleIn,
   slideInRight,
@@ -34,26 +40,33 @@ import {
 } from "@/components/dashboard/dashboard-animations";
 import { useAppAuth } from "@/lib/privy-provider";
 
+const LazyArchitectureView = lazy(
+  () =>
+    import("@/components/architecture-view").then((m) => ({
+      default: m.ArchitectureView,
+    }))
+);
+
 const VIDEO_URL =
   "https://www.youtube-nocookie.com/embed/YQxreN2E3yw?autoplay=1&mute=1&controls=0&playsinline=1&rel=0&modestbranding=1&loop=1&playlist=YQxreN2E3yw";
 
 const heroSignals = [
   {
-    label: "Prompt-to-playable",
+    label: "Idea to playable",
     value: "< 60 sec",
-    detail: "First build lane armed fast",
+    detail: "Your first game builds in under a minute",
     tone: "text-emerald-200",
   },
   {
-    label: "Agent swarm",
+    label: "AI crew",
     value: "Always on",
-    detail: "Creation, build, and launch pressure",
+    detail: "Multiple AI agents working on your game at once",
     tone: "text-cyan-200",
   },
   {
-    label: "Launch rails",
-    value: "Token-ready",
-    detail: "Built for public play momentum",
+    label: "Launch-ready",
+    value: "Built in",
+    detail: "Go from draft to shareable link instantly",
     tone: "text-amber-200",
   },
 ];
@@ -66,28 +79,28 @@ const engineCards: Array<{
   accent: string;
 }> = [
   {
-    eyebrow: "Prompt Intake",
-    title: "Drop one savage idea. Buu turns it into a playable world.",
+    eyebrow: "Describe It",
+    title: "One sentence is all it takes. Buu builds the rest.",
     description:
-      "Genre, mood, mechanic, and moment-to-moment loop get pulled into a live game lane without slowing you down with setup noise.",
+      "Tell Buu what kind of game you want — the genre, the vibe, the mechanics. It handles the code, the assets, and the logic so you can focus on your vision.",
     icon: Sparkles,
     accent:
       "from-rose-500/28 via-orange-400/16 to-transparent",
   },
   {
-    eyebrow: "Build Pressure",
-    title: "Keep the iteration loop hot while the agents keep shipping.",
+    eyebrow: "Watch It Build",
+    title: "See your game come together in real time.",
     description:
-      "Assets, build health, and creation flow stay pinned to one command surface so you can push harder instead of context switching.",
+      "Watch AI agents generate art, write code, and assemble your game live. Tweak anything on the fly — no waiting, no context switching.",
     icon: Zap,
     accent:
       "from-cyan-500/24 via-sky-400/14 to-transparent",
   },
   {
-    eyebrow: "Public Play",
-    title: "Move from prototype energy to a link people can actually play.",
+    eyebrow: "Share It",
+    title: "One click to publish. Send the link. Let people play.",
     description:
-      "Publishing stays attached to the same creation thread, so the jump from idea to audience feels immediate and controlled.",
+      "Publishing is built right into the creation flow. When your game is ready, share it with the world — no extra tools, no export headaches.",
     icon: Rocket,
     accent:
       "from-violet-500/26 via-fuchsia-400/14 to-transparent",
@@ -104,37 +117,37 @@ const swarmStages: Array<{
 }> = [
   {
     step: "01",
-    title: "Feed the fantasy",
+    title: "Describe your dream game",
     description:
-      "You drop the genre, mechanic, tone, and unfair advantage you want the game to own.",
-    status: "Brief locked",
+      "Pick the genre, set the mood, choose the mechanics. You bring the creative vision — Buu handles everything else.",
+    status: "You decide",
     icon: Crown,
     tone: "text-rose-200",
   },
   {
     step: "02",
-    title: "Spin up the swarm",
+    title: "AI agents get to work",
     description:
-      "Buu routes the request into creation, world-building, and system pressure without making you manage the handoff.",
-    status: "Agents active",
+      "Multiple specialized AI agents collaborate — one on art, one on code, one on game logic — building your game in parallel.",
+    status: "Creating",
     icon: Bot,
     tone: "text-cyan-200",
   },
   {
     step: "03",
-    title: "Watch the build lane pulse",
+    title: "Play, test, and refine",
     description:
-      "The live workspace keeps the loop, output, and progress visible while the build gets shaped into something people can touch.",
-    status: "Build hot",
+      "Your game is playable in seconds. See it live, make changes with natural language, and watch it update instantly.",
+    status: "Playable",
     icon: Radar,
     tone: "text-emerald-200",
   },
   {
     step: "04",
-    title: "Aim for launch, not just completion",
+    title: "Publish and share with the world",
     description:
-      "Publishing, creator control, and token-ready prep stay attached so momentum does not die at the finish line.",
-    status: "Launch staged",
+      "Hit publish and get a shareable link. Your game is live on the web, ready for players — with built-in tools to grow your audience.",
+    status: "Live",
     icon: Globe,
     tone: "text-amber-200",
   },
@@ -142,61 +155,61 @@ const swarmStages: Array<{
 
 const launchLanes = [
   {
-    eyebrow: "Public Play",
-    title: "Push the build live while the heat is still there.",
+    eyebrow: "Instant Publishing",
+    title: "Your game goes live the moment you're ready.",
     points: [
-      "Playable links stay close to the same command surface as the original brief.",
-      "Creator control, status visibility, and launch timing stay in one lane.",
-      "The handoff from private build pressure to public play feels intentional, not bolted on.",
+      "Get a shareable link to your game with one click — no deployment steps, no hosting setup.",
+      "Track who's playing, update your game anytime, and keep full control over your creation.",
+      "Publishing is part of the flow, not an afterthought. Build it, play it, ship it.",
     ],
   },
   {
-    eyebrow: "Creator Control",
-    title: "Operate like a studio, not a scattered toolchain.",
+    eyebrow: "Your Studio",
+    title: "Everything you need to run your games, in one place.",
     points: [
-      "Creation health, build progress, and launch cues stay visible in the same orbit.",
-      "The public front door and the authenticated command center now speak the same visual language.",
-      "You spend less time chasing state and more time pushing the product forward.",
+      "See all your games, their status, player activity, and updates from a single dashboard.",
+      "Manage your creations like a real game studio — professional tools, zero complexity.",
+      "Spend less time switching between tools and more time making great games.",
     ],
   },
   {
-    eyebrow: "Token Rails",
-    title: "Set up the launch stack for future on-chain pressure.",
+    eyebrow: "Monetization",
+    title: "Built-in tools to turn your games into a business.",
     points: [
-      "Token-ready infrastructure stays attached to each game so audience momentum does not need a second system later.",
-      "Configuration and launch prep can stay close to publishing instead of breaking the flow.",
-      "The promise is clear: one command center built for game hype, audience pull, and expansion.",
+      "Monetization features are woven into the platform so you can earn from day one.",
+      "Set up your game's economy alongside your game — no separate tools or integrations needed.",
+      "One platform for creating, publishing, and growing your game business.",
     ],
   },
 ];
 
 const telemetryCards = [
   {
-    label: "Build lane",
-    value: "Hot",
-    detail: "World compile locked",
+    label: "Your game",
+    value: "Building",
+    detail: "Code, art, and logic generating live",
     tone: "text-emerald-200",
   },
   {
-    label: "Swarm sync",
-    value: "Live",
-    detail: "Agents routing in parallel",
+    label: "AI agents",
+    value: "Active",
+    detail: "Working together on your creation",
     tone: "text-cyan-200",
   },
   {
-    label: "Launch state",
-    value: "Primed",
-    detail: "Public play plus token rails",
+    label: "Launch",
+    value: "Ready",
+    detail: "One click to publish and share",
     tone: "text-amber-200",
   },
 ];
 
 const cozyMarketingScene = {
   src: "/marketing/landing/stardew-inspired-farm-world.png",
-  label: "Cozy Farming Lane",
-  title: "From calm worlds to obsession loops.",
+  label: "Cozy & Casual",
+  title: "From peaceful farm sims to high-octane action.",
   description:
-    "Use a softer, warmer visual lane when the game needs emotional pull instead of raw aggression.",
+    "Build any kind of game you can imagine. Relaxing life sims, intense shooters, puzzle adventures — Buu adapts to your creative vision.",
   alt: "Original cozy farming-adventure world with crops, cabins, and warm village light.",
   aspectClassName: "aspect-[4/3]",
 };
@@ -297,6 +310,8 @@ export function HomeLandingPage() {
   const router = useRouter();
   const { authenticated, ready } = useAppAuth();
 
+  const [swarmOpen, setSwarmOpen] = useState(false);
+
   const primaryLabel = !ready
     ? "Syncing Access"
     : authenticated
@@ -355,15 +370,26 @@ export function HomeLandingPage() {
             </div>
           </Link>
 
+          <a
+            href="https://build.avax.network/build-games"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hidden items-center gap-2 rounded-full border border-red-500/25 bg-red-500/10 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-red-200 transition hover:bg-red-500/20 sm:inline-flex"
+          >
+            <span className="size-1.5 rounded-full bg-red-400 animate-pulse" />
+            Avalanche Build Games Submission
+            <ArrowRight className="size-3" />
+          </a>
+
           <nav className="hidden items-center gap-6 text-sm text-white/55 lg:flex">
             <a href="#engine" className="transition hover:text-white">
-              Engine
+              How It Works
             </a>
             <a href="#swarm" className="transition hover:text-white">
-              Swarm
+              AI Agents
             </a>
             <a href="#launch-stack" className="transition hover:text-white">
-              Launch Stack
+              Publish & Grow
             </a>
           </nav>
 
@@ -386,7 +412,7 @@ export function HomeLandingPage() {
           animate="visible"
           className="mx-auto max-w-[1480px] px-4 pb-16 pt-8 md:px-6 md:pb-20 md:pt-10"
         >
-          <section className="grid gap-6 xl:grid-cols-[minmax(0,1.04fr)_minmax(0,0.96fr)]">
+          <section className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.04fr)_minmax(0,0.96fr)]">
             <motion.div
               variants={fadeInUp}
               className="overflow-hidden rounded-[2.4rem] border border-white/8 bg-[#2a0b12]/90 p-6 shadow-[0_28px_100px_rgba(14,3,6,0.34)] md:p-8 lg:p-10"
@@ -401,11 +427,25 @@ export function HomeLandingPage() {
               </h1>
 
               <p className="mt-6 max-w-2xl text-sm leading-7 text-white/66 md:text-lg">
-                Buu AI Game Maker turns one hard prompt into a live game lane,
-                directs the agent swarm, keeps the build hot, and lines you up
-                for public play plus token-ready launch rails from one command
-                center.
+                Describe the game you want to make. Buu's AI agents build it
+                in real time — code, art, logic, everything. Play it instantly,
+                tweak it with words, and publish it for the world with one click.
               </p>
+
+              <a
+                href="https://build.avax.network/build-games"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-4 inline-flex items-center gap-2.5 rounded-full border border-red-500/20 bg-red-500/8 px-4 py-2 text-xs font-medium text-red-200/90 transition hover:bg-red-500/16"
+              >
+                <span className="size-2 rounded-full bg-red-400 animate-pulse" />
+                Built for the Avalanche Build Games Hackathon
+                <span className="text-white/40">|</span>
+                <span className="font-semibold text-red-100 underline underline-offset-2">
+                  Learn more
+                </span>
+                <ArrowRight className="size-3" />
+              </a>
 
               <div className="mt-8 flex flex-wrap gap-3">
                 <Button
@@ -424,7 +464,7 @@ export function HomeLandingPage() {
                   className="rounded-full border border-white/10 bg-white/[0.04] px-7 text-white hover:bg-white/[0.08] hover:text-white"
                 >
                   <a href="#engine">
-                    See the Engine
+                    See How It Works
                     <Play className="size-4" />
                   </a>
                 </Button>
@@ -454,28 +494,28 @@ export function HomeLandingPage() {
                 <div className="rounded-[1.5rem] border border-rose-400/18 bg-rose-500/8 p-4">
                   <div className="flex items-center gap-2 text-sm font-medium text-white">
                     <Swords className="size-4 text-rose-300" />
-                    Brutal speed
+                    Lightning fast
                   </div>
                   <p className="mt-3 text-sm leading-6 text-white/60">
-                    Build pressure stays high from first prompt to playable link.
+                    Go from idea to playable game in under a minute.
                   </p>
                 </div>
                 <div className="rounded-[1.5rem] border border-cyan-400/18 bg-cyan-500/8 p-4">
                   <div className="flex items-center gap-2 text-sm font-medium text-white">
                     <Orbit className="size-4 text-cyan-200" />
-                    One surface
+                    All-in-one
                   </div>
                   <p className="mt-3 text-sm leading-6 text-white/60">
-                    Idea, build, publishing, and launch prep stay tied together.
+                    Create, build, test, and publish — all from one dashboard.
                   </p>
                 </div>
                 <div className="rounded-[1.5rem] border border-violet-400/18 bg-violet-500/8 p-4">
                   <div className="flex items-center gap-2 text-sm font-medium text-white">
                     <Shield className="size-4 text-violet-200" />
-                    Premium feel
+                    Studio quality
                   </div>
                   <p className="mt-3 text-sm leading-6 text-white/60">
-                    The front door feels like the command center behind it.
+                    Professional-grade games that look and feel polished.
                   </p>
                 </div>
               </div>
@@ -483,7 +523,7 @@ export function HomeLandingPage() {
 
             <motion.div
               variants={slideInRight}
-              className="relative overflow-hidden rounded-[2.4rem] border border-white/8 bg-[#2a0b12]/88 p-4 shadow-[0_28px_100px_rgba(14,3,6,0.34)] md:p-5"
+              className="relative overflow-hidden rounded-[2.4rem] border border-white/8 bg-[#2a0b12]/88 p-4 shadow-[0_28px_100px_rgba(14,3,6,0.34)] md:p-5 xl:sticky xl:top-6"
             >
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(244,63,94,0.2),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(34,211,238,0.14),transparent_28%),linear-gradient(180deg,rgba(255,255,255,0.04),rgba(0,0,0,0))]" />
 
@@ -500,18 +540,18 @@ export function HomeLandingPage() {
                 <div className="relative flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-4 pb-4 pt-5 md:px-5">
                   <div>
                     <p className="text-[11px] uppercase tracking-[0.28em] text-white/40">
-                      Live War Room
+                      Live Preview
                     </p>
                     <p className="mt-1 text-lg font-semibold text-white">
-                      Pressure the build. Track the launch.
+                      See your game come to life in real time.
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <div className="rounded-full border border-emerald-400/25 bg-emerald-400/10 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-emerald-200">
-                      Agents live
+                      AI building
                     </div>
                     <div className="rounded-full border border-cyan-400/25 bg-cyan-400/10 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-cyan-200">
-                      Swarm routed
+                      Game ready
                     </div>
                   </div>
                 </div>
@@ -523,10 +563,10 @@ export function HomeLandingPage() {
 
                   <div className="absolute left-4 top-4 flex flex-wrap gap-2">
                     <div className="rounded-full border border-white/12 bg-black/38 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.22em] text-white/72">
-                      Playable reel
+                      Live gameplay
                     </div>
                     <div className="rounded-full border border-rose-400/24 bg-rose-400/10 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.22em] text-rose-200">
-                      Launch focus
+                      Made with Buu
                     </div>
                   </div>
 
@@ -535,22 +575,22 @@ export function HomeLandingPage() {
                       <div className="rounded-[1.4rem] border border-white/10 bg-black/38 p-4 backdrop-blur-sm">
                         <div className="flex items-center gap-2 text-sm font-medium text-white">
                           <Gauge className="size-4 text-rose-300" />
-                          Build pressure
+                          Real-time creation
                         </div>
                         <p className="mt-2 text-sm leading-6 text-white/60">
-                          Prompt intake, world routing, and iteration heat stay
-                          visible from the first click.
+                          Watch your game take shape as AI agents generate every
+                          element — visible from the very first prompt.
                         </p>
                       </div>
 
                       <div className="rounded-[1.4rem] border border-white/10 bg-black/38 p-4 backdrop-blur-sm">
                         <div className="flex items-center gap-2 text-sm font-medium text-white">
                           <Waypoints className="size-4 text-cyan-200" />
-                          Launch path
+                          Ready to share
                         </div>
                         <p className="mt-2 text-sm leading-6 text-white/60">
-                          Publishing, creator control, and token-ready rails stay
-                          attached to the same game timeline.
+                          Publish your game, share the link, and start building
+                          your player community — all from the same place.
                         </p>
                       </div>
                     </div>
@@ -584,11 +624,11 @@ export function HomeLandingPage() {
               >
                 <div className="flex items-center gap-2 text-sm font-medium text-white">
                   <Activity className="size-4 text-emerald-200" />
-                  Command pulse
+                  Live status
                 </div>
                 <p className="mt-3 text-xs leading-6 text-white/58">
-                  The front door now sells the same operator energy users feel
-                  when they enter the real command center.
+                  Every game you create has a live dashboard — track progress,
+                  player activity, and updates at a glance.
                 </p>
               </motion.div>
             </motion.div>
@@ -600,9 +640,9 @@ export function HomeLandingPage() {
             className="mt-8 rounded-[2.4rem] border border-white/8 bg-[#2a0b12]/86 p-6 shadow-[0_28px_100px_rgba(14,3,6,0.28)] md:mt-10 md:p-8"
           >
             <SectionHeader
-              eyebrow="Engine"
-              title="One engine. One command surface. Zero dead momentum."
-              description="Buu AI Game Maker is built to keep the creator loop violent and clean: idea in, playable build pressure out, public launch path attached."
+              eyebrow="How It Works"
+              title="From your imagination to a playable game. Effortlessly."
+              description="Buu AI Game Maker handles the entire game creation pipeline — you describe what you want, AI agents build it, and you publish it to the world. No coding required."
             />
 
             <div className="mt-8 grid gap-4 lg:grid-cols-3">
@@ -639,30 +679,29 @@ export function HomeLandingPage() {
                 className="rounded-[1.9rem] border border-white/8 bg-black/22 p-5"
               >
                 <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-white/40">
-                  Genre Range
+                  Any Genre
                 </p>
                 <h3 className="mt-3 text-2xl font-semibold tracking-tight text-white">
-                  The landing page now shows Buu can flex beyond one visual lane.
+                  Whatever game lives in your head, Buu can build it.
                 </h3>
                 <p className="mt-4 text-sm leading-7 text-white/60">
-                  This softer world gives the page breathing room before the
-                  harder cyberpunk and motion-heavy sections take over. It helps
-                  Buu feel like a real game platform with range, not a one-note
-                  tech demo wrapped in marketing copy.
+                  RPGs, platformers, puzzle games, farming sims, shooters, tower
+                  defense — Buu understands dozens of game genres and adapts its
+                  AI agents to match your creative direction perfectly.
                 </p>
                 <div className="mt-5 grid gap-3 sm:grid-cols-2">
                   <div className="rounded-[1.35rem] border border-white/8 bg-white/[0.04] p-4">
-                    <p className="text-sm font-medium text-white">Original range</p>
+                    <p className="text-sm font-medium text-white">Endless variety</p>
                     <p className="mt-2 text-xs leading-6 text-white/55">
-                      Warm life-sim atmosphere, handcrafted detail, and a softer
-                      emotional hook.
+                      Cozy life sims, intense action games, retro arcade classics
+                      — your imagination is the only limit.
                     </p>
                   </div>
                   <div className="rounded-[1.35rem] border border-white/8 bg-white/[0.04] p-4">
-                    <p className="text-sm font-medium text-white">Marketing use</p>
+                    <p className="text-sm font-medium text-white">Smart adaptation</p>
                     <p className="mt-2 text-xs leading-6 text-white/55">
-                      Breaks up dense sections and shows product range without
-                      turning the page into a generic feature wall.
+                      Buu adjusts art style, game mechanics, and UI to match the
+                      genre you choose — automatically.
                     </p>
                   </div>
                 </div>
@@ -677,37 +716,89 @@ export function HomeLandingPage() {
           >
             <div className="rounded-[2.4rem] border border-white/8 bg-[#2a0b12]/86 p-6 shadow-[0_28px_100px_rgba(14,3,6,0.28)] md:p-8">
               <SectionHeader
-                eyebrow="Swarm"
-                title="Direct the AI strike team from a real operator console."
-                description="This is not a polite marketing page about possibility. It is a visual promise: Buu takes the brief, routes the pressure, and keeps the launch sequence attached to the same game thread."
+                eyebrow="AI Agents"
+                title="A team of AI specialists, working together on your game."
+                description="Buu doesn't use one AI — it deploys a team. Art agents, code agents, and logic agents collaborate in real time to bring your game to life faster than you thought possible."
               />
 
               <div className="mt-8 grid gap-3">
                 <div className="rounded-[1.5rem] border border-rose-400/16 bg-rose-500/8 p-4">
                   <div className="flex items-center gap-2 text-sm font-medium text-white">
                     <Radar className="size-4 text-rose-300" />
-                    Operator view
+                    Full visibility
                   </div>
                   <p className="mt-3 text-sm leading-6 text-white/60">
-                    The landing page now sells Buu like a live control surface
-                    for creators who want game velocity, not brochure copy.
+                    See exactly what every AI agent is doing on your game —
+                    every asset, every line of code, every decision in real time.
                   </p>
+                  <div className="relative mt-3 inline-flex">
+                    {/* Particle orbit container — centered on the button */}
+                    <div className="pointer-events-none absolute inset-0">
+                      {[0, 1, 2, 3, 4, 5].map((i) => (
+                        <span
+                          key={i}
+                          className="absolute left-1/2 top-1/2"
+                          style={{
+                            animation: `swarm-orbit ${5 + i * 0.8}s linear infinite`,
+                            animationDelay: `${i * -1.1}s`,
+                          }}
+                        >
+                          <span
+                            className="block rounded-full"
+                            style={{
+                              width: `${2 + (i % 3)}px`,
+                              height: `${2 + (i % 3)}px`,
+                              background:
+                                i % 2 === 0
+                                  ? "rgba(251,113,133,0.7)"
+                                  : "rgba(244,63,94,0.5)",
+                              boxShadow:
+                                i % 2 === 0
+                                  ? "0 0 6px 2px rgba(251,113,133,0.35)"
+                                  : "0 0 4px 1px rgba(244,63,94,0.25)",
+                              animation: `swarm-twinkle ${1.4 + i * 0.3}s ease-in-out infinite alternate`,
+                            }}
+                          />
+                        </span>
+                      ))}
+
+                      {/* Soft glow rings */}
+                      <span className="absolute inset-0 flex items-center justify-center">
+                        <span className="absolute inset-[-6px] rounded-full bg-rose-500/8 animate-[swarm-pulse_3s_ease-in-out_infinite]" />
+                        <span className="absolute inset-[-12px] rounded-full bg-rose-500/4 animate-[swarm-pulse_3s_ease-in-out_infinite_0.5s]" />
+                      </span>
+                    </div>
+
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="relative z-10 rounded-full border border-rose-400/30 bg-rose-500/14 px-5 text-xs uppercase tracking-[0.18em] text-rose-200 shadow-[0_0_20px_rgba(244,63,94,0.15)] hover:bg-rose-500/24 hover:text-rose-100 hover:shadow-[0_0_30px_rgba(244,63,94,0.25)]"
+                      onClick={() => setSwarmOpen(true)}
+                    >
+                      <span className="absolute inset-0 rounded-full animate-[swarm-ping_2.5s_cubic-bezier(0,0,0.2,1)_infinite] border border-rose-400/30" />
+                      <span className="absolute inset-0 rounded-full animate-[swarm-ping_2.5s_cubic-bezier(0,0,0.2,1)_infinite_0.8s] border border-rose-400/20" />
+                      <span className="relative inline-flex items-center gap-2">
+                        <Waypoints className="size-3.5" />
+                        Inspect Swarm Architecture
+                      </span>
+                    </Button>
+                  </div>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="rounded-[1.5rem] border border-white/8 bg-black/22 p-4">
                     <p className="text-[11px] uppercase tracking-[0.24em] text-white/40">
-                      Swarm objective
+                      The goal
                     </p>
                     <p className="mt-3 text-lg font-semibold text-white">
-                      Prompt to playable to publish
+                      Describe, play, publish — done
                     </p>
                   </div>
                   <div className="rounded-[1.5rem] border border-white/8 bg-black/22 p-4">
                     <p className="text-[11px] uppercase tracking-[0.24em] text-white/40">
-                      Creator posture
+                      Your experience
                     </p>
                     <p className="mt-3 text-lg font-semibold text-white">
-                      Fast, premium, launch-minded
+                      Fast, beautiful, ready to share
                     </p>
                   </div>
                 </div>
@@ -718,14 +809,14 @@ export function HomeLandingPage() {
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <p className="text-[11px] uppercase tracking-[0.28em] text-white/40">
-                    Operator Timeline
+                    Your Journey
                   </p>
                   <p className="mt-2 text-2xl font-semibold tracking-tight text-white">
-                    Live command flow
+                    Four steps to your first game
                   </p>
                 </div>
                 <div className="rounded-full border border-white/10 bg-white/[0.05] px-4 py-2 text-xs uppercase tracking-[0.18em] text-white/65">
-                  Swarm online
+                  Try it free
                 </div>
               </div>
 
@@ -773,9 +864,9 @@ export function HomeLandingPage() {
           >
             <div className="rounded-[2.4rem] border border-white/8 bg-[#2a0b12]/86 p-6 shadow-[0_28px_100px_rgba(14,3,6,0.28)] md:p-8">
               <SectionHeader
-                eyebrow="Launch Stack"
-                title="Stay ready to push the game, the audience, and the next layer."
-                description="Buu keeps launch-minded infrastructure close to the creation loop so the product does not fall apart the second people want to play, share, and speculate on what comes next."
+                eyebrow="Publish & Grow"
+                title="Your game deserves an audience. Buu gets it there."
+                description="Publishing isn't an afterthought — it's built into every step. Go from private creation to public game with a single click, and use built-in tools to grow your player base."
               />
 
               <div className="mt-8 space-y-4">
@@ -807,29 +898,28 @@ export function HomeLandingPage() {
               <div className="grid gap-4 md:grid-cols-[1.08fr_0.92fr]">
                 <div className="rounded-[1.9rem] border border-white/8 bg-black/22 p-5">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-white/40">
-                    Dashboard Preview
+                    Your Dashboard
                   </p>
                   <div className="mt-4 space-y-3">
                     <div className="rounded-[1.35rem] border border-white/8 bg-white/[0.04] p-4">
-                      <p className="text-sm font-medium text-white">Creation pressure</p>
+                      <p className="text-sm font-medium text-white">All your games, one view</p>
                       <p className="mt-2 text-xs leading-6 text-white/55">
-                        The hero promise lines up with the authenticated
-                        dashboard: creation lanes, build motion, and launch cues
-                        stay close together.
+                        See every game you've created, what stage it's in, and
+                        jump back into editing or publishing instantly.
                       </p>
                     </div>
                     <div className="rounded-[1.35rem] border border-white/8 bg-white/[0.04] p-4">
-                      <p className="text-sm font-medium text-white">Launch visibility</p>
+                      <p className="text-sm font-medium text-white">Player insights</p>
                       <p className="mt-2 text-xs leading-6 text-white/55">
-                        Public play and future token rails can live near the same
-                        game thread instead of getting lost in a separate stack.
+                        Track who's playing your games, how they're engaging,
+                        and use those insights to make your next game even better.
                       </p>
                     </div>
                     <div className="rounded-[1.35rem] border border-white/8 bg-white/[0.04] p-4">
-                      <p className="text-sm font-medium text-white">Front door parity</p>
+                      <p className="text-sm font-medium text-white">Pro-grade tools</p>
                       <p className="mt-2 text-xs leading-6 text-white/55">
-                        The landing page finally looks like it belongs to the
-                        same serious product as the command center behind it.
+                        A real creator dashboard built for serious game makers —
+                        not a toy, but a platform you can build a business on.
                       </p>
                     </div>
                   </div>
@@ -838,28 +928,28 @@ export function HomeLandingPage() {
                 <div className="space-y-4">
                   <div className="rounded-[1.9rem] border border-cyan-400/16 bg-cyan-500/8 p-5">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-cyan-100/75">
-                      Access
+                      Free to start
                     </p>
                     <p className="mt-3 text-2xl font-semibold text-white">
-                      Public route. Protected command center.
+                      Start building in seconds. No credit card needed.
                     </p>
                     <p className="mt-3 text-sm leading-7 text-white/58">
-                      Visitors get the full Buu experience on `/`, then move
-                      through the correct auth flow into `/dashboard`.
+                      Sign up, describe your game, and watch it come to life.
+                      Your personal game studio is one click away.
                     </p>
                   </div>
 
                   <div className="rounded-[1.9rem] border border-amber-400/18 bg-amber-500/8 p-5">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-amber-100/75">
-                      Token-ready
+                      Built for growth
                     </p>
                     <p className="mt-3 text-lg font-semibold text-white">
-                      Launch rails are future-facing, not fake promises.
+                      A platform that grows with your ambition.
                     </p>
                     <p className="mt-3 text-sm leading-7 text-white/58">
-                      The landing page should sell launch readiness hard while
-                      staying accurate: Buu keeps the infrastructure close so the
-                      next layer can slot in without a brand reset.
+                      Start with one game. Build a catalog. Grow an audience.
+                      Buu gives you the tools to go from hobbyist to game studio
+                      — all on one platform.
                     </p>
                   </div>
 
@@ -889,22 +979,22 @@ export function HomeLandingPage() {
                     Final Call
                   </p>
                   <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white md:text-[2.8rem]">
-                    Build the game. Direct the swarm. Own the launch window.
+                    Your next game is one conversation away.
                   </h2>
                   <p className="mt-4 text-sm leading-7 text-white/68 md:text-base">
-                    Buu AI Game Maker is for creators who want a serious front
-                    door, a real command center, and a faster path from raw idea
-                    to playable pressure.
+                    Join thousands of creators who are building, publishing,
+                    and sharing original games — no coding, no design skills,
+                    no limits.
                   </p>
                   <div className="mt-5 flex flex-wrap gap-2 text-xs uppercase tracking-[0.22em] text-white/58">
                     <span className="rounded-full border border-white/10 bg-black/20 px-3 py-2">
-                      Playable builds
+                      No code needed
                     </span>
                     <span className="rounded-full border border-white/10 bg-black/20 px-3 py-2">
-                      Swarm orchestration
+                      AI-powered creation
                     </span>
                     <span className="rounded-full border border-white/10 bg-black/20 px-3 py-2">
-                      Public launch path
+                      Instant publishing
                     </span>
                   </div>
                 </div>
@@ -925,7 +1015,7 @@ export function HomeLandingPage() {
                     variant="ghost"
                     className="rounded-full border border-white/10 bg-black/16 px-7 text-white hover:bg-black/24 hover:text-white"
                   >
-                    <a href="#swarm">Inspect the Swarm</a>
+                    <a href="#swarm">Meet the AI Agents</a>
                   </Button>
                 </div>
               </div>
@@ -933,6 +1023,53 @@ export function HomeLandingPage() {
           </motion.section>
         </motion.div>
       </main>
+
+      <footer className="border-t border-white/6 bg-[#0a0305]">
+        <div className="mx-auto flex max-w-[1480px] flex-col items-center justify-between gap-4 px-4 py-6 text-xs text-white/40 sm:flex-row md:px-6">
+          <p>&copy; {new Date().getFullYear()} Atomic Coding. All rights reserved.</p>
+          <a
+            href="https://x.com/carlosroldanx"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group inline-flex items-center gap-1.5 transition hover:text-white/70"
+          >
+            Happily vibecoded by{" "}
+            <span className="font-medium text-white/60 underline underline-offset-2 transition group-hover:text-white">
+              Carlos Roldan
+            </span>
+            <ArrowRight className="size-3 transition-transform duration-200 group-hover:translate-x-1" />
+          </a>
+        </div>
+      </footer>
+
+      <Dialog open={swarmOpen} onOpenChange={setSwarmOpen}>
+        <DialogContent
+          showCloseButton
+          className="flex h-[90vh] max-h-[90vh] w-[95vw] max-w-[95vw] flex-col overflow-hidden p-0 sm:max-w-[95vw]"
+        >
+          <DialogHeader className="shrink-0 px-6 pt-5 pb-0">
+            <DialogTitle className="text-white">
+              System Topology — AI Swarm
+            </DialogTitle>
+          </DialogHeader>
+          <div className="min-h-0 flex-1 px-4 pb-4">
+            <Suspense
+              fallback={
+                <div className="flex h-full items-center justify-center text-sm text-white/40">
+                  Loading architecture view...
+                </div>
+              }
+            >
+              {swarmOpen && (
+                <LazyArchitectureView
+                  lastEditedGame={null}
+                  className="h-full min-h-0 rounded-2xl"
+                />
+              )}
+            </Suspense>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

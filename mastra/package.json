@@ -13,8 +13,8 @@
   "dependencies": {
     "@hono/node-server": "^1.13.0",
     "@mastra/ai-sdk": "^1.1.2",
-    "@mastra/core": "latest",
-    "@mastra/hono": "latest",
+    "@mastra/core": "^1.10.0",
+    "@mastra/hono": "^1.1.9",
     "@sentry/node": "^10.42.0",
     "@supabase/supabase-js": "^2.95.3",
     "ai": "^6.0.77",

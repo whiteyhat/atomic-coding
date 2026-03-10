@@ -2,15 +2,14 @@
 
 import { type ReactNode, useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { MessageSquare, Settings, Swords } from "lucide-react";
+import { MessageSquare, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { sidebarReveal } from "./workspace-animations";
 import type { SidebarTab } from "./game-workspace";
 
 const TABS = [
   { id: "chat" as const, label: "Chat", icon: MessageSquare, shortcut: "1" },
-  { id: "warroom" as const, label: "War Room", icon: Swords, shortcut: "2" },
-  { id: "config" as const, label: "Config", icon: Settings, shortcut: "3" },
+  { id: "config" as const, label: "Config", icon: Settings, shortcut: "2" },
 ];
 
 interface WorkspaceSidebarProps {

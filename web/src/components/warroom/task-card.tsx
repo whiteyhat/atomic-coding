@@ -1,151 +1,293 @@
 "use client";
 
-import { ChevronRight, Check, X, Loader2, Clock, Pause, AlertTriangle } from "lucide-react";
+import { useEffect, useState } from "react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ChevronRight,
+  Clock3,
+  Loader2,
+  PauseCircle,
+  PlayCircle,
+  RotateCcw,
+  XCircle,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { useState, useEffect } from "react";
-import type { WarRoomTask, AgentName } from "@/lib/types";
+import type { AgentName } from "@/lib/types";
+import type { WarRoomTaskState } from "@/lib/war-room-state";
+import { cn } from "@/lib/utils";
+import { ElapsedTimer } from "./elapsed-timer";
 
-const AGENT_COLORS: Record<AgentName, string> = {
-  jarvis: "bg-purple-500/15 text-purple-400 border-purple-500/30",
-  forge: "bg-blue-500/15 text-blue-400 border-blue-500/30",
-  pixel: "bg-green-500/15 text-green-400 border-green-500/30",
-  checker: "bg-amber-500/15 text-amber-400 border-amber-500/30",
+const AGENT_STYLES: Record<AgentName, string> = {
+  jarvis: "border-fuchsia-400/25 bg-fuchsia-500/12 text-fuchsia-200",
+  forge: "border-sky-400/25 bg-sky-500/12 text-sky-200",
+  pixel: "border-emerald-400/25 bg-emerald-500/12 text-emerald-200",
+  checker: "border-amber-400/25 bg-amber-500/12 text-amber-200",
 };
 
-const AGENT_SHORT: Record<AgentName, string> = {
-  jarvis: "JAR",
-  forge: "FRG",
-  pixel: "PIX",
-  checker: "CHK",
-};
 
-function ElapsedTime({ startedAt }: { startedAt: string }) {
-  const [elapsed, setElapsed] = useState(0);
+function formatTimestamp(value: string | null): string | null {
+  if (!value) return null;
+  return new Date(value).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+function StatusIcon({ status }: { status: WarRoomTaskState["status"] }) {
+  switch (status) {
+    case "completed":
+      return <CheckCircle2 className="size-4 text-emerald-300" />;
+    case "running":
+      return <Loader2 className="size-4 animate-spin text-sky-300" />;
+    case "failed":
+      return <XCircle className="size-4 text-rose-300" />;
+    case "blocked":
+      return <PauseCircle className="size-4 text-amber-300" />;
+    case "assigned":
+      return <PlayCircle className="size-4 text-violet-300" />;
+    default:
+      return <Clock3 className="size-4 text-white/35" />;
+  }
+}
+
+function RunningTimer({
+  startedAt,
+  completedAt,
+}: {
+  startedAt: string | null;
+  completedAt: string | null;
+}) {
+  const [seconds, setSeconds] = useState(0);
+
   useEffect(() => {
-    const start = new Date(startedAt).getTime();
-    setElapsed(Math.round((Date.now() - start) / 1000));
-    const interval = setInterval(() => {
-      setElapsed(Math.round((Date.now() - start) / 1000));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [startedAt]);
+    if (!startedAt) return;
 
-  const mins = Math.floor(elapsed / 60);
-  const secs = elapsed % 60;
+    const startMs = new Date(startedAt).getTime();
+    const stopMs = completedAt ? new Date(completedAt).getTime() : null;
+
+    const update = () => {
+      const endMs = stopMs ?? Date.now();
+      setSeconds(Math.max(0, Math.round((endMs - startMs) / 1000)));
+    };
+
+    update();
+
+    if (stopMs != null) return;
+
+    const interval = setInterval(update, 1000);
+    return () => clearInterval(interval);
+  }, [completedAt, startedAt]);
+
   return (
-    <span className="text-[10px] text-white/30 font-mono shrink-0">
-      {mins}:{secs.toString().padStart(2, "0")}
-    </span>
+    <ElapsedTimer seconds={seconds} isLive={!completedAt} variant="compact" />
   );
 }
 
-function StatusIcon({ status }: { status: string }) {
-  switch (status) {
-    case "completed":
-      return <Check className="size-3.5 text-emerald-400" />;
+function StatusTone({ task }: { task: WarRoomTaskState }) {
+  switch (task.status) {
     case "running":
-      return <Loader2 className="size-3.5 text-blue-400 animate-spin" />;
-    case "failed":
-      return <X className="size-3.5 text-rose-400" />;
+      return "border-sky-400/20 bg-sky-500/[0.08] shadow-[0_10px_30px_rgba(45,100,180,0.12)]";
+    case "assigned":
+      return "border-violet-400/18 bg-violet-500/[0.07]";
     case "blocked":
-      return <Pause className="size-3.5 text-white/40" />;
+      return "border-amber-400/18 bg-amber-500/[0.06]";
+    case "failed":
+      return "border-rose-400/18 bg-rose-500/[0.08]";
+    case "completed":
+      return "border-emerald-400/16 bg-emerald-500/[0.05]";
     default:
-      return <Clock className="size-3.5 text-white/30" />;
+      return "border-white/8 bg-white/[0.03]";
   }
 }
 
 interface TaskCardProps {
-  task: WarRoomTask;
+  task: WarRoomTaskState;
 }
 
 export function TaskCard({ task }: TaskCardProps) {
-  const [open, setOpen] = useState(false);
-  const agent = task.assigned_agent;
-  const isActive = task.status === "running";
+  const [open, setOpen] = useState(task.status === "running" || task.status === "failed");
+  const startedAt = formatTimestamp(task.started_at);
+  const completedAt = formatTimestamp(task.completed_at);
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
       <CollapsibleTrigger asChild>
         <button
-          className={`w-full flex items-center gap-2 px-3 py-2 text-left text-sm rounded-xl transition-colors hover:bg-white/[0.06] ${
-            isActive ? "bg-white/[0.05] ring-1 ring-white/10" : ""
-          }`}
+          className={cn(
+            "w-full rounded-[1rem] border p-3 text-left transition-all duration-200 hover:border-white/14 hover:bg-white/[0.05]",
+            StatusTone({ task })
+          )}
         >
-          {/* Task number */}
-          <span className="text-xs text-white/40 w-5 shrink-0 text-right font-mono">
-            {task.task_number}
-          </span>
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 shrink-0">
+              <StatusIcon status={task.status} />
+            </div>
+            <div className="min-w-0 flex-1 space-y-2">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-white/35">
+                      #{task.task_number}
+                    </span>
+                    {task.assigned_agent && (
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          "rounded-full border px-2 py-0.5 text-[10px] capitalize",
+                          AGENT_STYLES[task.assigned_agent]
+                        )}
+                      >
+                        {task.assigned_agent}
+                      </Badge>
+                    )}
+                    {task.retry_attempt != null && (
+                      <Badge
+                        variant="outline"
+                        className="rounded-full border-amber-400/25 bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-200"
+                      >
+                        <RotateCcw className="size-3" />
+                        Retry {task.retry_attempt}/{task.retry_max ?? "?"}
+                      </Badge>
+                    )}
+                  </div>
+                  <p
+                    className={cn(
+                      "mt-2 line-clamp-2 text-sm font-medium",
+                      task.status === "completed" ? "text-white/60" : "text-white/88"
+                    )}
+                  >
+                    {task.title}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {task.started_at && (
+                    <RunningTimer
+                      startedAt={task.started_at}
+                      completedAt={task.completed_at}
+                    />
+                  )}
+                  <ChevronRight
+                    className={cn(
+                      "size-4 shrink-0 text-white/25 transition-transform",
+                      open && "rotate-90"
+                    )}
+                  />
+                </div>
+              </div>
 
-          {/* Status icon */}
-          <StatusIcon status={task.status} />
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    "rounded-full border px-2 py-0.5 text-[10px] capitalize",
+                    task.status === "running" &&
+                      "border-sky-400/30 bg-sky-500/10 text-sky-200",
+                    task.status === "assigned" &&
+                      "border-violet-400/30 bg-violet-500/10 text-violet-200",
+                    task.status === "blocked" &&
+                      "border-amber-400/30 bg-amber-500/10 text-amber-200",
+                    task.status === "completed" &&
+                      "border-emerald-400/30 bg-emerald-500/10 text-emerald-200",
+                    task.status === "failed" &&
+                      "border-rose-400/30 bg-rose-500/10 text-rose-200",
+                    task.status === "pending" &&
+                      "border-white/12 bg-white/8 text-white/55"
+                  )}
+                >
+                  {task.status}
+                </Badge>
+                {task.active_phase && (
+                  <Badge
+                    variant="outline"
+                    className="rounded-full border-white/12 bg-black/20 px-2 py-0.5 text-[10px] text-white/60"
+                  >
+                    {task.active_phase}
+                  </Badge>
+                )}
+                {task.waiting_on.length > 0 && (
+                  <Badge
+                    variant="outline"
+                    className="max-w-full truncate rounded-full border-amber-400/20 bg-amber-500/8 px-2 py-0.5 text-[10px] text-amber-100"
+                  >
+                    Waiting on {task.waiting_on.map((dependency) => `#${dependency}`).join(", ")}
+                  </Badge>
+                )}
+                {task.output_keys.length > 0 && (
+                  <Badge
+                    variant="outline"
+                    className="max-w-full truncate rounded-full border-white/12 bg-black/20 px-2 py-0.5 text-[10px] text-white/55"
+                  >
+                    {task.output_keys.join(", ")}
+                  </Badge>
+                )}
+              </div>
 
-          {/* Title */}
-          <span
-            className={`flex-1 truncate ${
-              task.status === "completed"
-                ? "text-white/40 line-through"
-                : task.status === "failed"
-                  ? "text-rose-400"
-                  : "text-white/80"
-            }`}
-          >
-            {task.title}
-          </span>
-
-          {/* Elapsed time for running tasks */}
-          {isActive && task.started_at && (
-            <ElapsedTime startedAt={task.started_at} />
-          )}
-
-          {/* Agent badge */}
-          {agent && (
-            <Badge
-              variant="outline"
-              className={`text-[10px] px-1.5 py-0 h-4 font-mono ${AGENT_COLORS[agent]}`}
-            >
-              {AGENT_SHORT[agent]}
-            </Badge>
-          )}
-
-          {/* Expand arrow */}
-          <ChevronRight
-            className={`size-3 text-white/30 transition-transform ${
-              open ? "rotate-90" : ""
-            }`}
-          />
+              {task.description && (
+                <p className="line-clamp-2 text-[12px] leading-5 text-white/50">
+                  {task.description}
+                </p>
+              )}
+            </div>
+          </div>
         </button>
       </CollapsibleTrigger>
 
       <CollapsibleContent>
-        <div className="ml-10 mr-3 mb-2 text-xs text-white/40 space-y-1">
-          {task.description && <p>{task.description}</p>}
-          {task.started_at && (
-            <p>
-              Started:{" "}
-              {new Date(task.started_at).toLocaleTimeString()}
-            </p>
+        <div className="mt-2 space-y-2 rounded-[1rem] border border-white/8 bg-black/20 p-3 text-xs text-white/60">
+          {task.waiting_on.length > 0 && (
+            <div className="rounded-xl border border-amber-400/18 bg-amber-500/[0.08] px-3 py-2">
+              <p className="font-medium text-amber-100">
+                Blocked by {task.waiting_on.map((dependency) => `#${dependency}`).join(", ")}
+              </p>
+              <p className="mt-1 text-[11px] text-amber-100/70">
+                This step will queue automatically when its dependencies finish.
+              </p>
+            </div>
           )}
-          {task.completed_at && (
-            <p>
-              Completed:{" "}
-              {new Date(task.completed_at).toLocaleTimeString()}
-            </p>
-          )}
-          {task.status === "failed" && task.output && (task.output as Record<string, unknown>).error ? (
-            <div className="flex items-start gap-2 p-2 rounded-xl border border-rose-500/20 bg-rose-500/10 text-rose-400">
-              <AlertTriangle className="size-3.5 mt-0.5 shrink-0" />
-              <span className="text-[11px] leading-relaxed break-all">
-                {String((task.output as Record<string, unknown>).error)}
+
+          {task.error_message && (
+            <div className="flex items-start gap-2 rounded-xl border border-rose-400/18 bg-rose-500/[0.08] px-3 py-2 text-rose-100">
+              <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+              <span className="break-words text-[11px] leading-relaxed">
+                {task.error_message}
               </span>
             </div>
-          ) : null}
+          )}
+
+          <div className="grid grid-cols-2 gap-2 text-[11px]">
+            <div className="rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2">
+              <p className="text-white/35">Started</p>
+              <p className="mt-1 font-medium text-white/75">{startedAt ?? "--"}</p>
+            </div>
+            <div className="rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2">
+              <p className="text-white/35">Completed</p>
+              <p className="mt-1 font-medium text-white/75">{completedAt ?? "--"}</p>
+            </div>
+            <div className="rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2">
+              <p className="text-white/35">Dependencies</p>
+              <p className="mt-1 font-medium text-white/75">
+                {task.depends_on.length > 0
+                  ? task.depends_on.map((dependency) => `#${dependency}`).join(", ")
+                  : "None"}
+              </p>
+            </div>
+            <div className="rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2">
+              <p className="text-white/35">Last update</p>
+              <p className="mt-1 font-medium text-white/75">
+                {formatTimestamp(task.last_event_at) ?? "--"}
+              </p>
+            </div>
+          </div>
+
           {task.output && (
-            <pre className="text-[10px] bg-white/[0.03] rounded-xl p-2 overflow-auto max-h-32 text-white/50 border border-white/[0.05]">
+            <pre className="max-h-56 overflow-auto rounded-xl border border-white/8 bg-[#13070a]/80 p-3 text-[10px] leading-5 text-white/55">
               {JSON.stringify(task.output, null, 2)}
             </pre>
           )}

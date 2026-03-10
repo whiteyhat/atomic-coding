@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -8,7 +9,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, User, Wallet } from "lucide-react";
+import { LogOut, Settings, User, Wallet } from "lucide-react";
 import { useAppAuth } from "@/lib/privy-provider";
 
 export function UserMenu() {
@@ -49,6 +50,12 @@ export function UserMenu() {
           </DropdownMenuItem>
         )}
         <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <Link href="/settings">
+            <Settings className="size-4 mr-2" />
+            Settings
+          </Link>
+        </DropdownMenuItem>
         {!isDevBypass && (
           <DropdownMenuItem onClick={logout} className="text-destructive">
             <LogOut className="size-4 mr-2" />

@@ -214,6 +214,24 @@ async function generateSingleAsset(args: {
   };
 }
 
+async function generateSingleAssetWithRetry(
+  args: Parameters<typeof generateSingleAsset>[0],
+  maxRetries = 1,
+): Promise<Awaited<ReturnType<typeof generateSingleAsset>>> {
+  let lastError: Error | undefined;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await generateSingleAsset(args);
+    } catch (err) {
+      lastError = err as Error;
+      if (attempt < maxRetries) {
+        await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+      }
+    }
+  }
+  throw lastError;
+}
+
 export const generatePolishedVisualPackTool = createTool({
   id: "generate-polished-visual-pack",
   description:
@@ -238,8 +256,8 @@ export const generatePolishedVisualPackTool = createTool({
     assets: z
       .array(pixelAssetRequestSchema)
       .min(1)
-      .max(6)
-      .describe("Assets to generate in a single coherent pack"),
+      .max(12)
+      .describe("Assets to generate in a single coherent pack (up to 12)"),
   }),
   outputSchema: z.object({
     model: z.string(),
@@ -256,28 +274,50 @@ export const generatePolishedVisualPackTool = createTool({
         source_model: z.string(),
       })
     ),
+    failures: z.array(
+      z.object({
+        asset: z.string(),
+        error: z.string(),
+      })
+    ).default([]),
     notes: z.array(z.string()),
   }),
   execute: async ({ genre, style_direction, pack_goal, model, assets }) => {
-    const generated: Array<Awaited<ReturnType<typeof generateSingleAsset>>> = [];
-
-    for (const asset of assets) {
-      generated.push(
-        await generateSingleAsset({
+    const results = await Promise.allSettled(
+      assets.map((asset) =>
+        generateSingleAssetWithRetry({
           model,
           genre,
           styleDirection: style_direction,
           packGoal: pack_goal,
           asset,
         })
-      );
+      )
+    );
+
+    const generated: Array<Awaited<ReturnType<typeof generateSingleAsset>>> = [];
+    const failures: Array<{ asset: string; error: string }> = [];
+
+    for (const [i, result] of results.entries()) {
+      if (result.status === "fulfilled") {
+        generated.push(result.value);
+      } else {
+        failures.push({
+          asset: assets[i].name,
+          error: result.reason?.message ?? "Unknown error",
+        });
+      }
     }
 
     return {
       model,
       assets: generated,
+      failures,
       notes: [
-        "Assets were generated through OpenRouter image generation.",
+        `${generated.length}/${assets.length} assets generated successfully.`,
+        ...(failures.length > 0
+          ? [`Failed: ${failures.map((f) => f.asset).join(", ")}`]
+          : []),
         "Use transparent-background outputs for overlay composition unless a full-scene asset was requested.",
       ],
     };

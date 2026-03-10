@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
 import { motion } from "framer-motion";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import {
   BarChart3,
   Home,
@@ -9,6 +10,7 @@ import {
   Layers,
   Plus,
   Settings,
+  Shrimp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { slideInLeft, fadeInUp, staggerContainer } from "./dashboard-animations";
@@ -20,18 +22,34 @@ import {
 } from "@/components/ui/tooltip";
 
 const navItems = [
-  { icon: Home, label: "Home", id: "home" },
-  { icon: BarChart3, label: "Analytics", id: "stats" },
-  { icon: LayoutGrid, label: "Library", id: "library" },
-  { icon: Settings, label: "Settings", id: "settings" },
+  { icon: Home, label: "Home", id: "home", href: "/dashboard" },
+  { icon: BarChart3, label: "Analytics", id: "stats", href: "/analytics" },
+  { icon: LayoutGrid, label: "Library", id: "library", href: "/library" },
+  { icon: Shrimp, label: "OpenClaw", id: "openclaw", href: "/openclaw" },
+  { icon: Settings, label: "Settings", id: "settings", href: "/settings" },
 ] as const;
 
 interface DashboardSidebarProps {
-  onCreateClick: () => void;
+  onCreateClick?: () => void;
+  activeId?: string;
 }
 
-export function DashboardSidebar({ onCreateClick }: DashboardSidebarProps) {
-  const [activeId, setActiveId] = useState<string>("home");
+export function DashboardSidebar({
+  onCreateClick,
+  activeId: activeIdProp,
+}: DashboardSidebarProps) {
+  const pathname = usePathname();
+  const activeId =
+    activeIdProp ??
+    (pathname.startsWith("/analytics")
+      ? "stats"
+      : pathname.startsWith("/library")
+        ? "library"
+        : pathname.startsWith("/openclaw")
+          ? "openclaw"
+          : pathname.startsWith("/settings")
+            ? "settings"
+            : "home");
 
   return (
     <TooltipProvider delayDuration={150}>
@@ -45,9 +63,9 @@ export function DashboardSidebar({ onCreateClick }: DashboardSidebarProps) {
         <div className="flex items-center justify-center py-2">
           <Tooltip>
             <TooltipTrigger asChild>
-              <div className="flex size-11 items-center justify-center rounded-2xl bg-white/8 text-white/80 transition hover:bg-white/12">
+              <Link href="/dashboard" className="flex size-11 items-center justify-center rounded-2xl bg-white/8 text-white/80 transition hover:bg-white/12">
                 <Layers className="size-5" />
-              </div>
+              </Link>
             </TooltipTrigger>
             <TooltipContent
               side="right"
@@ -66,34 +84,32 @@ export function DashboardSidebar({ onCreateClick }: DashboardSidebarProps) {
           animate="visible"
           className="mt-6 flex flex-1 flex-col items-center gap-1"
         >
-          {navItems.map(({ icon: Icon, label, id }) => {
+          {navItems.map(({ icon: Icon, label, id, href }) => {
             const isActive = id === activeId;
 
             return (
               <Tooltip key={id}>
                 <TooltipTrigger asChild>
-                  <motion.button
-                    variants={fadeInUp}
-                    type="button"
-                    onClick={() => setActiveId(id)}
-                    className={cn(
-                      "relative flex size-11 items-center justify-center rounded-2xl transition-all duration-200",
-                      isActive
-                        ? "bg-rose-500/20 text-rose-400 shadow-[0_0_20px_rgba(244,63,94,0.15)]"
-                        : "text-white/45 hover:bg-white/8 hover:text-white/70",
-                    )}
-                    whileHover={{ scale: 1.08 }}
-                    whileTap={{ scale: 0.95 }}
-                  >
-                    <Icon className="size-[18px]" />
-                    {isActive && (
-                      <motion.div
-                        layoutId="sidebar-active"
-                        className="absolute inset-0 rounded-2xl border border-rose-400/20 bg-rose-500/10"
-                        transition={{ type: "spring", stiffness: 350, damping: 30 }}
-                      />
-                    )}
-                  </motion.button>
+                  <motion.div variants={fadeInUp}>
+                    <Link
+                      href={href}
+                      className={cn(
+                        "relative flex size-11 items-center justify-center rounded-2xl transition-all duration-200",
+                        isActive
+                          ? "bg-rose-500/20 text-rose-400 shadow-[0_0_20px_rgba(244,63,94,0.15)]"
+                          : "text-white/45 hover:bg-white/8 hover:text-white/70",
+                      )}
+                    >
+                      <Icon className="size-[18px]" />
+                      {isActive && (
+                        <motion.div
+                          layoutId="sidebar-active"
+                          className="absolute inset-0 rounded-2xl border border-rose-400/20 bg-rose-500/10"
+                          transition={{ type: "spring", stiffness: 350, damping: 30 }}
+                        />
+                      )}
+                    </Link>
+                  </motion.div>
                 </TooltipTrigger>
                 <TooltipContent
                   side="right"
@@ -113,28 +129,30 @@ export function DashboardSidebar({ onCreateClick }: DashboardSidebarProps) {
         </motion.nav>
 
         {/* Bottom create button */}
-        <div className="flex items-center justify-center pb-2">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <motion.button
-                type="button"
-                onClick={onCreateClick}
-                className="flex size-12 items-center justify-center rounded-full border border-dashed border-white/20 text-white/50 transition-all hover:border-white/40 hover:bg-white/8 hover:text-white"
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.9 }}
+        {onCreateClick ? (
+          <div className="flex items-center justify-center pb-2">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <motion.button
+                  type="button"
+                  onClick={onCreateClick}
+                  className="flex size-12 items-center justify-center rounded-full border border-dashed border-white/20 text-white/50 transition-all hover:border-white/40 hover:bg-white/8 hover:text-white"
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.9 }}
+                >
+                  <Plus className="size-5" />
+                </motion.button>
+              </TooltipTrigger>
+              <TooltipContent
+                side="right"
+                sideOffset={14}
+                className="rounded-xl border border-rose-500/15 bg-[#1a0a0e]/95 px-3.5 py-2 text-[13px] font-medium tracking-wide text-rose-300 shadow-[0_8px_30px_rgba(0,0,0,0.5),0_0_15px_rgba(244,63,94,0.15)] backdrop-blur-xl"
               >
-                <Plus className="size-5" />
-              </motion.button>
-            </TooltipTrigger>
-            <TooltipContent
-              side="right"
-              sideOffset={14}
-              className="rounded-xl border border-rose-500/15 bg-[#1a0a0e]/95 px-3.5 py-2 text-[13px] font-medium tracking-wide text-rose-300 shadow-[0_8px_30px_rgba(0,0,0,0.5),0_0_15px_rgba(244,63,94,0.15)] backdrop-blur-xl"
-            >
-              Create
-            </TooltipContent>
-          </Tooltip>
-        </div>
+                Create
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        ) : null}
       </motion.aside>
     </TooltipProvider>
   );

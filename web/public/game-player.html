@@ -132,6 +132,7 @@
     const SUPABASE_URL = params.get('supabaseUrl') || '';
     const SUPABASE_ANON_KEY = params.get('supabaseKey') || '';
     const GAME_NAME = params.get('game') || 'my-game';
+    const REQUESTED_FORMAT = params.get('format') || '';
     const STORAGE_BASE = `${SUPABASE_URL}/storage/v1/object/public/bundles/${GAME_NAME}`;
     const MANIFEST_URL = `${STORAGE_BASE}/manifest.json`;
     const BUNDLE_URL = `${STORAGE_BASE}/latest.js`;
@@ -217,6 +218,28 @@
 
     let currentScript = null;
 
+    function resolveRuntime(manifest) {
+      if (manifest && (manifest.runtime === 'phaser' || manifest.runtime === 'three')) {
+        return manifest.runtime;
+      }
+      return REQUESTED_FORMAT === '2d' ? 'phaser' : 'three';
+    }
+
+    function getRuntimeLabel(runtime) {
+      return runtime === 'phaser' ? 'Phaser' : 'Three.js';
+    }
+
+    function destroyExistingRuntime() {
+      if (window.__PHASER_GAME__ && typeof window.__PHASER_GAME__.destroy === 'function') {
+        try {
+          window.__PHASER_GAME__.destroy(true);
+        } catch (error) {
+          console.warn('Failed to destroy Phaser runtime:', error);
+        }
+      }
+      window.__PHASER_GAME__ = null;
+    }
+
     async function loadBundle() {
       setStatus('loading', 'Loading bundle...');
       // Clean up previous bundle's animation loops and per-frame state
@@ -229,24 +252,31 @@
       for (var k in window.GAME.inputs.justReleased) delete window.GAME.inputs.justReleased[k];
       window.GAME.mouse.justDown = false;
       window.GAME.mouse.justUp = false;
+      destroyExistingRuntime();
       if (currentScript) { currentScript.remove(); currentScript = null; }
       try {
         const manifestRes = await fetch(`${MANIFEST_URL}?t=${Date.now()}`);
         let manifest = null;
         if (manifestRes.ok) manifest = await manifestRes.json();
-        if (manifest && manifest.externals) { clearExternals(); await loadExternals(manifest.externals); }
+        const runtime = resolveRuntime(manifest);
+        const runtimeLabel = getRuntimeLabel(runtime);
+        window.GAME.runtime = runtime;
+        window.GAME.format = runtime === 'phaser' ? '2d' : '3d';
+        setStatus('loading', `Loading ${runtimeLabel} bundle...`);
+        clearExternals();
+        if (manifest && manifest.externals) { await loadExternals(manifest.externals); }
         const response = await fetch(`${BUNDLE_URL}?t=${Date.now()}`);
         if (!response.ok) {
-          if (response.status === 404) { setStatus('connected', 'No bundle yet. Create some atoms!'); return; }
+          if (response.status === 404) { setStatus('connected', `No ${runtimeLabel} build yet. Create some atoms!`); return; }
           throw new Error(`HTTP ${response.status}`);
         }
         const code = await response.text();
-        if (!code || code.trim().length === 0) { setStatus('connected', 'Empty bundle. Create some atoms!'); return; }
+        if (!code || code.trim().length === 0) { setStatus('connected', `Empty ${runtimeLabel} bundle. Create some atoms!`); return; }
         currentScript = document.createElement('script');
         currentScript.textContent = code;
         document.body.appendChild(currentScript);
         const extCount = manifest ? (manifest.externals || []).length : 0;
-        setStatus('connected', `Loaded (${extCount} ext, ${new Date().toLocaleTimeString()})`);
+        setStatus('connected', `${runtimeLabel} live (${extCount} ext, ${new Date().toLocaleTimeString()})`);
       } catch (err) {
         console.error('Failed to load bundle:', err);
         setStatus('error', `Load failed: ${err.message}`);

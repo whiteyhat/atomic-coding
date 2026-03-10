@@ -15,6 +15,7 @@ export interface MastraRequestOptions {
   messages: MastraMessage[];
   gameId: string;
   gameName: string;
+  gameFormat?: "2d" | "3d" | null;
   genre?: string | null;
   sessionId?: string | null;
   assetModelIds?: string[];
@@ -27,7 +28,7 @@ export interface MastraRequestOptions {
 export async function streamMastraChat(
   options: MastraRequestOptions
 ): Promise<Response> {
-  const { messages, gameId, gameName, genre, sessionId, assetModelIds } = options;
+  const { messages, gameId, gameName, gameFormat, genre, sessionId, assetModelIds } = options;
 
   if (!MASTRA_SERVER_URL) {
     throw new Error("MASTRA_SERVER_URL is not configured");
@@ -42,6 +43,7 @@ export async function streamMastraChat(
       messages,
       gameId,
       gameName,
+      gameFormat: gameFormat ?? undefined,
       genre: genre ?? undefined,
       sessionId: sessionId ?? undefined,
       ...(assetModelIds?.length ? { assetModelIds } : {}),

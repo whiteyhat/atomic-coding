@@ -5,9 +5,10 @@ export function useExternals(gameName: string | null) {
   return useSWR(
     gameName ? `externals:${gameName}` : null,
     () => listExternals(gameName!),
+    { keepPreviousData: true },
   );
 }
 
 export function useRegistry() {
-  return useSWR("registry", listRegistry);
+  return useSWR("registry", listRegistry, { keepPreviousData: true });
 }

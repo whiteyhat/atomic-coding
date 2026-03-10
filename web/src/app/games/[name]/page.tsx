@@ -24,6 +24,7 @@ export default async function GamePage({ params }: GamePageProps) {
       gameId={game.id}
       gameName={game.name}
       genre={game.genre}
+      gameFormat={game.game_format}
       description={game.description}
       isPublished={game.is_published}
       publicSlug={game.public_slug}

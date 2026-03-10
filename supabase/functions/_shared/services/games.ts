@@ -2,6 +2,7 @@ import { getSupabaseClient } from "../supabase-client.ts";
 import { log } from "../logger.ts";
 import { cached, cacheDel } from "../cache.ts";
 import { ensureBuildScoreSystemReport } from "./builds.ts";
+import { emitOpenClawEvent } from "./openclaw.ts";
 import type { ValidationReport } from "../../../../mastra/src/shared/atom-validation.ts";
 
 // =============================================================================
@@ -15,6 +16,7 @@ export interface Game {
   active_build_id: string | null;
   user_id: string | null;
   genre: string | null;
+  game_format: "2d" | "3d" | null;
   thumbnail_url: string | null;
   is_published: boolean;
   published_at: string | null;
@@ -46,6 +48,7 @@ function mapGame(g: any): Game {
     active_build_id: g.active_build_id,
     user_id: g.user_id,
     genre: g.genre || null,
+    game_format: g.game_format || null,
     thumbnail_url: g.thumbnail_url || null,
     is_published: g.is_published ?? false,
     published_at: g.published_at || null,
@@ -73,6 +76,7 @@ export async function createGame(
   description?: string,
   userId?: string,
   genre?: string,
+  gameFormat?: "2d" | "3d",
 ): Promise<Game> {
   const supabase = getSupabaseClient();
 
@@ -83,6 +87,7 @@ export async function createGame(
       description: description || null,
       user_id: userId || null,
       genre: genre || null,
+      game_format: gameFormat || null,
     })
     .select("*")
     .single();
@@ -94,7 +99,7 @@ export async function createGame(
 
     throw new Error(`Failed to create game: ${error.message}`);
   }
-  log("info", "game created", { name, id: data.id, userId, genre });
+  log("info", "game created", { name, id: data.id, userId, genre, gameFormat });
   cacheDel(`game:id:${name}`);
   return mapGame(data);
 }
@@ -252,6 +257,14 @@ export async function publishGame(
   }
 
   log("info", "game published", { gameId, slug });
+  if (data.user_id) {
+    await emitOpenClawEvent(data.user_id, "game:published", {
+      game_id: data.id,
+      game_name: data.name,
+      public_slug: data.public_slug,
+      published_bundle_url: data.published_bundle_url,
+    });
+  }
   return mapGame(data);
 }
 
@@ -272,6 +285,12 @@ export async function unpublishGame(gameId: string): Promise<Game> {
 
   if (error) throw new Error(`Failed to unpublish game: ${error.message}`);
   log("info", "game unpublished", { gameId });
+  if (data.user_id) {
+    await emitOpenClawEvent(data.user_id, "game:unpublished", {
+      game_id: data.id,
+      game_name: data.name,
+    });
+  }
   return mapGame(data);
 }
 

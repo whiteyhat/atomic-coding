@@ -6,6 +6,7 @@ import type {
   GameWithBuild,
   TokenLaunch,
 } from "./types";
+import { getDefaultGameFormatForGenre } from "./game-genres";
 
 export function computeDashboardStats(games: GameWithBuild[]) {
   return {
@@ -107,6 +108,10 @@ export function mapGamesToDashboardCreations(
         name: game.name,
         description: game.description,
         genre: game.genre,
+        gameFormat:
+          game.game_format ??
+          getDefaultGameFormatForGenre(game.genre) ??
+          "3d",
         thumbnailUrl: game.thumbnail_url,
         isPublished: game.is_published,
         publicSlug: game.public_slug,
