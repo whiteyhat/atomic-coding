@@ -490,6 +490,16 @@ function PlatformAidSidebarPanel({
               </div>
             );
           })}
+
+          {sending ? (
+            <div className="flex justify-start">
+              <div className="flex items-center gap-1.5 rounded-[1.4rem] border border-white/10 bg-[#1b0b10]/95 px-4 py-3 shadow-[0_18px_50px_rgba(0,0,0,0.18)]">
+                <span className="size-1.5 animate-[typing-dot_1.4s_ease-in-out_infinite] rounded-full bg-white/50" />
+                <span className="size-1.5 animate-[typing-dot_1.4s_ease-in-out_0.2s_infinite] rounded-full bg-white/50" />
+                <span className="size-1.5 animate-[typing-dot_1.4s_ease-in-out_0.4s_infinite] rounded-full bg-white/50" />
+              </div>
+            </div>
+          ) : null}
         </div>
 
         <div className="border-t border-white/8 px-4 py-4">
@@ -855,7 +865,10 @@ export function PlatformAidProvider({
           const payload = (await response.json().catch(() => ({}))) as {
             error?: string;
           };
-          throw new Error(payload.error ?? "Platform aid request failed.");
+          throw new Error(
+            payload.error ??
+              `Platform aid request failed (${response.status}).`,
+          );
         }
 
         const contentType = response.headers.get("content-type") ?? "";

@@ -239,6 +239,19 @@
   }
 }
 
+@keyframes typing-dot {
+  0%,
+  60%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
 @layer utilities {
   .bg-buu-foreground {
     background: #1c2129;

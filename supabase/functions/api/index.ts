@@ -145,9 +145,16 @@ app.post("/assistant/chat", requireAuth(), async (c) => {
   try {
     const authUser = c.get("authUser") as { userId: string };
     const body = schemas.platformAidChatSchema.parse(await c.req.json());
-    return await streamPlatformAidChatResponse(authUser.userId, body);
+    const sseResponse = await streamPlatformAidChatResponse(authUser.userId, body);
+
+    // Return the stream through Hono's context so middleware headers (CORS) are applied
+    c.header("Content-Type", "text/event-stream; charset=utf-8");
+    c.header("Cache-Control", "no-cache, no-transform");
+    c.header("Connection", "keep-alive");
+    return c.body(sseResponse.body);
   } catch (err) {
-    return c.json({ error: (err as Error).message }, 400);
+    const message = err instanceof Error ? err.message : String(err ?? "Platform aid request failed");
+    return c.json({ error: message }, 400);
   }
 });
 
