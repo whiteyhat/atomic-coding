@@ -45,7 +45,7 @@ import {
   mapGamesToLibraryCreations,
   splitLibrarySpotlight,
 } from "@/lib/library";
-import { useAppAuth } from "@/lib/privy-provider";
+import { useAppAuth } from "@/lib/auth-provider";
 import { cn } from "@/lib/utils";
 import { CreateGameWizard } from "@/components/games/create-game-wizard";
 import { PublishDialog } from "@/components/games/publish-dialog";
@@ -760,7 +760,7 @@ export function LibraryShell() {
     id: user?.id ?? "",
     displayName: null,
     email: user?.email?.address ?? null,
-    walletAddress: user?.wallet?.address ?? null,
+    walletAddress: null,
     avatarUrl: null,
   });
 

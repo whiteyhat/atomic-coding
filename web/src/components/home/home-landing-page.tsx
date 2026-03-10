@@ -37,7 +37,7 @@ import {
   slideInRight,
   staggerContainer,
 } from "@/components/dashboard/dashboard-animations";
-import { useAppAuth } from "@/lib/privy-provider";
+import { useAppAuth } from "@/lib/auth-provider";
 
 const LazyArchitectureView = lazy(
   () =>
@@ -536,7 +536,7 @@ function GameUniverseOrbit() {
 
 export function HomeLandingPage() {
   const router = useRouter();
-  const { authenticated, ready } = useAppAuth();
+  const { authenticated, ready, login } = useAppAuth();
 
   const [swarmOpen, setSwarmOpen] = useState(false);
 
@@ -547,11 +547,11 @@ export function HomeLandingPage() {
       : "Enter Command Center";
 
   function handleOpenDashboard() {
-    const destination = authenticated
-      ? "/dashboard"
-      : `/login?redirect=${encodeURIComponent("/dashboard")}`;
-
-    router.push(destination);
+    if (authenticated) {
+      router.push("/dashboard");
+    } else {
+      login();
+    }
   }
 
   return (

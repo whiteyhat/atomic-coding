@@ -3,7 +3,7 @@
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/constants";
 import { ScoreListener } from "./score-listener";
 import { Button } from "@/components/ui/button";
-import { useAppAuth } from "@/lib/privy-provider";
+import { useAppAuth } from "@/lib/auth-provider";
 
 interface GameFrameProps {
   gameName: string;

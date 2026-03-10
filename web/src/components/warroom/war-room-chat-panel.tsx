@@ -116,6 +116,25 @@ function WarRoomDraftPanel({
     if (!idea.trim()) return;
 
     setError(null);
+
+    // Show fallback questions immediately so the user can start answering
+    const fallback = getFallbackWarRoomPreflightResult({
+      assets: selectedAssets,
+      gameFormat,
+      genre,
+      idea: idea.trim(),
+    });
+    setQuestions(fallback.questions);
+    setPreflightSource(fallback.source);
+    setAnswers((current) =>
+      fallback.questions.reduce<Record<string, string>>((next, question) => {
+        next[question.id] = current[question.id] ?? "";
+        return next;
+      }, {}),
+    );
+    setStage("questions");
+
+    // Upgrade to AI-generated questions in background
     setIsGeneratingQuestions(true);
     try {
       const result = await preflightWarRoom({
@@ -125,36 +144,23 @@ function WarRoomDraftPanel({
         idea: idea.trim(),
         assets: selectedAssets,
       });
-      setQuestions(result.questions);
-      setPreflightSource(result.source);
-      setAnswers((current) =>
-        result.questions.reduce<Record<string, string>>((next, question) => {
-          next[question.id] = current[question.id] ?? "";
-          return next;
-        }, {}),
-      );
-      setStage("questions");
-    } catch (requestError) {
-      const fallback = getFallbackWarRoomPreflightResult({
-        assets: selectedAssets,
-        gameFormat,
-        genre,
-        idea: idea.trim(),
+      // Only upgrade if still on questions stage (user hasn't moved on)
+      setStage((currentStage) => {
+        if (currentStage !== "questions") return currentStage;
+        setQuestions(result.questions);
+        setPreflightSource(result.source);
+        setAnswers((current) => {
+          // Preserve any answers the user already typed
+          return result.questions.reduce<Record<string, string>>((next, question, index) => {
+            const fallbackId = fallback.questions[index]?.id;
+            next[question.id] = current[question.id] ?? (fallbackId ? current[fallbackId] : "") ?? "";
+            return next;
+          }, {});
+        });
+        return currentStage;
       });
-      setQuestions(fallback.questions);
-      setPreflightSource(fallback.source);
-      setAnswers((current) =>
-        fallback.questions.reduce<Record<string, string>>((next, question) => {
-          next[question.id] = current[question.id] ?? "";
-          return next;
-        }, {}),
-      );
-      setError(
-        requestError instanceof Error
-          ? `${requestError.message} Falling back to standard intake questions.`
-          : "Falling back to standard intake questions.",
-      );
-      setStage("questions");
+    } catch {
+      // Already showing fallback questions, no action needed
     } finally {
       setIsGeneratingQuestions(false);
     }
@@ -334,7 +340,11 @@ function WarRoomDraftPanel({
                   <div>
                     <p className="text-sm font-semibold text-white">Step 2: scope questions</p>
                     <p className="text-[11px] text-white/42">
-                      {preflightSource === "ai" ? "Adaptive Jarvis preflight" : "Fallback intake prompts"}
+                      {isGeneratingQuestions
+                        ? "Jarvis is refining questions..."
+                        : preflightSource === "ai"
+                          ? "Adaptive Jarvis preflight"
+                          : "Fallback intake prompts"}
                     </p>
                   </div>
                 </div>

@@ -113,8 +113,8 @@ const PLATFORM_RUNTIME_SURFACES: ArchitectureRuntimeSurface[] = [
     detail: "Postgres, Edge Functions, Realtime, and Storage remain the durable system boundary.",
   },
   {
-    label: "Privy Auth",
-    detail: "Protected app routes depend on Privy identity and bearer-token verification.",
+    label: "Clerk Auth",
+    detail: "Protected app routes depend on Clerk identity and bearer-token verification.",
   },
   {
     label: "OpenRouter + buu.fun",

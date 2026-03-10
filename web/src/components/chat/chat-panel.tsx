@@ -45,7 +45,7 @@ import {
 import { shouldLoadPersistedChatHistory } from "@/lib/chat-session-state";
 import { getChatSessionsKey } from "@/lib/hooks/use-chat-sessions";
 import type { AssetModel } from "@/lib/types";
-import { useAppAuth } from "@/lib/privy-provider";
+import { useAppAuth } from "@/lib/auth-provider";
 import { cn } from "@/lib/utils";
 
 interface ChatPanelProps {

@@ -48,8 +48,8 @@ const DEV_AUTH_BYPASS_ORIGIN =
   process.env.DEV_AUTH_BYPASS_ORIGIN ?? "http://127.0.0.1:3000";
 
 /**
- * Called once from the PrivyProvider to register a function that returns
- * the current Privy auth token. This avoids importing Privy in the API module.
+ * Called once from the AuthProvider to register a function that returns
+ * the current auth token. This avoids importing Clerk in the API module.
  */
 export function registerAuthTokenGetter(fn: () => Promise<string | null>) {
   getAuthTokenFn = fn;
@@ -80,7 +80,7 @@ async function apiFetch<T>(
     ...(init?.headers as Record<string, string>),
   };
 
-  // Attach Privy auth token if available
+  // Attach auth token if available
   if (getAuthTokenFn) {
     try {
       const token = await getAuthTokenFn();

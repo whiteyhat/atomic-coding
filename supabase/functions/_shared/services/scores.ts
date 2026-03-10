@@ -1,5 +1,6 @@
 import { getSupabaseClient } from "../supabase-client.ts";
 import { log } from "../logger.ts";
+import { cached, cacheDel } from "../cache.ts";
 
 // =============================================================================
 // Types
@@ -59,6 +60,12 @@ export async function submitScore(
   if (error) throw new Error(`Failed to submit score: ${error.message}`);
 
   log("info", "score submitted", { gameId, userId, score });
+  // Bust leaderboard caches for this game
+  cacheDel(
+    `leaderboard:${gameId}:day:10`,
+    `leaderboard:${gameId}:week:10`,
+    `leaderboard:${gameId}:lifetime:10`,
+  );
   return data as Score;
 }
 
@@ -68,17 +75,19 @@ export async function getLeaderboard(
   period: LeaderboardPeriod = "lifetime",
   limit: number = 10,
 ): Promise<LeaderboardEntry[]> {
-  const supabase = getSupabaseClient();
   const safeLimit = Math.max(1, Math.min(limit, 10));
 
-  const { data, error } = await supabase.rpc("get_game_leaderboard", {
-    p_game_id: gameId,
-    p_period: period,
-    p_limit: safeLimit,
-  });
+  return cached(`leaderboard:${gameId}:${period}:${safeLimit}`, 15, async () => {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase.rpc("get_game_leaderboard", {
+      p_game_id: gameId,
+      p_period: period,
+      p_limit: safeLimit,
+    });
 
-  if (error) throw new Error(`Failed to get leaderboard: ${error.message}`);
-  return (data || []) as LeaderboardEntry[];
+    if (error) throw new Error(`Failed to get leaderboard: ${error.message}`);
+    return (data || []) as LeaderboardEntry[];
+  });
 }
 
 /** Get recent scores for a game (all entries, not deduplicated) */

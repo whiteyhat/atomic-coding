@@ -144,6 +144,8 @@ app.put("/users/me", requireAuth(), async (c) => {
 app.post("/assistant/chat", requireAuth(), async (c) => {
   try {
     const authUser = c.get("authUser") as { userId: string };
+    const rateLimited = await checkRateLimit(c, "assistantChat", authUser.userId);
+    if (rateLimited) return rateLimited;
     const body = schemas.platformAidChatSchema.parse(await c.req.json());
     const sseResponse = await streamPlatformAidChatResponse(authUser.userId, body);
 
@@ -194,6 +196,8 @@ app.get("/boilerplates/:slug", async (c) => {
 app.post("/games", requireAuth(), async (c) => {
   try {
     const authUser = c.get("authUser") as { userId: string };
+    const rateLimited = await checkRateLimit(c, "gameCreate", authUser.userId);
+    if (rateLimited) return rateLimited;
     const body = schemas.createGameSchema.parse(await c.req.json());
 
     const existingProfile = await users.getUserProfile(authUser.userId);
@@ -308,6 +312,9 @@ app.get("/registry/externals", async (c) => {
 /** POST /registry/externals/custom -- register a custom external library */
 app.post("/registry/externals/custom", requireAuth(), async (c) => {
   try {
+    const authUser = c.get("authUser") as { userId: string };
+    const rateLimited = await checkRateLimit(c, "customExternal", authUser.userId);
+    if (rateLimited) return rateLimited;
     const body = schemas.registerCustomExternalSchema.parse(await c.req.json());
     const entry = await externals.registerCustomExternal(body);
     return c.json(entry, 201);
@@ -376,6 +383,9 @@ app.post("/games/:name/atoms/search", async (c) => {
 /** PUT /games/:name/atoms/:atom_name -- upsert atom */
 app.put("/games/:name/atoms/:atom_name", requireAuth(), async (c) => {
   try {
+    const authUser = c.get("authUser") as { userId: string };
+    const rateLimited = await checkRateLimit(c, "atomWrite", authUser.userId);
+    if (rateLimited) return rateLimited;
     const gameId = c.get("gameId") as string;
     const atomName = c.req.param("atom_name");
     const body = schemas.upsertAtomSchema.parse(await c.req.json());
@@ -397,6 +407,9 @@ app.put("/games/:name/atoms/:atom_name", requireAuth(), async (c) => {
 /** DELETE /games/:name/atoms/:atom_name -- delete atom */
 app.delete("/games/:name/atoms/:atom_name", requireAuth(), async (c) => {
   try {
+    const authUser = c.get("authUser") as { userId: string };
+    const rateLimited = await checkRateLimit(c, "deleteOp", authUser.userId);
+    if (rateLimited) return rateLimited;
     const gameId = c.get("gameId") as string;
     await atoms.deleteAtom(gameId, c.req.param("atom_name"));
     return c.json({ deleted: c.req.param("atom_name") });
@@ -435,6 +448,9 @@ app.post("/games/:name/externals", requireAuth(), async (c) => {
 /** DELETE /games/:name/externals/:ext_name -- uninstall an external */
 app.delete("/games/:name/externals/:ext_name", requireAuth(), async (c) => {
   try {
+    const authUser = c.get("authUser") as { userId: string };
+    const rateLimited = await checkRateLimit(c, "deleteOp", authUser.userId);
+    if (rateLimited) return rateLimited;
     const gameId = c.get("gameId") as string;
     const extName = c.req.param("ext_name");
     await externals.uninstallExternal(gameId, extName);
@@ -493,6 +509,9 @@ app.post("/games/:name/builds/:id/rollback", requireAuth(), async (c) => {
 /** POST /games/:name/publish -- publish a game with a slug */
 app.post("/games/:name/publish", requireAuth(), async (c) => {
   try {
+    const authUser = c.get("authUser") as { userId: string };
+    const rateLimited = await checkRateLimit(c, "publish", authUser.userId);
+    if (rateLimited) return rateLimited;
     const gameId = c.get("gameId") as string;
     const body = schemas.publishGameSchema.parse(await c.req.json());
     const game = await games.publishGame(gameId, body.slug.trim());
@@ -505,6 +524,9 @@ app.post("/games/:name/publish", requireAuth(), async (c) => {
 /** POST /games/:name/unpublish -- unpublish a game */
 app.post("/games/:name/unpublish", requireAuth(), async (c) => {
   try {
+    const authUser = c.get("authUser") as { userId: string };
+    const rateLimited = await checkRateLimit(c, "publish", authUser.userId);
+    if (rateLimited) return rateLimited;
     const gameId = c.get("gameId") as string;
     const game = await games.unpublishGame(gameId);
     return c.json(game);
@@ -620,6 +642,9 @@ app.get("/games/:name/chat/sessions", async (c) => {
 /** POST /games/:name/chat/sessions -- create session */
 app.post("/games/:name/chat/sessions", requireAuth(), async (c) => {
   try {
+    const authUser = c.get("authUser") as { userId: string };
+    const rateLimited = await checkRateLimit(c, "sessionCreate", authUser.userId);
+    if (rateLimited) return rateLimited;
     const gameId = c.get("gameId") as string;
     const body = schemas.createSessionSchema.parse(await c.req.json());
     const session = await chat.createSession(gameId, body.model, body.title);
@@ -632,6 +657,9 @@ app.post("/games/:name/chat/sessions", requireAuth(), async (c) => {
 /** DELETE /games/:name/chat/sessions/:sessionId -- delete session */
 app.delete("/games/:name/chat/sessions/:sessionId", requireAuth(), async (c) => {
   try {
+    const authUser = c.get("authUser") as { userId: string };
+    const rateLimited = await checkRateLimit(c, "deleteOp", authUser.userId);
+    if (rateLimited) return rateLimited;
     await chat.deleteSession(c.req.param("sessionId"));
     return c.json({ deleted: c.req.param("sessionId") });
   } catch (err) {
@@ -736,8 +764,13 @@ app.post("/games/:name/warrooms", requireAuth(), async (c) => {
       gameFormat,
     );
 
-    // Trigger orchestrator pipeline (awaited so failures are recorded)
-    await triggerOrchestrator(room.id);
+    // Trigger orchestrator pipeline in background (don't block the response)
+    triggerOrchestrator(room.id).catch((err) => {
+      log("error", "triggerOrchestrator: background error", {
+        warRoomId: room.id,
+        error: (err as Error).message,
+      });
+    });
 
     return c.json(room, 201);
   } catch (err) {

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-const PRIVY_APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID ?? "";
+const CLERK_PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ?? "";
 const MASTRA_SERVER_URL = process.env.MASTRA_SERVER_URL ?? "";
 
 function toHost(value?: string | null): string | null {
@@ -72,7 +72,7 @@ export async function GET() {
       apiBaseHost: SUPABASE_URL ? `${toHost(SUPABASE_URL) ?? "Unavailable"}` : "Unavailable",
       supabaseHost: toHost(SUPABASE_URL),
       mastraHost: toHost(MASTRA_SERVER_URL),
-      privyConfigured: Boolean(PRIVY_APP_ID),
+      clerkConfigured: Boolean(CLERK_PUBLISHABLE_KEY),
       mastraConfigured: Boolean(MASTRA_SERVER_URL),
     },
   };

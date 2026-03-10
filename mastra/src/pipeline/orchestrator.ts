@@ -22,6 +22,22 @@ const MAX_RETRY_CYCLES = 3;
 const MAX_TASK_RETRIES = 2;
 const PIPELINE_TIMEOUT_MS = 20 * 60 * 1000; // 20 minutes
 const TASK_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes per task
+
+/**
+ * Safe wrapper for non-critical DB operations (event recording, heartbeat updates).
+ * These are informational — a transient DB error must never crash the pipeline.
+ */
+async function safeRecord<T>(
+  label: string,
+  fn: () => Promise<T>,
+): Promise<T | undefined> {
+  try {
+    return await fn();
+  } catch (err) {
+    console.warn(`[orchestrator] ${label} failed (non-fatal):`, (err as Error).message);
+    return undefined;
+  }
+}
 const PNG_SIGNATURE = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
 
 type Task8DeliveryKind = "isolated_sprite" | "tile_texture" | "background_plate";
@@ -697,11 +713,13 @@ async function dispatchToAgent(
   const dispatchStart = Date.now();
 
   // Record an initial thinking event so the UI shows activity immediately
-  await warrooms.recordEvent(warRoomId, "agent_thinking", agentName, task.task_number, {
-    title: task.title,
-    phase: "starting",
-    elapsed_seconds: 0,
-  });
+  await safeRecord("agent_thinking event", () =>
+    warrooms.recordEvent(warRoomId, "agent_thinking", agentName, task.task_number, {
+      title: task.title,
+      phase: "starting",
+      elapsed_seconds: 0,
+    })
+  );
 
   // Periodic heartbeat — only upsert heartbeat (no event write) to reduce DB noise.
   // Events are reserved for meaningful state transitions, not periodic pings.
@@ -717,7 +735,7 @@ async function dispatchToAgent(
     } catch (hbErr) {
       console.warn("[orchestrator] heartbeat update failed:", (hbErr as Error).message);
     }
-  }, 30_000);
+  }, 10_000);
 
   try {
     const agent = mastra.getAgent(agentName);
@@ -836,12 +854,16 @@ export async function runPipeline(warRoomId: string): Promise<void> {
 
   // Mark war room as running
   await warrooms.updateWarRoomStatus(warRoomId, "running");
-  await warrooms.recordEvent(warRoomId, "pipeline_started", "jarvis", null, {
-    totalTasks: initialTasks.length,
-  });
-  await warrooms.upsertHeartbeat(warRoomId, "jarvis", "working", {
-    phase: "orchestrating",
-  });
+  await safeRecord("pipeline_started event", () =>
+    warrooms.recordEvent(warRoomId, "pipeline_started", "jarvis", null, {
+      totalTasks: initialTasks.length,
+    })
+  );
+  await safeRecord("jarvis heartbeat", () =>
+    warrooms.upsertHeartbeat(warRoomId, "jarvis", "working", {
+      phase: "orchestrating",
+    })
+  );
 
   const retryMap = new Map<number, number>();
   let iteration = 0;
@@ -856,7 +878,9 @@ export async function runPipeline(warRoomId: string): Promise<void> {
       // Check for cancellation
       if (currentRoom.status === "cancelled") {
         console.log("[orchestrator] pipeline cancelled by user", { warRoomId });
-        await warrooms.upsertHeartbeat(warRoomId, "jarvis", "idle");
+        await safeRecord("jarvis idle heartbeat", () =>
+          warrooms.upsertHeartbeat(warRoomId, "jarvis", "idle")
+        );
         return;
       }
 
@@ -867,13 +891,17 @@ export async function runPipeline(warRoomId: string): Promise<void> {
           durationMs: Date.now() - pipelineStart,
         });
         await warrooms.updateWarRoomStatus(warRoomId, "failed");
-        await warrooms.recordEvent(warRoomId, "pipeline_timeout", "jarvis", null, {
-          timeout_ms: PIPELINE_TIMEOUT_MS,
-          elapsed_ms: Date.now() - pipelineStart,
-        });
-        await warrooms.upsertHeartbeat(warRoomId, "jarvis", "error", {
-          error: "Pipeline timed out after 20 minutes",
-        });
+        await safeRecord("pipeline_timeout event", () =>
+          warrooms.recordEvent(warRoomId, "pipeline_timeout", "jarvis", null, {
+            timeout_ms: PIPELINE_TIMEOUT_MS,
+            elapsed_ms: Date.now() - pipelineStart,
+          })
+        );
+        await safeRecord("jarvis error heartbeat", () =>
+          warrooms.upsertHeartbeat(warRoomId, "jarvis", "error", {
+            error: "Pipeline timed out after 20 minutes",
+          })
+        );
         return;
       }
 
@@ -883,6 +911,15 @@ export async function runPipeline(warRoomId: string): Promise<void> {
         {} as Record<string, number>
       );
       console.log(`[orchestrator] iteration ${iteration}`, { warRoomId, statusCounts });
+
+      // Keep Jarvis heartbeat alive while orchestrating
+      await safeRecord("jarvis orchestrating heartbeat", () =>
+        warrooms.upsertHeartbeat(warRoomId, "jarvis", "working", {
+          phase: "orchestrating",
+          iteration,
+          elapsed_seconds: Math.round((Date.now() - pipelineStart) / 1000),
+        })
+      );
 
       if (isPipelineComplete(tasks)) {
         console.log("[orchestrator] pipeline complete", { warRoomId });
@@ -896,13 +933,17 @@ export async function runPipeline(warRoomId: string): Promise<void> {
         if (!hasRunning) {
           console.error(
             "[orchestrator] pipeline stuck: no runnable or running tasks",
-            { warRoomId }
+            { warRoomId, statusCounts }
           );
           await warrooms.updateWarRoomStatus(warRoomId, "failed");
-          await warrooms.recordEvent(
-            warRoomId,
-            "pipeline_stuck",
-            "jarvis"
+          await safeRecord("pipeline_stuck event", () =>
+            warrooms.recordEvent(
+              warRoomId,
+              "pipeline_stuck",
+              "jarvis",
+              null,
+              { reason: "No runnable or running tasks — dependency deadlock", statusCounts }
+            )
           );
           return;
         }
@@ -933,9 +974,11 @@ export async function runPipeline(warRoomId: string): Promise<void> {
             notes: ["Task 8 skipped: 3D games use 3D models and assets instead of 2D sprites."],
           };
           await warrooms.updateTaskStatus(warRoomId, 8, "completed", skipOutput);
-          await warrooms.recordEvent(warRoomId, "task_skipped", "pixel", 8, {
-            reason: "3D games do not use 2D sprites",
-          });
+          await safeRecord("task_skipped event", () =>
+            warrooms.recordEvent(warRoomId, "task_skipped", "pixel", 8, {
+              reason: "3D games do not use 2D sprites",
+            })
+          );
           console.log("[orchestrator] Task 8 skipped for 3D game", { warRoomId });
           return;
         }
@@ -961,11 +1004,13 @@ export async function runPipeline(warRoomId: string): Promise<void> {
             resolved_dependencies: task.depends_on,
           }
         );
-        await warrooms.upsertHeartbeat(warRoomId, agent, "working", {
-          task_number: task.task_number,
-          title: task.title,
-          phase: "dispatching",
-        });
+        await safeRecord(`${agent} dispatching heartbeat`, () =>
+          warrooms.upsertHeartbeat(warRoomId, agent, "working", {
+            task_number: task.task_number,
+            title: task.title,
+            phase: "dispatching",
+          })
+        );
 
         // Build context from dependency outputs
         const depOutputs = gatherDependencyOutputs(task, tasks);
@@ -1043,12 +1088,14 @@ export async function runPipeline(warRoomId: string): Promise<void> {
           });
 
           // Persist deterministic report as event for debugging
-          await warrooms.recordEvent(warRoomId, "deterministic_validation_report", agent, task.task_number, {
-            passed: deterministicReport.passed,
-            failure_count: deterministicReport.failures.length,
-            summary: deterministicReport.summary,
-            failures: deterministicReport.failures.slice(0, 15),
-          });
+          await safeRecord("deterministic_validation_report event", () =>
+            warrooms.recordEvent(warRoomId, "deterministic_validation_report", agent, task.task_number, {
+              passed: deterministicReport.passed,
+              failure_count: deterministicReport.failures.length,
+              summary: deterministicReport.summary,
+              failures: deterministicReport.failures.slice(0, 15),
+            })
+          );
 
           // Short-circuit Task 11 (final pass) when all deterministic checks pass
           if (task.task_number === 11 && deterministicReport.passed) {
@@ -1063,10 +1110,14 @@ export async function runPipeline(warRoomId: string): Promise<void> {
                 ? `Passed with ${warningIssues.length} warning(s) — skipped LLM validation`
                 : "All deterministic checks passed — skipped LLM validation",
             });
-            await warrooms.upsertHeartbeat(warRoomId, agent, "idle");
-            await warrooms.recordEvent(warRoomId, "validation_shortcircuit", agent, task.task_number, {
-              reason: "deterministic_passed",
-            });
+            await safeRecord(`${agent} idle heartbeat`, () =>
+              warrooms.upsertHeartbeat(warRoomId, agent, "idle")
+            );
+            await safeRecord("validation_shortcircuit event", () =>
+              warrooms.recordEvent(warRoomId, "validation_shortcircuit", agent, task.task_number, {
+                reason: "deterministic_passed",
+              })
+            );
             return;
           }
         }
@@ -1106,10 +1157,14 @@ export async function runPipeline(warRoomId: string): Promise<void> {
               pre_fix_snapshot: { total_failures: 0, critical_failures: 0, warning_failures: 0 },
               notes: "All deterministic checks already pass — no fixes needed",
             });
-            await warrooms.upsertHeartbeat(warRoomId, agent, "idle");
-            await warrooms.recordEvent(warRoomId, "fix_shortcircuit", agent, task.task_number, {
-              reason: "deterministic_passed",
-            });
+            await safeRecord(`${agent} idle heartbeat`, () =>
+              warrooms.upsertHeartbeat(warRoomId, agent, "idle")
+            );
+            await safeRecord("fix_shortcircuit event", () =>
+              warrooms.recordEvent(warRoomId, "fix_shortcircuit", agent, task.task_number, {
+                reason: "deterministic_passed",
+              })
+            );
             return;
           }
         }
@@ -1125,11 +1180,13 @@ export async function runPipeline(warRoomId: string): Promise<void> {
             genre,
             currentRoom.game_format,
           );
-          await warrooms.recordEvent(warRoomId, "boilerplate_seeded", "forge", 2, {
-            seeded: seedReport.seeded,
-            already_existed: seedReport.already_existed,
-            externals: seedReport.externals_installed,
-          });
+          await safeRecord("boilerplate_seeded event", () =>
+            warrooms.recordEvent(warRoomId, "boilerplate_seeded", "forge", 2, {
+              seeded: seedReport.seeded,
+              already_existed: seedReport.already_existed,
+              externals: seedReport.externals_installed,
+            })
+          );
           context.seeded_atoms = seedReport.seeded.concat(seedReport.already_existed);
           context.boilerplate_atoms = seedReport.boilerplate_atoms;
 
@@ -1156,12 +1213,13 @@ export async function runPipeline(warRoomId: string): Promise<void> {
               warRoomId,
             });
 
-            await warrooms.recordEvent(warRoomId, "task8_assets_processed", "pixel", 8, {
-              asset_count: ((result.output.assets_created as Task8Asset[] | undefined) ?? []).length,
-              background_removed_count: ((result.output.assets_created as Task8Asset[] | undefined) ?? [])
-                .filter((asset) => asset.background_removed)
-                .length,
-            });
+            const processedAssets = (result.output.assets_created as Task8Asset[] | undefined) ?? [];
+            await safeRecord("task8_assets_processed event", () =>
+              warrooms.recordEvent(warRoomId, "task8_assets_processed", "pixel", 8, {
+                asset_count: processedAssets.length,
+                background_removed_count: processedAssets.filter((asset) => asset.background_removed).length,
+              })
+            );
           } catch (error) {
             result.success = false;
             result.error = `Task 8 asset post-processing failed: ${(error as Error).message}`;
@@ -1174,11 +1232,13 @@ export async function runPipeline(warRoomId: string): Promise<void> {
           const gameSpecs = task3?.output?.validation_specs as AtomValidationSpecs | undefined;
           const detReport = await runDeterministicValidation(currentRoom.game_id, gameSpecs ?? null);
 
-          await warrooms.recordEvent(warRoomId, "deterministic_validation", "forge", 6, {
-            passed: detReport.passed,
-            failure_count: detReport.failures.length,
-            failures: detReport.failures.slice(0, 10),
-          });
+          await safeRecord("deterministic_validation event", () =>
+            warrooms.recordEvent(warRoomId, "deterministic_validation", "forge", 6, {
+              passed: detReport.passed,
+              failure_count: detReport.failures.length,
+              failures: detReport.failures.slice(0, 10),
+            })
+          );
 
           if (!detReport.passed) {
             const failureSummary = detReport.failures
@@ -1204,16 +1264,20 @@ export async function runPipeline(warRoomId: string): Promise<void> {
             "completed",
             { ...result.output, _duration_ms: taskDurationMs }
           );
-          await warrooms.upsertHeartbeat(warRoomId, agent, "idle");
+          await safeRecord(`${agent} idle heartbeat`, () =>
+            warrooms.upsertHeartbeat(warRoomId, agent, "idle")
+          );
 
           // Record task metrics
-          await warrooms.recordEvent(warRoomId, "task_metrics", agent, task.task_number, {
-            duration_ms: taskDurationMs,
-            response_length: result.output ? JSON.stringify(result.output).length : 0,
-            atoms_created: (result.output?.atoms_created as string[])?.length ?? 0,
-            attempt: (retryMap.get(task.task_number) ?? 0) + 1,
-            success: true,
-          });
+          await safeRecord("task_metrics event", () =>
+            warrooms.recordEvent(warRoomId, "task_metrics", agent, task.task_number, {
+              duration_ms: taskDurationMs,
+              response_length: result.output ? JSON.stringify(result.output).length : 0,
+              atoms_created: (result.output?.atoms_created as string[])?.length ?? 0,
+              attempt: (retryMap.get(task.task_number) ?? 0) + 1,
+              success: true,
+            })
+          );
 
           // Propagate task 1 scope to war_rooms row for downstream context
           if (task.task_number === 1 && result.output?.scope) {
@@ -1230,10 +1294,12 @@ export async function runPipeline(warRoomId: string): Promise<void> {
                 totalAtoms: scope.complexity.total_atoms,
                 difficulty: scope.complexity.estimated_difficulty,
               });
-              await warrooms.recordEvent(warRoomId, "scope_complexity_warning", "jarvis", 1, {
-                total_atoms: scope.complexity.total_atoms,
-                estimated_difficulty: scope.complexity.estimated_difficulty,
-              });
+              await safeRecord("scope_complexity_warning event", () =>
+                warrooms.recordEvent(warRoomId, "scope_complexity_warning", "jarvis", 1, {
+                  total_atoms: scope.complexity.total_atoms,
+                  estimated_difficulty: scope.complexity.estimated_difficulty,
+                })
+              );
             }
 
             console.log("[orchestrator] scope propagated to war_room", {
@@ -1274,12 +1340,14 @@ export async function runPipeline(warRoomId: string): Promise<void> {
                 const critical = postReport.failures.filter((f) =>
                   ["no_cycles", "required_atom", "duplicate_atom_name"].includes(f.rule)
                 );
-                await warrooms.recordEvent(warRoomId, "post_task_validation", agent, task.task_number, {
-                  passed: false,
-                  failure_count: postReport.failures.length,
-                  critical_count: critical.length,
-                  failures: postReport.failures,
-                });
+                await safeRecord("post_task_validation event", () =>
+                  warrooms.recordEvent(warRoomId, "post_task_validation", agent, task.task_number, {
+                    passed: false,
+                    failure_count: postReport.failures.length,
+                    critical_count: critical.length,
+                    failures: postReport.failures,
+                  })
+                );
                 if (critical.length > 0) {
                   console.warn("[orchestrator] post-task validation found critical issues", {
                     warRoomId, taskNumber: task.task_number,
@@ -1288,9 +1356,11 @@ export async function runPipeline(warRoomId: string): Promise<void> {
                   await warrooms.updateTaskStatus(warRoomId, task.task_number, "failed", {
                     error: `Post-task validation: ${critical.map((f) => f.message).join("; ")}`,
                   });
-                  await warrooms.upsertHeartbeat(warRoomId, agent, "error", {
-                    error: "Post-task validation failed",
-                  });
+                  await safeRecord(`${agent} error heartbeat`, () =>
+                    warrooms.upsertHeartbeat(warRoomId, agent, "error", {
+                      error: "Post-task validation failed",
+                    })
+                  );
                   return;
                 }
               } else {
@@ -1312,12 +1382,14 @@ export async function runPipeline(warRoomId: string): Promise<void> {
               const gameSpecs = task3?.output?.validation_specs as AtomValidationSpecs | undefined;
               const postFixReport = await runDeterministicValidation(currentRoom.game_id, gameSpecs ?? null);
 
-              await warrooms.recordEvent(warRoomId, "post_fix_validation", "forge", 10, {
-                passed: postFixReport.passed,
-                failure_count: postFixReport.failures.length,
-                failures: postFixReport.failures.slice(0, 15),
-                pre_fix_count: context.pre_fix_failure_count ?? null,
-              });
+              await safeRecord("post_fix_validation event", () =>
+                warrooms.recordEvent(warRoomId, "post_fix_validation", "forge", 10, {
+                  passed: postFixReport.passed,
+                  failure_count: postFixReport.failures.length,
+                  failures: postFixReport.failures.slice(0, 15),
+                  pre_fix_count: context.pre_fix_failure_count ?? null,
+                })
+              );
 
               if (postFixReport.passed) {
                 result.output = {
@@ -1351,9 +1423,11 @@ export async function runPipeline(warRoomId: string): Promise<void> {
                     post_fix_validation_failures: postFixReport.failures,
                     _duration_ms: taskDurationMs,
                   });
-                  await warrooms.upsertHeartbeat(warRoomId, agent, "error", {
-                    error: "Post-fix validation failed — critical issues remain",
-                  });
+                  await safeRecord(`${agent} error heartbeat`, () =>
+                    warrooms.upsertHeartbeat(warRoomId, agent, "error", {
+                      error: "Post-fix validation failed — critical issues remain",
+                    })
+                  );
                 } else {
                   result.output = {
                     ...result.output,
@@ -1419,12 +1493,14 @@ export async function runPipeline(warRoomId: string): Promise<void> {
                 resolved_dependencies: [9],
                 ready_at: new Date().toISOString(),
               });
-              await warrooms.recordEvent(warRoomId, "smart_retry_cycle", "jarvis", 10, {
-                cycle: taskRetries + 1,
-                max: MAX_RETRY_CYCLES,
-                skipped_task_9: true,
-                remaining_failures: (postFixFailures as unknown[]).length,
-              });
+              await safeRecord("smart_retry_cycle event", () =>
+                warrooms.recordEvent(warRoomId, "smart_retry_cycle", "jarvis", 10, {
+                  cycle: taskRetries + 1,
+                  max: MAX_RETRY_CYCLES,
+                  skipped_task_9: true,
+                  remaining_failures: (postFixFailures as unknown[]).length,
+                })
+              );
             } else {
               // Full retry: reset Task 9 → Task 10 cycle
               console.log("[orchestrator] full retry cycle: re-running Task 9 → 10", {
@@ -1446,10 +1522,12 @@ export async function runPipeline(warRoomId: string): Promise<void> {
                 waiting_on: [9],
                 resolved_dependencies: [],
               });
-              await warrooms.recordEvent(warRoomId, "retry_cycle", "jarvis", 10, {
-                cycle: taskRetries + 1,
-                max: MAX_RETRY_CYCLES,
-              });
+              await safeRecord("retry_cycle event", () =>
+                warrooms.recordEvent(warRoomId, "retry_cycle", "jarvis", 10, {
+                  cycle: taskRetries + 1,
+                  max: MAX_RETRY_CYCLES,
+                })
+              );
             }
           } else if (task.task_number !== 10 && taskRetries < MAX_TASK_RETRIES) {
             // Generic retry for any other task — preserve partial output for context
@@ -1482,12 +1560,14 @@ export async function runPipeline(warRoomId: string): Promise<void> {
                 ready_at: new Date().toISOString(),
               }
             );
-            await warrooms.recordEvent(
-              warRoomId,
-              "task_retry",
-              agent,
-              task.task_number,
-              { attempt: taskRetries + 1, max: MAX_TASK_RETRIES }
+            await safeRecord("task_retry event", () =>
+              warrooms.recordEvent(
+                warRoomId,
+                "task_retry",
+                agent,
+                task.task_number,
+                { attempt: taskRetries + 1, max: MAX_TASK_RETRIES }
+              )
             );
           } else {
             // Max retries exceeded — mark as failed
@@ -1505,15 +1585,26 @@ export async function runPipeline(warRoomId: string): Promise<void> {
               "failed",
               { error: result.error, _duration_ms: taskDurationMs }
             );
-            await warrooms.upsertHeartbeat(warRoomId, agent, "error", {
-              error: result.error,
-            });
+            await safeRecord(`${agent} error heartbeat`, () =>
+              warrooms.upsertHeartbeat(warRoomId, agent, "error", {
+                error: result.error,
+              })
+            );
           }
         }
       });
 
-      // Wait for all dispatched tasks to complete
-      await Promise.allSettled(dispatches);
+      // Wait for all dispatched tasks to complete and log any unexpected rejections
+      const settledResults = await Promise.allSettled(dispatches);
+      for (const settled of settledResults) {
+        if (settled.status === "rejected") {
+          console.error("[orchestrator] unhandled dispatch rejection", {
+            warRoomId,
+            error: settled.reason instanceof Error ? settled.reason.message : String(settled.reason),
+            stack: settled.reason instanceof Error ? settled.reason.stack : undefined,
+          });
+        }
+      }
     }
 
     // Pipeline complete — determine final status
@@ -1556,21 +1647,39 @@ export async function runPipeline(warRoomId: string): Promise<void> {
       });
     }
 
-    await warrooms.upsertHeartbeat(warRoomId, "jarvis", "idle");
+    await safeRecord("jarvis final idle heartbeat", () =>
+      warrooms.upsertHeartbeat(warRoomId, "jarvis", "idle")
+    );
   } catch (err) {
+    const errorMessage = (err as Error).message;
+    const errorStack = (err as Error).stack;
     console.error("[orchestrator] pipeline error", {
       warRoomId,
-      error: (err as Error).message,
-      stack: (err as Error).stack,
+      error: errorMessage,
+      stack: errorStack,
       totalDurationMs: Date.now() - pipelineStart,
     });
-    await warrooms.updateWarRoomStatus(warRoomId, "failed");
-    await warrooms.recordEvent(warRoomId, "pipeline_error", "jarvis", null, {
-      error: (err as Error).message,
-    });
-    await warrooms.upsertHeartbeat(warRoomId, "jarvis", "error", {
-      error: (err as Error).message,
-    });
+    // Status update is critical — don't wrap in safeRecord
+    try {
+      await warrooms.updateWarRoomStatus(warRoomId, "failed");
+    } catch (statusErr) {
+      console.error("[orchestrator] failed to mark war room as failed", {
+        warRoomId,
+        error: (statusErr as Error).message,
+      });
+    }
+    await safeRecord("pipeline_error event", () =>
+      warrooms.recordEvent(warRoomId, "pipeline_error", "jarvis", null, {
+        error: errorMessage,
+        stack: errorStack?.split("\n").slice(0, 5).join("\n"),
+        elapsed_ms: Date.now() - pipelineStart,
+      })
+    );
+    await safeRecord("jarvis error heartbeat", () =>
+      warrooms.upsertHeartbeat(warRoomId, "jarvis", "error", {
+        error: errorMessage,
+      })
+    );
   }
 }
 

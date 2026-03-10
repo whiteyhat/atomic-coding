@@ -72,41 +72,45 @@ export async function getBoilerplate(
   slug: string,
   gameFormat?: "2d" | "3d" | null,
 ): Promise<Boilerplate | null> {
-  const supabase = getSupabaseClient();
+  const cacheKey = `boilerplate:${slug}:${gameFormat || "any"}`;
 
-  let query = supabase
-    .from("genre_boilerplates")
-    .select("*")
-    .eq("slug", slug);
+  return cached(cacheKey, 300, async () => {
+    const supabase = getSupabaseClient();
 
-  if (gameFormat) {
-    query = query.eq("game_format", gameFormat);
-    const { data, error } = await query.single();
+    let query = supabase
+      .from("genre_boilerplates")
+      .select("*")
+      .eq("slug", slug);
+
+    if (gameFormat) {
+      query = query.eq("game_format", gameFormat);
+      const { data, error } = await query.single();
+
+      if (error) {
+        if (error.code === "PGRST116") return null;
+        throw new Error(`Failed to get boilerplate: ${error.message}`);
+      }
+
+      return {
+        ...(data as Boilerplate),
+        atoms_json: normalizeBoilerplateAtoms((data as Boilerplate).atoms_json || []),
+      };
+    }
+
+    const { data, error } = await query.order("game_format", { ascending: false });
 
     if (error) {
-      if (error.code === "PGRST116") return null;
       throw new Error(`Failed to get boilerplate: ${error.message}`);
     }
 
+    const selected = (data || [])[0] as Boilerplate | undefined;
+    if (!selected) return null;
+
     return {
-      ...(data as Boilerplate),
-      atoms_json: normalizeBoilerplateAtoms((data as Boilerplate).atoms_json || []),
+      ...selected,
+      atoms_json: normalizeBoilerplateAtoms(selected.atoms_json || []),
     };
-  }
-
-  const { data, error } = await query.order("game_format", { ascending: false });
-
-  if (error) {
-    throw new Error(`Failed to get boilerplate: ${error.message}`);
-  }
-
-  const selected = (data || [])[0] as Boilerplate | undefined;
-  if (!selected) return null;
-
-  return {
-    ...selected,
-    atoms_json: normalizeBoilerplateAtoms(selected.atoms_json || []),
-  };
+  });
 }
 
 /** Seed a game with atoms and externals from a boilerplate */

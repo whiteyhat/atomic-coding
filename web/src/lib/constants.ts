@@ -18,7 +18,7 @@ export const API_BASE = `${SUPABASE_URL}/functions/v1/api`;
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
-export const PRIVY_APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID ?? "";
+export const CLERK_PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ?? "";
 
 // ── Mastra ───────────────────────────────────────────────────────────────────
 

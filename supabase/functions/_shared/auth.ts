@@ -1,4 +1,4 @@
-import { PrivyClient } from "npm:@privy-io/server-auth@^1.32.5";
+import * as jose from "npm:jose@^5";
 import type { Context, Next } from "npm:hono@^4.9.7";
 import {
   DEV_AUTH_BYPASS_TOKEN,
@@ -11,23 +11,18 @@ export interface AuthUser {
   userId: string;
 }
 
-let privyClient: PrivyClient | null = null;
+const CLERK_JWKS_URL = Deno.env.get("CLERK_JWKS_URL") ?? "";
 
-function getPrivyClient(): PrivyClient {
-  if (privyClient) return privyClient;
+let jwks: ReturnType<typeof jose.createRemoteJWKSet> | null = null;
 
-  const appId =
-    Deno.env.get("NEXT_PUBLIC_PRIVY_APP_ID") ??
-    Deno.env.get("PRIVY_APP_ID") ??
-    "";
-  const appSecret = Deno.env.get("PRIVY_APP_SECRET") ?? "";
-
-  if (!appId || !appSecret) {
-    throw new Error("Missing Privy app credentials");
+function getJWKS() {
+  if (!jwks) {
+    if (!CLERK_JWKS_URL) {
+      throw new Error("Missing CLERK_JWKS_URL environment variable");
+    }
+    jwks = jose.createRemoteJWKSet(new URL(CLERK_JWKS_URL));
   }
-
-  privyClient = new PrivyClient(appId, appSecret);
-  return privyClient;
+  return jwks;
 }
 
 export async function verifyAuthToken(req: Request): Promise<AuthUser | null> {
@@ -45,8 +40,10 @@ export async function verifyAuthToken(req: Request): Promise<AuthUser | null> {
   if (!token) return null;
 
   try {
-    const claims = await getPrivyClient().verifyAuthToken(token);
-    return { userId: claims.userId };
+    const keySet = getJWKS();
+    const { payload } = await jose.jwtVerify(token, keySet);
+    if (!payload.sub) return null;
+    return { userId: payload.sub };
   } catch (err) {
     log("warn", "auth:verify_failed", {
       error: (err as Error).message,

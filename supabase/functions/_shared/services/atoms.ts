@@ -2,6 +2,8 @@ import { getSupabaseClient } from "../supabase-client.ts";
 import { generateEmbedding } from "../openai.ts";
 import { log } from "../logger.ts";
 import { emitOpenClawEvent } from "./openclaw.ts";
+import { cached, cacheDel } from "../cache.ts";
+import { publishWithRetry } from "../qstash.ts";
 
 // =============================================================================
 // Types
@@ -97,20 +99,20 @@ export async function triggerRebuild(gameId: string): Promise<void> {
       .limit(1)
       .maybeSingle();
 
-    const res = await fetch(`${supabaseUrl}/functions/v1/rebuild-bundle`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${serviceKey}`,
-        "Content-Type": "application/json",
+    await publishWithRetry(
+      `${supabaseUrl}/functions/v1/rebuild-bundle`,
+      { game_id: gameId },
+      {
+        retries: 2,
+        headers: { Authorization: `Bearer ${serviceKey}` },
       },
-      body: JSON.stringify({ game_id: gameId }),
-    });
-    log("info", "triggerRebuild: response", { gameId, status: res.status });
+    );
+    log("info", "triggerRebuild: dispatched", { gameId });
     if (game?.user_id) {
       await emitOpenClawEvent(game.user_id, "build:triggered", {
         game_id: gameId,
         game_name: game.name,
-        queued: res.ok,
+        queued: true,
       });
     }
   } catch (err) {
@@ -129,31 +131,35 @@ export async function getCodeStructure(
   gameId: string,
   typeFilter?: string,
 ): Promise<AtomSummary[]> {
-  const supabase = getSupabaseClient();
+  const cacheKey = `structure:${gameId}${typeFilter ? `:${typeFilter}` : ""}`;
 
-  let query = supabase
-    .from("atoms")
-    .select("name, type, inputs, outputs")
-    .eq("game_id", gameId);
-  if (typeFilter) query = query.eq("type", typeFilter);
-  const { data: atoms, error: atomsError } = await query;
+  return cached(cacheKey, 30, async () => {
+    const supabase = getSupabaseClient();
 
-  if (atomsError) throw new Error(`Failed to fetch atoms: ${atomsError.message}`);
+    let query = supabase
+      .from("atoms")
+      .select("name, type, inputs, outputs")
+      .eq("game_id", gameId);
+    if (typeFilter) query = query.eq("type", typeFilter);
+    const { data: atoms, error: atomsError } = await query;
 
-  const { data: deps } = await supabase
-    .from("atom_dependencies")
-    .select("atom_name, depends_on")
-    .eq("game_id", gameId);
+    if (atomsError) throw new Error(`Failed to fetch atoms: ${atomsError.message}`);
 
-  const depsMap = groupBy(deps || [], "atom_name");
+    const { data: deps } = await supabase
+      .from("atom_dependencies")
+      .select("atom_name, depends_on")
+      .eq("game_id", gameId);
 
-  return (atoms || []).map((a: any) => ({
-    name: a.name,
-    type: a.type,
-    inputs: a.inputs,
-    outputs: a.outputs,
-    depends_on: (depsMap[a.name] || []).map((d: any) => d.depends_on),
-  }));
+    const depsMap = groupBy(deps || [], "atom_name");
+
+    return (atoms || []).map((a: any) => ({
+      name: a.name,
+      type: a.type,
+      inputs: a.inputs,
+      outputs: a.outputs,
+      depends_on: (depsMap[a.name] || []).map((d: any) => d.depends_on),
+    }));
+  });
 }
 
 /** Read full atom data for one or more atoms */
@@ -317,7 +323,8 @@ export async function upsertAtom(
     }
   }
 
-  // 6. Trigger rebuild (fire-and-forget)
+  // 6. Bust structure cache and trigger rebuild (fire-and-forget)
+  cacheDel(`structure:${gameId}`, `structure:${gameId}:core`, `structure:${gameId}:feature`, `structure:${gameId}:util`);
   triggerRebuild(gameId);
 
   const signature = formatSignature(inputs, outputs);
@@ -363,6 +370,7 @@ export async function deleteAtom(
 
   if (error) throw new Error(`Failed to delete atom: ${error.message}`);
 
-  // Trigger rebuild (fire-and-forget)
+  // Bust structure cache and trigger rebuild (fire-and-forget)
+  cacheDel(`structure:${gameId}`, `structure:${gameId}:core`, `structure:${gameId}:feature`, `structure:${gameId}:util`);
   triggerRebuild(gameId);
 }

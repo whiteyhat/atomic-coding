@@ -472,7 +472,7 @@ export interface AppHealthStatus {
     apiBaseHost: string;
     supabaseHost: string | null;
     mastraHost: string | null;
-    privyConfigured: boolean;
+    clerkConfigured: boolean;
     mastraConfigured: boolean;
   };
 }

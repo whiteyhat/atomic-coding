@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { LogOut, Settings, User } from "lucide-react";
 import { getTimeOfDayGreeting } from "@/lib/dashboard";
-import { useAppAuth } from "@/lib/privy-provider";
+import { useAppAuth } from "@/lib/auth-provider";
 import { fadeInUp } from "./dashboard-animations";
 
 interface DashboardHeaderProps {
@@ -31,8 +31,7 @@ export function DashboardHeader({ displayName }: DashboardHeaderProps) {
   }, [menuOpen]);
 
   const email = user?.email?.address;
-  const wallet = user?.wallet?.address;
-  const subtitle = email || (wallet ? `${wallet.slice(0, 6)}...${wallet.slice(-4)}` : "Account");
+  const subtitle = email || "Account";
 
   return (
     <motion.header

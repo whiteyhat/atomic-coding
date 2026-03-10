@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { API_BASE } from "@/lib/constants";
-import { useAppAuth } from "@/lib/privy-provider";
+import { useAppAuth } from "@/lib/auth-provider";
 import {
   getPlatformAidFallbackSuggestions,
   getPlatformAidIntro,
@@ -107,11 +107,6 @@ function getDisplayName(
   const email = user.email?.address?.trim();
   if (email) {
     return email.split("@")[0] ?? email;
-  }
-
-  const wallet = user.wallet?.address?.trim();
-  if (wallet) {
-    return `${wallet.slice(0, 6)}...${wallet.slice(-4)}`;
   }
 
   return null;

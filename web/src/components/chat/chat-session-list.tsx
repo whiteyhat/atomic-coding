@@ -11,7 +11,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Loader2, MessageSquare, Plus, Trash2 } from "lucide-react";
 import { MODELS } from "@/lib/constants";
-import { useAppAuth } from "@/lib/privy-provider";
+import { useAppAuth } from "@/lib/auth-provider";
 
 interface ChatSessionListProps {
   gameName: string;

@@ -1,11 +1,13 @@
 "use client";
 
 import { createContext, useContext, useEffect } from "react";
-import { PrivyProvider as BasePrivyProvider, usePrivy } from "@privy-io/react-auth";
+import { ClerkProvider, useUser, useAuth, useClerk } from "@clerk/nextjs";
+import { dark } from "@clerk/themes";
 import { registerAuthTokenGetter } from "./api";
 import { ensureUserProfile } from "./user-profile";
 
-const PRIVY_APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID ?? "";
+const CLERK_PUBLISHABLE_KEY =
+  process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ?? "";
 const DEV_AUTH_BYPASS = process.env.NEXT_PUBLIC_DEV_AUTH_BYPASS === "true";
 const DEV_AUTH_BYPASS_USER_ID =
   process.env.NEXT_PUBLIC_DEV_AUTH_BYPASS_USER_ID ?? "did:dev:local-user";
@@ -15,7 +17,6 @@ const DEV_AUTH_BYPASS_TOKEN =
 type AppAuthUser = {
   id: string;
   email?: { address: string };
-  wallet?: { address: string };
 };
 
 type AppAuthContextValue = {
@@ -54,33 +55,23 @@ function AppAuthProvider({
 }
 
 function AuthTokenRegistrar({ children }: { children: React.ReactNode }) {
-  const { getAccessToken, authenticated, user } = usePrivy();
+  const { getToken, isSignedIn, userId } = useAuth();
+  const { user } = useUser();
 
   useEffect(() => {
-    registerAuthTokenGetter(getAccessToken);
-  }, [getAccessToken]);
+    registerAuthTokenGetter(() => getToken());
+  }, [getToken]);
 
   useEffect(() => {
-    if (!authenticated || !user?.id) return;
+    if (!isSignedIn || !userId || !user) return;
 
-    const email = user.email?.address;
-    const walletAddress = user.wallet?.address;
-    const displayName =
-      email ??
-      (walletAddress
-        ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`
-        : undefined);
+    const email = user.primaryEmailAddress?.emailAddress;
+    const displayName = email ?? user.fullName ?? undefined;
 
-    ensureUserProfile(
-      user.id,
-      email,
-      displayName,
-      undefined,
-      walletAddress
-    ).catch(() => {
+    ensureUserProfile(userId, email ?? undefined, displayName).catch(() => {
       // Profile sync is best-effort and should not block auth.
     });
-  }, [authenticated, user]);
+  }, [isSignedIn, userId, user]);
 
   return <>{children}</>;
 }
@@ -103,19 +94,30 @@ function DevAuthBootstrap({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-function PrivyAuthBridge({ children }: { children: React.ReactNode }) {
-  const { getAccessToken, authenticated, user, login, logout, ready } =
-    usePrivy();
+function ClerkAuthBridge({ children }: { children: React.ReactNode }) {
+  const { isSignedIn, isLoaded, getToken } = useAuth();
+  const { user } = useUser();
+  const clerk = useClerk();
+
+  const appUser: AppAuthUser | null =
+    user
+      ? {
+          id: user.id,
+          email: user.primaryEmailAddress
+            ? { address: user.primaryEmailAddress.emailAddress }
+            : undefined,
+        }
+      : null;
 
   return (
     <AppAuthProvider
       value={{
-        authenticated,
-        ready,
-        user: (user as AppAuthUser | null) ?? null,
-        login,
-        logout,
-        getAccessToken,
+        authenticated: !!isSignedIn,
+        ready: isLoaded,
+        user: appUser,
+        login: () => clerk.openSignIn({ forceRedirectUrl: "/dashboard" }),
+        logout: () => clerk.signOut(),
+        getAccessToken: () => getToken(),
         isDevBypass: false,
       }}
     >
@@ -124,7 +126,7 @@ function PrivyAuthBridge({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function PrivyProvider({ children }: { children: React.ReactNode }) {
+export function AuthProvider({ children }: { children: React.ReactNode }) {
   if (DEV_AUTH_BYPASS) {
     const devUser: AppAuthUser = {
       id: DEV_AUTH_BYPASS_USER_ID,
@@ -148,28 +150,23 @@ export function PrivyProvider({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // During static generation PRIVY_APP_ID may not be set; render children without auth
-  if (!PRIVY_APP_ID) {
-    return <AppAuthProvider value={defaultAuthValue}>{children}</AppAuthProvider>;
+  // During static generation the key may not be set; render children without auth
+  if (!CLERK_PUBLISHABLE_KEY) {
+    return (
+      <AppAuthProvider value={defaultAuthValue}>{children}</AppAuthProvider>
+    );
   }
 
   return (
-    <BasePrivyProvider
-      appId={PRIVY_APP_ID}
-      config={{
-        appearance: {
-          theme: "dark",
-          accentColor: "#fff",
-        },
-        loginMethods: ["email", "google", "github", "wallet"],
-        embeddedWallets: {
-          ethereum: { createOnLogin: "users-without-wallets" },
-          solana: { createOnLogin: "users-without-wallets" },
-        },
+    <ClerkProvider
+      publishableKey={CLERK_PUBLISHABLE_KEY}
+      appearance={{
+        baseTheme: dark,
+        variables: { colorPrimary: "#fff" },
       }}
     >
-      <PrivyAuthBridge>{children}</PrivyAuthBridge>
-    </BasePrivyProvider>
+      <ClerkAuthBridge>{children}</ClerkAuthBridge>
+    </ClerkProvider>
   );
 }
 

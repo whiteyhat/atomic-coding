@@ -30,9 +30,10 @@ function isLocalUrl(url: string): boolean {
 export async function publishWithRetry(
   url: string,
   body: Record<string, unknown>,
-  options?: { retries?: number },
+  options?: { retries?: number; headers?: Record<string, string> },
 ): Promise<void> {
   const client = getQStash();
+  const extraHeaders = options?.headers || {};
 
   // QStash is a cloud service — it can't deliver to localhost/private IPs.
   // Skip QStash for local URLs and use direct fetch instead.
@@ -42,6 +43,7 @@ export async function publishWithRetry(
         url,
         body,
         retries: options?.retries ?? 3,
+        headers: extraHeaders,
       });
       log("info", "qstash:published", { url, body });
       return;
@@ -59,7 +61,7 @@ export async function publishWithRetry(
   // Direct fetch (awaited so caller knows if it fails)
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...extraHeaders },
     body: JSON.stringify(body),
   });
   log("info", "direct:fetch:response", { url, status: res.status });

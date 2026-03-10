@@ -11,7 +11,7 @@ import {
   computeDashboardStats,
 } from "@/lib/dashboard";
 import { listMyGames, getTokenLaunch } from "@/lib/api";
-import { useAppAuth } from "@/lib/privy-provider";
+import { useAppAuth } from "@/lib/auth-provider";
 import { MOCK_DASHBOARD_SUMMARY, MOCK_TOKEN_ACTIVITY } from "@/lib/mock-dashboard-data";
 import type { GameWithBuild, TokenLaunch } from "@/lib/types";
 import { staggerContainer } from "./dashboard-animations";
@@ -77,7 +77,7 @@ export function DashboardShell({
     id: user?.id ?? "",
     displayName: null,
     email: user?.email?.address ?? null,
-    walletAddress: user?.wallet?.address ?? null,
+    walletAddress: null,
     avatarUrl: null,
   });
 

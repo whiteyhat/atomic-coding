@@ -21,7 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getDashboardDisplayName } from "@/lib/dashboard";
-import { useAppAuth } from "@/lib/privy-provider";
+import { useAppAuth } from "@/lib/auth-provider";
 import { buildSettingsHealthItems, buildSettingsPlatformItems, SETTINGS_DOC_LINKS } from "@/lib/settings";
 import type { UserProfile } from "@/lib/types";
 
@@ -276,7 +276,7 @@ function SettingsHeroSkeleton() {
   return (
     <div className="grid gap-3 sm:grid-cols-2">
       <div className="rounded-[1.75rem] border border-white/8 bg-white/[0.03] p-4">
-        <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-white/40">Privy user</p>
+        <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-white/40">User</p>
         <SkeletonBlock className="mt-3 h-4 w-40" />
       </div>
       <div className="rounded-[1.75rem] border border-white/8 bg-white/[0.03] p-4">
@@ -328,7 +328,7 @@ export function SettingsShell() {
         id: user?.id ?? "",
         displayName: profile.display_name ?? null,
         email: user?.email?.address ?? profile?.email ?? null,
-        walletAddress: user?.wallet?.address ?? profile?.wallet_address ?? null,
+        walletAddress: profile?.wallet_address ?? null,
         avatarUrl: profile.avatar_url ?? null,
       })
     : "Creator";
@@ -365,7 +365,7 @@ export function SettingsShell() {
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="rounded-[1.75rem] border border-white/8 bg-white/[0.03] p-4">
                     <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-white/40">
-                      Privy user
+                      User
                     </p>
                     <p className="mt-3 break-all text-sm text-white">{user?.id ?? "Unavailable"}</p>
                   </div>
@@ -493,16 +493,12 @@ export function SettingsShell() {
                       value={user?.email?.address ?? profile?.email ?? "No email attached"}
                     />
                     <ReadOnlyRow
-                      label="Wallet"
-                      value={user?.wallet?.address ?? profile?.wallet_address ?? "No wallet attached"}
-                    />
-                    <ReadOnlyRow
-                      label="Privy DID"
+                      label="User ID"
                       value={user?.id ?? "Unavailable"}
                     />
                     <ReadOnlyRow
                       label="Auth mode"
-                      value={isDevBypass ? "Local dev auth bypass" : "Privy authentication"}
+                      value={isDevBypass ? "Local dev auth bypass" : "Clerk authentication"}
                     />
                   </div>
                 )}

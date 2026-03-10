@@ -11,7 +11,7 @@ import { listMyGames } from "@/lib/api";
 import { deriveLastEditedGame } from "@/lib/analytics";
 import { formatRelativeTime } from "@/lib/dashboard";
 import { getGameGenre } from "@/lib/game-genres";
-import { useAppAuth } from "@/lib/privy-provider";
+import { useAppAuth } from "@/lib/auth-provider";
 import {
   ARCHITECTURE_AGENT_COUNT,
   ARCHITECTURE_SERVICE_COUNT,

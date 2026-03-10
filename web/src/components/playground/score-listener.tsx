@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useCallback } from "react";
 import { submitScore } from "@/lib/api";
-import { useAppAuth } from "@/lib/privy-provider";
+import { useAppAuth } from "@/lib/auth-provider";
 
 interface ScoreListenerProps {
   gameName: string;

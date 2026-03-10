@@ -106,7 +106,7 @@ export function AgentHealthBar({ heartbeats, tasks }: AgentHealthBarProps) {
         const isStale =
           heartbeat?.status === "working" &&
           lastPingAge != null &&
-          lastPingAge > 20;
+          lastPingAge > 45;
         const status = isStale ? "stale" : heartbeat?.status ?? "idle";
         const phase =
           getMetadataString(heartbeat?.metadata?.phase) ??

@@ -257,6 +257,7 @@ export async function publishGame(
   }
 
   log("info", "game published", { gameId, slug });
+  cacheDel(`public:game:${slug}`, `public:games:50`);
   if (data.user_id) {
     await emitOpenClawEvent(data.user_id, "game:published", {
       game_id: data.id,
@@ -285,6 +286,8 @@ export async function unpublishGame(gameId: string): Promise<Game> {
 
   if (error) throw new Error(`Failed to unpublish game: ${error.message}`);
   log("info", "game unpublished", { gameId });
+  if (data.public_slug) cacheDel(`public:game:${data.public_slug}`);
+  cacheDel(`public:games:50`);
   if (data.user_id) {
     await emitOpenClawEvent(data.user_id, "game:unpublished", {
       game_id: data.id,
@@ -296,34 +299,38 @@ export async function unpublishGame(gameId: string): Promise<Game> {
 
 /** Get a published game by its public slug */
 export async function getPublishedGame(slug: string): Promise<GameWithBuild | null> {
-  const supabase = getSupabaseClient();
+  return cached(`public:game:${slug}`, 30, async () => {
+    const supabase = getSupabaseClient();
 
-  const { data, error } = await supabase
-    .from("games")
-    .select("*, builds!fk_games_active_build(id, status, atom_count, created_at)")
-    .eq("public_slug", slug)
-    .eq("is_published", true)
-    .single();
+    const { data, error } = await supabase
+      .from("games")
+      .select("*, builds!fk_games_active_build(id, status, atom_count, created_at)")
+      .eq("public_slug", slug)
+      .eq("is_published", true)
+      .single();
 
-  if (error) {
-    if (error.code === "PGRST116") return null;
-    throw new Error(`Failed to get published game: ${error.message}`);
-  }
+    if (error) {
+      if (error.code === "PGRST116") return null;
+      throw new Error(`Failed to get published game: ${error.message}`);
+    }
 
-  return mapGameWithBuild(data);
+    return mapGameWithBuild(data);
+  });
 }
 
 /** List all published games */
 export async function listPublishedGames(limit = 50): Promise<GameWithBuild[]> {
-  const supabase = getSupabaseClient();
+  return cached(`public:games:${limit}`, 30, async () => {
+    const supabase = getSupabaseClient();
 
-  const { data, error } = await supabase
-    .from("games")
-    .select("*, builds!fk_games_active_build(id, status, atom_count, created_at)")
-    .eq("is_published", true)
-    .order("published_at", { ascending: false })
-    .limit(limit);
+    const { data, error } = await supabase
+      .from("games")
+      .select("*, builds!fk_games_active_build(id, status, atom_count, created_at)")
+      .eq("is_published", true)
+      .order("published_at", { ascending: false })
+      .limit(limit);
 
-  if (error) throw new Error(`Failed to list published games: ${error.message}`);
-  return (data || []).map(mapGameWithBuild);
+    if (error) throw new Error(`Failed to list published games: ${error.message}`);
+    return (data || []).map(mapGameWithBuild);
+  });
 }

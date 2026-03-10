@@ -96,80 +96,121 @@ export function useWarRoom(
     }
   }, []);
 
+  // Stable ref for refresh so the realtime effect doesn't re-run when refresh identity changes
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
+
   useEffect(() => {
     if (!warRoomId || isComplete) return;
 
     const supabase = getSupabaseBrowserClient();
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let cancelled = false;
+    let reconnecting = false;
+    let subscribeAttempt = 0;
 
-    const channel = supabase
-      .channel(`war-room:${warRoomId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "war_room_events",
-          filter: `war_room_id=eq.${warRoomId}`,
-        },
-        (payload) => {
-          processEvent(payload.new as WarRoomEvent);
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "agent_heartbeats",
-          filter: `war_room_id=eq.${warRoomId}`,
-        },
-        (payload) => {
-          const heartbeat = payload.new as AgentHeartbeat;
-          setHeartbeats((prev) => upsertHeartbeatState(prev, heartbeat));
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "war_rooms",
-          filter: `id=eq.${warRoomId}`,
-        },
-        (payload) => {
-          const updated = payload.new as {
-            status: WarRoomStatus;
-            suggested_prompts?: string[];
-          };
+    function subscribe() {
+      if (cancelled) return;
 
-          setWarRoom((prev) => {
-            if (!prev) return prev;
-            return {
-              ...prev,
-              status: updated.status,
-              suggested_prompts: updated.suggested_prompts ?? prev.suggested_prompts,
-            };
-          });
+      // Unique channel name per attempt to avoid Supabase binding collisions
+      subscribeAttempt++;
+      const channelName = `war-room:${warRoomId}:${subscribeAttempt}`;
 
-          if (TERMINAL_STATUSES.includes(updated.status)) {
-            refresh();
+      const channel = supabase
+        .channel(channelName)
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "war_room_events",
+            filter: `war_room_id=eq.${warRoomId}`,
+          },
+          (payload) => {
+            processEvent(payload.new as WarRoomEvent);
           }
-        }
-      )
-      .subscribe((status, subscribeError) => {
-        if (subscribeError) {
-          console.error("[useWarRoom] subscription error:", subscribeError);
-        }
-        console.log("[useWarRoom] subscription status:", status, warRoomId);
-      });
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "agent_heartbeats",
+            filter: `war_room_id=eq.${warRoomId}`,
+          },
+          (payload) => {
+            const heartbeat = payload.new as AgentHeartbeat;
+            setHeartbeats((prev) => upsertHeartbeatState(prev, heartbeat));
+          }
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "UPDATE",
+            schema: "public",
+            table: "war_rooms",
+            filter: `id=eq.${warRoomId}`,
+          },
+          (payload) => {
+            const updated = payload.new as {
+              status: WarRoomStatus;
+              suggested_prompts?: string[];
+            };
 
-    channelRef.current = channel;
+            setWarRoom((prev) => {
+              if (!prev) return prev;
+              return {
+                ...prev,
+                status: updated.status,
+                suggested_prompts:
+                  updated.suggested_prompts ?? prev.suggested_prompts,
+              };
+            });
+
+            if (TERMINAL_STATUSES.includes(updated.status)) {
+              refreshRef.current();
+            }
+          }
+        )
+        .subscribe((status, subscribeError) => {
+          if (subscribeError) {
+            console.error("[useWarRoom] subscription error:", subscribeError);
+          }
+          console.log("[useWarRoom] subscription status:", status, warRoomId);
+
+          // Reconnect on CLOSED or TIMED_OUT — guarded to prevent re-entrance
+          // (removeChannel can synchronously fire this callback with CLOSED,
+          // which would cause infinite recursion without the guard)
+          if (
+            !cancelled &&
+            !reconnecting &&
+            (status === "TIMED_OUT" || status === "CLOSED")
+          ) {
+            reconnecting = true;
+            console.warn("[useWarRoom] reconnecting after", status);
+            // Defer removal to break out of synchronous callback stack
+            retryTimer = setTimeout(() => {
+              supabase.removeChannel(channel);
+              reconnecting = false;
+              subscribe();
+            }, 2000);
+          }
+        });
+
+      channelRef.current = channel;
+    }
+
+    subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
-      channelRef.current = null;
+      cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
     };
-  }, [isComplete, processEvent, refresh, warRoomId]);
+  }, [isComplete, processEvent, warRoomId]);
 
   return {
     warRoom,

@@ -90,9 +90,9 @@ export function buildSettingsPlatformItems(
         : "Local fallback agent flow remains available when Mastra is unset.",
     },
     {
-      label: "Privy",
-      value: config?.privyConfigured ? "Configured" : "Not configured",
-      description: "Authentication provider for creator sign-in and wallet identity.",
+      label: "Clerk",
+      value: config?.clerkConfigured ? "Configured" : "Not configured",
+      description: "Authentication provider for creator sign-in.",
     },
     {
       label: "Supported models",

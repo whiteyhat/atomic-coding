@@ -15,7 +15,7 @@ describe("buildSettingsPlatformItems", () => {
         apiBaseHost: "api.example.com",
         supabaseHost: "db.example.com",
         mastraHost: "agents.example.com",
-        privyConfigured: true,
+        clerkConfigured: true,
         mastraConfigured: true,
       },
     };
@@ -25,7 +25,7 @@ describe("buildSettingsPlatformItems", () => {
     expect(items.find((item) => item.label === "API base")?.value).toBe("api.example.com");
     expect(items.find((item) => item.label === "Supabase")?.value).toBe("db.example.com");
     expect(items.find((item) => item.label === "Mastra")?.value).toBe("agents.example.com");
-    expect(items.find((item) => item.label === "Privy")?.value).toBe("Configured");
+    expect(items.find((item) => item.label === "Clerk")?.value).toBe("Configured");
     expect(items.find((item) => item.label === "Supported models")?.value).toContain("Gemini 3 Pro");
   });
 });
@@ -43,7 +43,7 @@ describe("buildSettingsHealthItems", () => {
         apiBaseHost: "api.example.com",
         supabaseHost: "db.example.com",
         mastraHost: null,
-        privyConfigured: true,
+        clerkConfigured: true,
         mastraConfigured: false,
       },
     };

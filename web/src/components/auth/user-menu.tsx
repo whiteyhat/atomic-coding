@@ -9,8 +9,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, Settings, User, Wallet } from "lucide-react";
-import { useAppAuth } from "@/lib/privy-provider";
+import { LogOut, Settings, User } from "lucide-react";
+import { useAppAuth } from "@/lib/auth-provider";
 
 export function UserMenu() {
   const { user, logout, ready, authenticated, isDevBypass } = useAppAuth();
@@ -20,9 +20,7 @@ export function UserMenu() {
   }
 
   const email = user.email?.address;
-  const walletAddress = user.wallet?.address;
-  const displayName =
-    email ?? (walletAddress ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}` : "User");
+  const displayName = email ?? "User";
 
   return (
     <DropdownMenu>
@@ -36,12 +34,6 @@ export function UserMenu() {
         {email && (
           <DropdownMenuItem disabled className="text-xs text-muted-foreground">
             {email}
-          </DropdownMenuItem>
-        )}
-        {walletAddress && (
-          <DropdownMenuItem disabled className="text-xs text-muted-foreground gap-2">
-            <Wallet className="size-3" />
-            {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
           </DropdownMenuItem>
         )}
         {isDevBypass && (

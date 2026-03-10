@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { PlatformAidProvider } from "@/components/platform-aid/platform-aid-provider";
-import { PrivyProvider } from "@/lib/privy-provider";
+import { AuthProvider } from "@/lib/auth-provider";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { SWRProvider } from "@/lib/swr-provider";
 import "./globals.css";
@@ -32,7 +32,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}
       >
-        <PrivyProvider>
+        <AuthProvider>
           <SWRProvider>
             <TooltipProvider delayDuration={200}>
               <PlatformAidProvider>
@@ -40,7 +40,7 @@ export default function RootLayout({
               </PlatformAidProvider>
             </TooltipProvider>
           </SWRProvider>
-        </PrivyProvider>
+        </AuthProvider>
       </body>
     </html>
   );

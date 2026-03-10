@@ -22,7 +22,7 @@ import {
   getGameGenre,
   isGenreSupportedInFormat,
 } from "@/lib/game-genres";
-import { useAppAuth } from "@/lib/privy-provider";
+import { useAppAuth } from "@/lib/auth-provider";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

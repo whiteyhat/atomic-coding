@@ -36,10 +36,17 @@ function createLimiter(
 
 // Pre-configured limiters for different endpoints
 const limiters = {
-  score: () => createLimiter("score", 1, 1),           // 1/sec per user
-  warroom: () => createLimiter("warroom", 5, 60),       // 5/min per user
-  build: () => createLimiter("build", 2, 60),           // 2/min per game
-  chatSave: () => createLimiter("chat-save", 10, 60),   // 10/min per session
+  score: () => createLimiter("score", 1, 1),                   // 1/sec per user
+  warroom: () => createLimiter("warroom", 5, 60),               // 5/min per user
+  build: () => createLimiter("build", 2, 60),                   // 2/min per game
+  chatSave: () => createLimiter("chat-save", 10, 60),           // 10/min per session
+  gameCreate: () => createLimiter("game-create", 5, 60),        // 5/min per user
+  assistantChat: () => createLimiter("assistant-chat", 10, 60), // 10/min per user
+  publish: () => createLimiter("publish", 3, 60),               // 3/min per user
+  atomWrite: () => createLimiter("atom-write", 30, 60),         // 30/min per user
+  deleteOp: () => createLimiter("delete", 10, 60),              // 10/min per user
+  customExternal: () => createLimiter("custom-ext", 5, 60),     // 5/min per user
+  sessionCreate: () => createLimiter("session-create", 10, 60), // 10/min per user
 };
 
 export type RateLimitType = keyof typeof limiters;

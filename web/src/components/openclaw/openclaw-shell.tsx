@@ -51,7 +51,7 @@ import {
   OPENCLAW_WIZARD_STEPS,
   writeStoredOpenClawSessionSnapshot,
 } from "@/lib/openclaw";
-import { useAppAuth } from "@/lib/privy-provider";
+import { useAppAuth } from "@/lib/auth-provider";
 import type {
   OpenClawAgent,
   OpenClawApiKeySecret,
@@ -496,7 +496,7 @@ export function OpenClawShell() {
     id: user?.id ?? "",
     displayName: null,
     email: user?.email?.address ?? null,
-    walletAddress: user?.wallet?.address ?? null,
+    walletAddress: null,
     avatarUrl: null,
   });
   const agent = agentEnvelope?.agent ?? null;

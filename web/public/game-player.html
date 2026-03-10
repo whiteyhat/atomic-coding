@@ -267,7 +267,7 @@
         if (manifest && manifest.externals) { await loadExternals(manifest.externals); }
         const response = await fetch(`${BUNDLE_URL}?t=${Date.now()}`);
         if (!response.ok) {
-          if (response.status === 404) { setStatus('connected', `No ${runtimeLabel} build yet. Create some atoms!`); return; }
+          if (response.status === 404 || response.status === 400) { setStatus('connected', `No ${runtimeLabel} build yet. Create some atoms!`); return; }
           throw new Error(`HTTP ${response.status}`);
         }
         const code = await response.text();
