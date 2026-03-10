@@ -9,7 +9,7 @@ export const mastra = new Mastra({
     port: parseInt(process.env.PORT || "4500"),
     host: "0.0.0.0",
     cors: {
-      origin: "*",
+      origin: (process.env.ALLOWED_ORIGINS || "*").split(",").map((o: string) => o.trim()),
       allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
       allowHeaders: ["Content-Type", "Authorization"],
     },

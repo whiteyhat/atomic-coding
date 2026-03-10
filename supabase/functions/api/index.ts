@@ -49,11 +49,22 @@ app.use("*", async (c, next) => {
 // Middleware: CORS
 // =============================================================================
 
+const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") || Deno.env.get("ALLOWED_ORIGIN") || "*")
+  .split(",")
+  .map((o) => o.trim());
+
+function resolveOrigin(requestOrigin: string | undefined): string {
+  if (ALLOWED_ORIGINS.includes("*")) return "*";
+  if (requestOrigin && ALLOWED_ORIGINS.includes(requestOrigin)) return requestOrigin;
+  return ALLOWED_ORIGINS[0];
+}
+
 app.use("*", async (c, next) => {
-  const allowedOrigin = Deno.env.get("ALLOWED_ORIGIN") || "*";
-  c.header("Access-Control-Allow-Origin", allowedOrigin);
+  const origin = resolveOrigin(c.req.header("Origin"));
+  c.header("Access-Control-Allow-Origin", origin);
   c.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
   c.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  if (origin !== "*") c.header("Vary", "Origin");
   if (c.req.method === "OPTIONS") {
     return c.body(null, 204);
   }
@@ -927,12 +938,14 @@ app.get("/games/:name/warrooms/:id/events", async (c) => {
     },
   });
 
+  const origin = resolveOrigin(c.req.header("Origin"));
   return new Response(stream, {
     headers: {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
       Connection: "keep-alive",
-      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Origin": origin,
+      ...(origin !== "*" ? { Vary: "Origin" } : {}),
     },
   });
 });

@@ -15,10 +15,17 @@ import { validateScoreSystemRules } from "../../../mastra/src/shared/atom-valida
  */
 
 Deno.serve(async (req: Request) => {
-  const corsHeaders = {
-    "Access-Control-Allow-Origin": "*",
+  const allowedOrigins = (Deno.env.get("ALLOWED_ORIGINS") || "*")
+    .split(",").map((o: string) => o.trim());
+  const reqOrigin = req.headers.get("Origin") || "";
+  const origin = allowedOrigins.includes("*") ? "*"
+    : allowedOrigins.includes(reqOrigin) ? reqOrigin
+    : allowedOrigins[0];
+  const corsHeaders: Record<string, string> = {
+    "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    ...(origin !== "*" ? { Vary: "Origin" } : {}),
   };
 
   if (req.method === "OPTIONS") {
