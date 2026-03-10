@@ -136,10 +136,6 @@ async function dispatchToAgent(
   const dispatchStart = Date.now();
   try {
     const agent = mastra.getAgent(agentName);
-    const orKey = process.env.OPENROUTER_API_KEY;
-    console.log("[orchestrator] env check before generate", {
-      OPENROUTER_API_KEY: orKey ? `${orKey.slice(0, 12)}...${orKey.slice(-4)}` : "NOT SET",
-    });
     const result = await agent.generate(
       [{ role: "user" as const, content: taskPrompt }],
       {

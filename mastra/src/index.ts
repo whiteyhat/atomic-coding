@@ -16,9 +16,8 @@ for (const root of envSearchRoots) {
   }
 }
 
-// Verify critical env vars are loaded
-const orKey = process.env.OPENROUTER_API_KEY;
-console.log(`[env] OPENROUTER_API_KEY: ${orKey ? `${orKey.slice(0, 12)}...${orKey.slice(-4)}` : "NOT SET"}`);
+// Verify critical env vars are loaded at startup
+console.log(`[env] OPENROUTER_API_KEY: ${process.env.OPENROUTER_API_KEY ? "set" : "NOT SET"}`);
 console.log(`[env] cwd: ${process.cwd()}`);
 
 // Initialize Sentry before anything else
