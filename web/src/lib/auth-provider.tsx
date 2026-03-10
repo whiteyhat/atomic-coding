@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect } from "react";
+import { createContext, useContext, useEffect, useRef } from "react";
 import { ClerkProvider, useUser, useAuth, useClerk } from "@clerk/nextjs";
 import { dark } from "@clerk/themes";
 import { registerAuthTokenGetter } from "./api";
@@ -57,10 +57,12 @@ function AppAuthProvider({
 function AuthTokenRegistrar({ children }: { children: React.ReactNode }) {
   const { getToken, isSignedIn, userId } = useAuth();
   const { user } = useUser();
+  const getTokenRef = useRef(getToken);
+  getTokenRef.current = getToken;
 
-  useEffect(() => {
-    registerAuthTokenGetter(() => getToken());
-  }, [getToken]);
+  // Register synchronously so the getter is available before child effects
+  // (SWR fetches) fire. The ref ensures we always call the latest getToken.
+  registerAuthTokenGetter(() => getTokenRef.current());
 
   useEffect(() => {
     if (!isSignedIn || !userId || !user) return;

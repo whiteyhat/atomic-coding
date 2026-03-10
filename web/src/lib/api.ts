@@ -80,7 +80,7 @@ async function apiFetch<T>(
     ...(init?.headers as Record<string, string>),
   };
 
-  // Attach auth token if available
+  // Attach auth token — bail early if unavailable to avoid 401 noise
   if (getAuthTokenFn) {
     try {
       const token = await getAuthTokenFn();
@@ -88,7 +88,7 @@ async function apiFetch<T>(
         headers["Authorization"] = `Bearer ${token}`;
       }
     } catch {
-      // Continue without auth token
+      // token retrieval failed
     }
   }
 
@@ -97,6 +97,10 @@ async function apiFetch<T>(
     if (typeof window === "undefined" && !headers.Origin) {
       headers.Origin = DEV_AUTH_BYPASS_ORIGIN;
     }
+  }
+
+  if (!headers.Authorization) {
+    throw new ApiError("Not authenticated", 401);
   }
 
   const res = await fetch(`${API_BASE}${path}`, {
@@ -126,12 +130,16 @@ async function appFetch<T>(
         headers.Authorization = `Bearer ${token}`;
       }
     } catch {
-      // Continue without auth token
+      // token retrieval failed
     }
   }
 
   if (!headers.Authorization && DEV_AUTH_BYPASS) {
     headers.Authorization = `Bearer ${DEV_AUTH_BYPASS_TOKEN}`;
+  }
+
+  if (!headers.Authorization) {
+    throw new ApiError("Not authenticated", 401);
   }
 
   const res = await fetch(path, {
