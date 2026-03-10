@@ -7,7 +7,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { WarRoomTask, AgentName } from "@/lib/types";
 
 const AGENT_COLORS: Record<AgentName, string> = {
@@ -23,6 +23,26 @@ const AGENT_SHORT: Record<AgentName, string> = {
   pixel: "PIX",
   checker: "CHK",
 };
+
+function ElapsedTime({ startedAt }: { startedAt: string }) {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    const start = new Date(startedAt).getTime();
+    setElapsed(Math.round((Date.now() - start) / 1000));
+    const interval = setInterval(() => {
+      setElapsed(Math.round((Date.now() - start) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [startedAt]);
+
+  const mins = Math.floor(elapsed / 60);
+  const secs = elapsed % 60;
+  return (
+    <span className="text-[10px] text-white/30 font-mono shrink-0">
+      {mins}:{secs.toString().padStart(2, "0")}
+    </span>
+  );
+}
 
 function StatusIcon({ status }: { status: string }) {
   switch (status) {
@@ -76,6 +96,11 @@ export function TaskCard({ task }: TaskCardProps) {
           >
             {task.title}
           </span>
+
+          {/* Elapsed time for running tasks */}
+          {isActive && task.started_at && (
+            <ElapsedTime startedAt={task.started_at} />
+          )}
 
           {/* Agent badge */}
           {agent && (

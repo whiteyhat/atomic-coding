@@ -184,6 +184,8 @@ function ChatPanelContent({
   const sessionIdRef = useRef(sessionId);
   sessionIdRef.current = sessionId;
   const savedCountRef = useRef(initialSavedCount);
+  const isPersistingRef = useRef(false);
+  const tokenCacheRef = useRef<{ token: string | null; ts: number }>({ token: null, ts: 0 });
 
   const { messages, status, sendMessage } = useChat({
     id: sessionId,
@@ -200,13 +202,15 @@ function ChatPanelContent({
           : {}),
       }),
       headers: async (): Promise<Record<string, string>> => {
+        const now = Date.now();
+        if (now - tokenCacheRef.current.ts < 30_000 && tokenCacheRef.current.token) {
+          return { Authorization: `Bearer ${tokenCacheRef.current.token}` };
+        }
         const token = await getAccessToken();
+        tokenCacheRef.current = { token, ts: now };
         return token ? { Authorization: `Bearer ${token}` } : {};
       },
     }),
-    onFinish: () => {
-      persistMessages(messages);
-    },
   });
 
   // Also persist when messages change and status goes back to ready
@@ -226,9 +230,11 @@ function ChatPanelContent({
   const persistMessages = useCallback(
     async (msgs: UIMessage[]) => {
       if (!sessionId || msgs.length === 0) return;
+      if (isPersistingRef.current) return;
       const unsaved = msgs.slice(savedCountRef.current);
       if (unsaved.length === 0) return;
 
+      isPersistingRef.current = true;
       try {
         await saveChatMessages(
           gameName,
@@ -243,6 +249,8 @@ function ChatPanelContent({
         console.log("[chat] Persisted", unsaved.length, "new messages");
       } catch (err) {
         console.error("[chat] Failed to persist messages:", err);
+      } finally {
+        isPersistingRef.current = false;
       }
     },
     [sessionId, gameName]
@@ -259,6 +267,25 @@ function ChatPanelContent({
           gameName,
           buildWarRoomPrompt(promptText, assetsRef.current)
         );
+        console.log("[chat] War room created:", warRoom.id);
+
+        // Trigger pipeline via local Next.js route (confirmed, not fire-and-forget).
+        // The orchestrator has idempotency guards so double-triggering is safe.
+        try {
+          const triggerRes = await fetch("/api/warroom/trigger", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ war_room_id: warRoom.id }),
+          });
+          if (!triggerRes.ok) {
+            console.error("[chat] Pipeline trigger failed:", triggerRes.status, await triggerRes.text());
+          } else {
+            console.log("[chat] Pipeline triggered successfully for", warRoom.id);
+          }
+        } catch (triggerErr) {
+          console.error("[chat] Pipeline trigger network error:", triggerErr);
+        }
+
         setWarRoomMode(false);
         setSelectedAssets([]);
         onWarRoomCreated?.(warRoom.id);

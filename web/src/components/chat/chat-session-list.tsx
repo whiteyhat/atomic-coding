@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { createChatSession, deleteChatSession } from "@/lib/api";
 import { useChatSessions } from "@/lib/hooks";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -22,22 +21,25 @@ function modelName(modelId: string | null): string | null {
 export function ChatSessionList({ gameName, onSelect }: ChatSessionListProps) {
   const { authenticated, login } = useAppAuth();
   const { data: sessions, isLoading, error, mutate } = useChatSessions(gameName);
-  const [isCreating, setIsCreating] = useState(false);
 
   async function handleCreate() {
     if (!authenticated) {
       login();
       return;
     }
-    setIsCreating(true);
-    try {
-      const session = await createChatSession(gameName);
-      onSelect(session.id);
-    } catch (err) {
-      console.error("[chat] Failed to create session:", err);
-    } finally {
-      setIsCreating(false);
-    }
+    // Optimistic: navigate immediately with a temp ID, create session in background
+    const tempId = crypto.randomUUID();
+    onSelect(tempId);
+
+    createChatSession(gameName)
+      .then((session) => {
+        // Replace temp ID with the real session ID
+        onSelect(session.id);
+        mutate();
+      })
+      .catch((err) => {
+        console.error("[chat] Failed to create session:", err);
+      });
   }
 
   async function handleDelete(
@@ -80,9 +82,8 @@ export function ChatSessionList({ gameName, onSelect }: ChatSessionListProps) {
           size="sm"
           className="h-7 gap-1.5 text-xs"
           onClick={handleCreate}
-          disabled={isCreating}
         >
-          {isCreating ? <Loader2 className="size-3 animate-spin" /> : <Plus className="size-3" />}
+          <Plus className="size-3" />
           New Chat
         </Button>
       </div>

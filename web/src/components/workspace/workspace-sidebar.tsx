@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode } from "react";
+import { type ReactNode, useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { MessageSquare, Settings, Swords } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -26,10 +26,13 @@ export function WorkspaceSidebar({
   sidebarWidth,
   children,
 }: WorkspaceSidebarProps) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
   return (
     <motion.aside
       variants={sidebarReveal}
-      initial="hidden"
+      initial={mounted ? "hidden" : false}
       animate="visible"
       className="shrink-0 flex flex-col rounded-bl-[1.25rem] border-r border-white/8 bg-[#2a1014]/95 overflow-hidden"
       style={{ width: sidebarWidth }}

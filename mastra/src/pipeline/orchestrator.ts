@@ -13,6 +13,7 @@ import type { WarRoomTask, DispatchResult } from "./types.js";
 const MAX_RETRY_CYCLES = 3;
 const MAX_TASK_RETRIES = 2;
 const PIPELINE_TIMEOUT_MS = 20 * 60 * 1000; // 20 minutes
+const TASK_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes per task
 
 /** Find tasks whose dependencies are all completed. */
 export function getNextRunnableTasks(tasks: WarRoomTask[]): WarRoomTask[] {
@@ -112,7 +113,8 @@ async function runDeterministicValidation(
  */
 async function dispatchToAgent(
   task: WarRoomTask,
-  context: Record<string, unknown>
+  context: Record<string, unknown>,
+  warRoomId: string
 ): Promise<DispatchResult> {
   const agentName = task.assigned_agent;
   if (!agentName) {
@@ -134,15 +136,56 @@ async function dispatchToAgent(
   });
 
   const dispatchStart = Date.now();
+
+  // Record an initial thinking event so the UI shows activity immediately
+  await warrooms.recordEvent(warRoomId, "agent_thinking", agentName, task.task_number, {
+    title: task.title,
+    phase: "starting",
+    elapsed_seconds: 0,
+  });
+
+  // Periodic heartbeat so the frontend sees life signs during long agent calls
+  const heartbeatInterval = setInterval(async () => {
+    const elapsed = Math.round((Date.now() - dispatchStart) / 1000);
+    try {
+      await warrooms.upsertHeartbeat(warRoomId, agentName, "working", {
+        task_number: task.task_number,
+        title: task.title,
+        elapsed_seconds: elapsed,
+      });
+      await warrooms.recordEvent(warRoomId, "agent_thinking", agentName, task.task_number, {
+        phase: "processing",
+        elapsed_seconds: elapsed,
+      });
+      console.log("[orchestrator] heartbeat ping", {
+        taskNumber: task.task_number,
+        agent: agentName,
+        elapsed_seconds: elapsed,
+      });
+    } catch (hbErr) {
+      console.warn("[orchestrator] heartbeat update failed:", (hbErr as Error).message);
+    }
+  }, 15_000);
+
   try {
     const agent = mastra.getAgent(agentName);
-    const result = await agent.generate(
-      [{ role: "user" as const, content: taskPrompt }],
-      {
-        instructions: systemPrompt,
-        maxSteps,
-      }
-    );
+    const result = await Promise.race([
+      agent.generate(
+        [{ role: "user" as const, content: taskPrompt }],
+        {
+          instructions: systemPrompt,
+          maxSteps,
+        }
+      ),
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new Error(`Task timed out after ${TASK_TIMEOUT_MS / 1000}s`)),
+          TASK_TIMEOUT_MS
+        )
+      ),
+    ]);
+
+    clearInterval(heartbeatInterval);
 
     let output: Record<string, unknown>;
     try {
@@ -161,6 +204,8 @@ async function dispatchToAgent(
 
     return { success: true, output };
   } catch (err) {
+    clearInterval(heartbeatInterval);
+
     console.error("[orchestrator] agent dispatch failed", {
       taskNumber: task.task_number,
       agent: agentName,
@@ -185,14 +230,27 @@ export async function runPipeline(warRoomId: string): Promise<void> {
   const room = await warrooms.getWarRoom(warRoomId);
   if (!room) throw new Error(`War room ${warRoomId} not found`);
 
-  // Idempotency: skip if already running or terminal
+  // Idempotency: skip if already running or completed/cancelled
   if (room.status === "running") {
     console.log("[orchestrator] pipeline already running, skipping", { warRoomId });
     return;
   }
-  if (["completed", "failed", "cancelled"].includes(room.status)) {
+  if (["completed", "cancelled"].includes(room.status)) {
     console.log("[orchestrator] pipeline already terminal, skipping", { warRoomId, status: room.status });
     return;
+  }
+
+  // Allow re-running a failed pipeline (e.g. remote trigger failed, local retry)
+  if (room.status === "failed") {
+    console.log("[orchestrator] resetting failed pipeline for re-run", { warRoomId });
+    // Reset all task statuses back to pending
+    const existingTasks = await warrooms.getTasks(warRoomId);
+    for (const task of existingTasks) {
+      if (task.status !== "completed") {
+        await warrooms.updateTaskStatus(warRoomId, task.task_number, "pending");
+      }
+    }
+    await warrooms.updateWarRoomStatus(warRoomId, "planning");
   }
 
   const initialTasks = await warrooms.getTasks(warRoomId);
@@ -206,6 +264,9 @@ export async function runPipeline(warRoomId: string): Promise<void> {
 
   // Mark war room as running
   await warrooms.updateWarRoomStatus(warRoomId, "running");
+  await warrooms.recordEvent(warRoomId, "pipeline_started", "jarvis", null, {
+    totalTasks: initialTasks.length,
+  });
   await warrooms.upsertHeartbeat(warRoomId, "jarvis", "working", {
     phase: "orchestrating",
   });
@@ -216,8 +277,10 @@ export async function runPipeline(warRoomId: string): Promise<void> {
   try {
     while (true) {
       iteration++;
-      // Refresh task state
-      const tasks = await warrooms.getTasks(warRoomId);
+      // Refresh war room + task state in a single query
+      const currentRoom = await warrooms.getWarRoom(warRoomId);
+      if (!currentRoom) throw new Error(`War room ${warRoomId} disappeared`);
+      const tasks = currentRoom.tasks;
 
       const statusCounts = tasks.reduce(
         (acc, t) => { acc[t.status] = (acc[t.status] || 0) + 1; return acc; },
@@ -226,8 +289,7 @@ export async function runPipeline(warRoomId: string): Promise<void> {
       console.log(`[orchestrator] iteration ${iteration}`, { warRoomId, statusCounts });
 
       // Check for cancellation
-      const currentRoom = await warrooms.getWarRoom(warRoomId);
-      if (currentRoom?.status === "cancelled") {
+      if (currentRoom.status === "cancelled") {
         console.log("[orchestrator] pipeline cancelled by user", { warRoomId });
         await warrooms.upsertHeartbeat(warRoomId, "jarvis", "idle");
         return;
@@ -321,7 +383,7 @@ export async function runPipeline(warRoomId: string): Promise<void> {
 
         // Dispatch to Mastra agent
         const taskStart = Date.now();
-        const result = await dispatchToAgent(task, context);
+        const result = await dispatchToAgent(task, context, warRoomId);
 
         if (result.success) {
           await warrooms.updateTaskStatus(
@@ -395,9 +457,6 @@ export async function runPipeline(warRoomId: string): Promise<void> {
 
       // Wait for all dispatched tasks to complete
       await Promise.allSettled(dispatches);
-
-      // Brief pause before next iteration
-      await sleep(500);
     }
 
     // Pipeline complete — determine final status

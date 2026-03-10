@@ -59,6 +59,32 @@ export async function streamMastraChat(
 }
 
 /**
+ * Trigger the war room pipeline on the local Mastra server.
+ * Called after war room creation so the pipeline runs locally
+ * instead of relying on the remote Supabase Edge Function trigger.
+ */
+export async function triggerPipeline(warRoomId: string): Promise<void> {
+  if (!MASTRA_SERVER_URL) return;
+
+  try {
+    const res = await fetch(`${MASTRA_SERVER_URL}/pipeline/run`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ war_room_id: warRoomId }),
+    });
+    console.log("[mastra-client] pipeline triggered", {
+      warRoomId,
+      status: res.status,
+    });
+  } catch (err) {
+    console.error("[mastra-client] pipeline trigger failed", {
+      warRoomId,
+      error: (err as Error).message,
+    });
+  }
+}
+
+/**
  * Check if the Mastra server is configured and available.
  */
 export function isMastraConfigured(): boolean {

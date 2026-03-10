@@ -51,13 +51,17 @@ export function useWarRoom(
   // Fetch initial war room state
   const refresh = useCallback(async () => {
     if (!gameName || !warRoomId) return;
+    console.log("[useWarRoom] fetching war room:", { gameName, warRoomId });
     setIsLoading(true);
     setError(null);
     try {
       const room = await fetchWarRoom(gameName, warRoomId);
+      console.log("[useWarRoom] fetched:", room.status, "tasks:", room.tasks.length,
+        "statuses:", room.tasks.map((t) => `#${t.task_number}:${t.status}`).join(", "));
       setWarRoom(room);
       setTasks(room.tasks);
     } catch (err) {
+      console.error("[useWarRoom] fetch error:", err);
       setError(err instanceof Error ? err.message : "Failed to load war room");
     } finally {
       setIsLoading(false);
@@ -71,6 +75,12 @@ export function useWarRoom(
 
   // Process a war room event and update local state
   const processEvent = useCallback((evt: WarRoomEvent) => {
+    console.log("[useWarRoom] event:", evt.event_type, {
+      taskNumber: evt.task_number,
+      agent: evt.agent,
+      payloadKeys: evt.payload ? Object.keys(evt.payload) : [],
+    });
+
     setEvents((prev) => [...prev, evt]);
 
     if (evt.event_type === "war_room_cancelled") {
@@ -104,6 +114,7 @@ export function useWarRoom(
           }
           if (evt.event_type === "task_assigned") updates.status = "assigned";
           if (evt.event_type === "task_retry") updates.status = "pending";
+          // agent_thinking confirms the task is still running (no status change needed)
           return { ...t, ...updates };
         })
       );
@@ -114,6 +125,7 @@ export function useWarRoom(
   useEffect(() => {
     if (!warRoomId || isComplete) return;
 
+    console.log("[useWarRoom] subscribing to realtime:", warRoomId);
     const supabase = getSupabaseBrowserClient();
 
     const channel = supabase
@@ -143,6 +155,7 @@ export function useWarRoom(
         },
         (payload) => {
           const hb = payload.new as AgentHeartbeat;
+          console.log("[useWarRoom] heartbeat:", hb.agent, hb.status, hb.metadata);
           setHeartbeats((prev) => {
             const existing = prev.findIndex((h) => h.agent === hb.agent);
             if (existing >= 0) {
@@ -165,6 +178,7 @@ export function useWarRoom(
         },
         (payload) => {
           const updated = payload.new as { status: WarRoomStatus; suggested_prompts?: string[] };
+          console.log("[useWarRoom] war room status changed:", updated.status);
           setWarRoom((prev) => {
             if (!prev) return prev;
             return {
@@ -179,11 +193,15 @@ export function useWarRoom(
           }
         }
       )
-      .subscribe();
+      .subscribe((status, err) => {
+        console.log("[useWarRoom] subscription status:", status, warRoomId);
+        if (err) console.error("[useWarRoom] subscription error:", err);
+      });
 
     channelRef.current = channel;
 
     return () => {
+      console.log("[useWarRoom] unsubscribing from", warRoomId);
       supabase.removeChannel(channel);
       channelRef.current = null;
     };

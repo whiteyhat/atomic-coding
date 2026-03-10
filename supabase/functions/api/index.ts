@@ -632,11 +632,22 @@ app.post("/games/:name/warrooms", requireAuth(), async (c) => {
       await users.upsertUserProfile({ id: authUser.userId });
     }
 
+    // Resolve genre: prefer client-provided genre, fall back to the game's genre
+    let genre = body.genre || null;
+    if (!genre) {
+      try {
+        const game = await games.validateGameId(gameId);
+        genre = game?.genre ?? null;
+      } catch {
+        // Continue without genre
+      }
+    }
+
     const room = await warrooms.createWarRoom(
       gameId,
       authUser.userId,
       body.prompt,
-      body.genre || null,
+      genre,
     );
 
     // Fire-and-forget: trigger orchestrator pipeline
