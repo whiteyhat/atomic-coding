@@ -162,7 +162,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       publishableKey={CLERK_PUBLISHABLE_KEY}
       appearance={{
         baseTheme: dark,
-        variables: { colorPrimary: "#fff" },
+        variables: { colorPrimary: "#fff", colorTextOnPrimaryBackground: "#000" },
+        elements: {
+          footerActionLink: { color: "#a5b4fc" },
+          formFieldAction: { color: "#a5b4fc" },
+          identityPreviewEditButton: { color: "#a5b4fc" },
+          alternativeMethodsBlockButton: { color: "#a5b4fc" },
+        },
       }}
     >
       <ClerkAuthBridge>{children}</ClerkAuthBridge>

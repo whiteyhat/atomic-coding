@@ -35,7 +35,13 @@ export function LoginPageClient({ redirectTo }: { redirectTo: string }) {
         forceRedirectUrl={redirectTo}
         appearance={{
           baseTheme: dark,
-          variables: { colorPrimary: "#fff" },
+          variables: { colorPrimary: "#fff", colorTextOnPrimaryBackground: "#000" },
+          elements: {
+            footerActionLink: { color: "#a5b4fc" },
+            formFieldAction: { color: "#a5b4fc" },
+            identityPreviewEditButton: { color: "#a5b4fc" },
+            alternativeMethodsBlockButton: { color: "#a5b4fc" },
+          },
         }}
       />
     </div>
