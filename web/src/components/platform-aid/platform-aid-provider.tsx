@@ -355,6 +355,12 @@ function PlatformAidSidebarPanel({
       }
     : undefined;
 
+  // Safe left offset for lg screens when sidebar hasn't been measured yet.
+  // Widest sidebar is 82px + page padding, so 130px clears it.
+  const fallbackPanelStyle = !desktopPanelStyle
+    ? { left: "130px", top: "16px", bottom: "16px" }
+    : undefined;
+
   return (
     <>
       <button
@@ -362,10 +368,10 @@ function PlatformAidSidebarPanel({
         aria-label="Close Atomic Aid Agent"
         className={cn(
           "fixed inset-0 z-[59] bg-black/55 transition-opacity duration-200",
-          desktopPanelMetrics ? "lg:rounded-[2rem] lg:bg-black/42" : "",
+          "lg:rounded-[2rem] lg:bg-black/42",
           open ? "opacity-100" : "pointer-events-none opacity-0",
         )}
-        style={desktopPanelStyle}
+        style={desktopPanelStyle ?? fallbackPanelStyle}
         onClick={onClose}
       />
 
@@ -374,7 +380,7 @@ function PlatformAidSidebarPanel({
           "fixed inset-y-0 left-0 z-[60] flex w-full max-w-[420px] flex-col border-r border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.12),transparent_38%),radial-gradient(circle_at_bottom_right,rgba(244,63,94,0.12),transparent_42%),linear-gradient(180deg,#12070a_0%,#1a0b10_45%,#10060a_100%)] shadow-[0_24px_90px_rgba(0,0,0,0.45)] transition-transform duration-300 md:max-w-[440px] lg:rounded-[2rem] lg:border lg:border-white/8",
           open ? "translate-x-0" : "-translate-x-[200%]",
         )}
-        style={desktopPanelStyle}
+        style={desktopPanelStyle ?? fallbackPanelStyle}
       >
         <div className="border-b border-white/8 px-5 py-4">
           <div className="flex items-start justify-between gap-3">
@@ -421,43 +427,8 @@ function PlatformAidSidebarPanel({
           ) : null}
 
           {messages.map((message) => {
-            if (message.role === "trace") {
-              return (
-                <div
-                  key={message.id}
-                  className={cn(
-                    "rounded-2xl border px-3 py-2 text-xs",
-                    getTraceTone(message.trace),
-                  )}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-semibold">{message.trace.label}</span>
-                    <span className="uppercase tracking-[0.18em] opacity-70">
-                      {message.trace.state === "done" ? "done" : "live"}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-[11px] opacity-85">
-                    {message.trace.status}
-                    {message.trace.detail ? ` · ${message.trace.detail}` : ""}
-                  </p>
-                </div>
-              );
-            }
-
-            if (message.role === "context") {
-              return (
-                <div
-                  key={message.id}
-                  className="rounded-[1.2rem] border border-white/10 bg-white/[0.04] px-3.5 py-3"
-                >
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-cyan-100/70">
-                    {getContextHeading(message.kind)}
-                  </p>
-                  <p className="mt-2 text-sm leading-6 text-white/70">
-                    {getContextSummary(message.kind, message.data)}
-                  </p>
-                </div>
-              );
+            if (message.role === "trace" || message.role === "context") {
+              return null;
             }
 
             const isUser = message.role === "user";
@@ -610,17 +581,26 @@ export function PlatformAidProvider({
   useEffect(() => {
     if (!available || typeof window === "undefined") return;
 
-    const frameId = window.requestAnimationFrame(() => {
-      setDesktopPanelMetrics(getDesktopPanelMetrics());
-    });
-
-    const handleResize = () => {
-      setDesktopPanelMetrics(getDesktopPanelMetrics());
+    const measure = () => {
+      const next = getDesktopPanelMetrics();
+      if (next) {
+        setDesktopPanelMetrics(next);
+      }
     };
 
+    // Measure on initial render and after navigation
+    const frameId = window.requestAnimationFrame(measure);
+
+    // Re-measure when the sidebar element appears/disappears during navigation
+    const observer = new MutationObserver(measure);
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    const handleResize = () => measure();
     window.addEventListener("resize", handleResize);
+
     return () => {
       window.cancelAnimationFrame(frameId);
+      observer.disconnect();
       window.removeEventListener("resize", handleResize);
     };
   }, [available, pathname]);
