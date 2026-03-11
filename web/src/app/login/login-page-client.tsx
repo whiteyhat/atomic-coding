@@ -37,6 +37,7 @@ export function LoginPageClient({ redirectTo }: { redirectTo: string }) {
           baseTheme: dark,
           variables: { colorPrimary: "#fff", colorTextOnPrimaryBackground: "#000" },
           elements: {
+            formButtonPrimary: { color: "#000" },
             footerActionLink: { color: "#a5b4fc" },
             formFieldAction: { color: "#a5b4fc" },
             identityPreviewEditButton: { color: "#a5b4fc" },

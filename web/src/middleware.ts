@@ -17,7 +17,15 @@ export default clerkMiddleware(async (auth, request) => {
   }
 
   if (!isPublicRoute(request)) {
-    await auth.protect();
+    const { userId } = await auth();
+    if (!userId) {
+      // Redirect to our own /login page instead of Clerk's hosted sign-in.
+      // auth.protect() redirects to accounts.atomic.fun which causes CORS
+      // errors when the browser follows the redirect from RSC fetch requests.
+      const loginUrl = new URL("/login", request.url);
+      loginUrl.searchParams.set("redirect_url", request.nextUrl.pathname);
+      return NextResponse.redirect(loginUrl);
+    }
   }
 });
 

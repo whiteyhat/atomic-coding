@@ -806,6 +806,9 @@ export function PlatformAidProvider({
 
       try {
         const token = await getAccessToken();
+        if (!token) {
+          throw new Error("Not authenticated");
+        }
         const history = messages
           .filter(
             (entry): entry is Extract<
