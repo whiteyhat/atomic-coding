@@ -106,7 +106,7 @@ const PIPELINE_TASKS: Omit<WarRoomTask, "id" | "war_room_id" | "status" | "outpu
     title: "Write validation specs",
     description: "Generate structural validation rules for planned atoms.",
     assigned_agent: "checker",
-    depends_on: [1, 2],
+    depends_on: [1],
   },
   {
     task_number: 4,

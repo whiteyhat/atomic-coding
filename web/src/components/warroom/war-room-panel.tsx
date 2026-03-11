@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
   AlertTriangle,
@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useWarRoom } from "@/lib/use-war-room";
 import { buildWarRoomAgentViewModels } from "@/lib/war-room-console";
+import { toast } from "sonner";
 import { cancelWarRoom } from "@/lib/api";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
@@ -272,6 +273,55 @@ export function WarRoomPanel({
     [events, heartbeats, now, tasks],
   );
 
+  // Toast notifications for notable pipeline events
+  const toastedEventIds = useRef<Set<string>>(new Set());
+  const didSeedToastRef = useRef(false);
+
+  // Seed already-seen event IDs on first load to avoid replaying toasts on remount
+  useEffect(() => {
+    if (!didSeedToastRef.current && events.length > 0) {
+      for (const event of events) toastedEventIds.current.add(event.id);
+      didSeedToastRef.current = true;
+    }
+  }, [events]);
+
+  // Fire toasts for new notable events
+  useEffect(() => {
+    for (const event of events) {
+      if (toastedEventIds.current.has(event.id)) continue;
+      switch (event.event_type) {
+        case "task_completed": {
+          const task = tasks.find((t) => t.task_number === event.task_number);
+          toast.success(`Task #${event.task_number} complete`, {
+            description: task?.title ?? undefined,
+            duration: 3500,
+          });
+          toastedEventIds.current.add(event.id);
+          break;
+        }
+        case "war_room_completed": {
+          toast.success("Game built successfully!", {
+            description: "The pipeline finished — your canvas is loading.",
+            duration: 6000,
+          });
+          toastedEventIds.current.add(event.id);
+          break;
+        }
+        case "war_room_failed": {
+          const failedTask = [...tasks].reverse().find((t) => t.status === "failed");
+          toast.error("Pipeline failed", {
+            description: failedTask
+              ? `Stopped at Task #${failedTask.task_number}: ${failedTask.title}`
+              : "Check the War Room console for details.",
+            duration: 8000,
+          });
+          toastedEventIds.current.add(event.id);
+          break;
+        }
+      }
+    }
+  }, [events, tasks]);
+
   if (isLoading && !warRoom) {
     return (
       <div className="flex h-full items-center justify-center text-white/40">
@@ -300,7 +350,7 @@ export function WarRoomPanel({
   const isPipelineLive = !warRoom.completed_at;
 
   return (
-    <div className="flex h-full flex-col bg-[radial-gradient(circle_at_top,#45131d_0%,#1a090d_52%,#0d0406_100%)]">
+    <div className="@container flex h-full flex-col bg-[radial-gradient(circle_at_top,#45131d_0%,#1a090d_52%,#0d0406_100%)]">
       <ScrollArea className="flex-1 min-h-0">
         <div className="space-y-4 px-5 py-5">
           <div className="overflow-hidden rounded-[1.8rem] border border-white/10 bg-[linear-gradient(155deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] p-5 shadow-[0_22px_60px_rgba(0,0,0,0.32)]">
@@ -367,7 +417,7 @@ export function WarRoomPanel({
             </div>
           </div>
 
-          <div className="mt-5 grid gap-3 grid-cols-4">
+          <div className="mt-5 grid gap-3 grid-cols-2 @[512px]:grid-cols-4">
             <div className="rounded-[1.15rem] border border-white/10 bg-black/20 px-4 py-3">
               <p className="text-[10px] uppercase tracking-[0.2em] text-white/35">Elapsed</p>
               <ElapsedTimer seconds={pipelineElapsedSeconds} isLive={isPipelineLive} variant="card" className="mt-2" />
@@ -436,10 +486,15 @@ export function WarRoomPanel({
                 </p>
               </div>
               <Badge variant="outline" className="rounded-full border-white/12 bg-white/[0.05] px-3 py-1 text-[10px] uppercase tracking-[0.18em] text-white/60">
-                {agentViews.filter((v) => v.status !== "idle" || v.tasksHandled > 0).length} agents
+                {agentViews.filter((v) => v.status !== "idle").length} agents
               </Badge>
             </div>
 
+            {agentViews.every((v) => v.status === "idle") ? (
+              <div className="rounded-[1.2rem] border border-white/8 bg-white/[0.02] px-4 py-5 text-center text-sm text-white/35">
+                No agents dispatched yet — waiting for pipeline to start.
+              </div>
+            ) : (
             <Accordion
               type="multiple"
               defaultValue={agentViews
@@ -447,7 +502,7 @@ export function WarRoomPanel({
                 .map((view) => view.agent)}
               className="space-y-3"
             >
-              {agentViews.filter((view) => view.status !== "idle" || view.tasksHandled > 0).map((view) => {
+              {agentViews.filter((view) => view.status !== "idle").map((view) => {
                 const theme = AGENT_THEME[view.agent];
                 const Icon = theme.icon;
                 const isActive = view.status === "working";
@@ -518,7 +573,7 @@ export function WarRoomPanel({
                     </AccordionTrigger>
 
                     <AccordionContent className="pb-4">
-                      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
+                      <div className="grid gap-4 @[680px]:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
                         <div className="space-y-4">
                           <div className="grid gap-3 grid-cols-2">
                             <div className="rounded-[1.2rem] border border-white/10 bg-white/[0.03] px-3 py-3">
@@ -645,6 +700,7 @@ export function WarRoomPanel({
                 );
               })}
             </Accordion>
+            )}
           </div>
 
           <LiveEventFeed events={events} />

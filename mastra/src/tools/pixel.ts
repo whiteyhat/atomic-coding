@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import {
@@ -8,6 +9,80 @@ import {
   type PixelImageSize,
 } from "../lib/pixel-guidelines.js";
 import { getCodeStructureTool, readAtomsTool } from "./supabase.js";
+
+/**
+ * Per-run registry: maps "runId:assetKey" → actual image URL/base64.
+ *
+ * Why a nested map keyed by runId?
+ * - Multiple war rooms can run concurrently in the same process.
+ * - Using AsyncLocalStorage to thread the runId through Mastra's tool
+ *   execute() calls means each run's keys are fully isolated.
+ * - clearPixelRegistryForRun() only wipes one run's entries, so concurrent
+ *   runs can never corrupt each other's data.
+ */
+const pixelAssetRegistry = new Map<string, Map<string, string>>();
+const runIdStorage = new AsyncLocalStorage<string>();
+
+let _globalCounter = 0;
+
+function currentRunId(): string {
+  return runIdStorage.getStore() ?? "default";
+}
+
+function makeAssetKey(name: string): string {
+  _globalCounter += 1;
+  const safe = name.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 32);
+  return `pxl_ref_${_globalCounter}_${safe}`;
+}
+
+function registryForRun(runId: string): Map<string, string> {
+  let map = pixelAssetRegistry.get(runId);
+  if (!map) {
+    map = new Map();
+    pixelAssetRegistry.set(runId, map);
+  }
+  return map;
+}
+
+/**
+ * Run a pixel-agent dispatch inside a scoped context so every
+ * generate-polished-visual-pack tool call within it writes to an
+ * isolated per-run registry bucket.
+ */
+export function runWithPixelContext<T>(runId: string, fn: () => Promise<T>): Promise<T> {
+  return runIdStorage.run(runId, fn);
+}
+
+/** Resolve any pxl_ref_* keys in a task output back to real URLs/base64. */
+export function resolvePixelAssetKeys(
+  output: Record<string, unknown>,
+  runId: string,
+): Record<string, unknown> {
+  if (!Array.isArray(output.assets_created)) return output;
+  const registry = pixelAssetRegistry.get(runId);
+  let resolved = 0;
+  const assets_created = (output.assets_created as unknown[]).map((asset) => {
+    if (typeof asset !== "object" || !asset) return asset;
+    const a = asset as Record<string, unknown>;
+    const key = typeof a.url_or_base64 === "string" ? a.url_or_base64 : null;
+    if (key && key.startsWith("pxl_ref_") && registry) {
+      const actual = registry.get(key);
+      if (actual) {
+        resolved += 1;
+        return { ...a, url_or_base64: actual };
+      }
+      console.warn("[pixel-registry] key not found in registry — asset may be missing", { key, runId });
+    }
+    return asset;
+  });
+  console.log("[pixel-registry] resolved asset keys", { runId, resolved, total: assets_created.length });
+  return { ...output, assets_created };
+}
+
+/** Free all registry memory for a completed run. Call after both task 7 and task 8 have resolved. */
+export function clearPixelRegistryForRun(runId: string): void {
+  pixelAssetRegistry.delete(runId);
+}
 
 const OPENROUTER_CHAT_COMPLETIONS_URL =
   "https://openrouter.ai/api/v1/chat/completions";
@@ -265,9 +340,14 @@ export const generatePolishedVisualPackTool = createTool({
       z.object({
         name: z.string(),
         type: z.string(),
-        url_or_base64: z.string(),
-        prompt_used: z.string(),
-        revised_prompt: z.string().nullable(),
+        /**
+         * A short reference key (e.g. "pxl_ref_1_health_bar"). The actual image
+         * URL / base64 is stored in the module-level pixelAssetRegistry and is
+         * never sent back through the conversation history to avoid context overflow.
+         * Copy this key verbatim into your output's assets_created[].url_or_base64.
+         * The orchestrator will resolve it to the real URL before persisting.
+         */
+        asset_key: z.string(),
         aspect_ratio: z.string(),
         image_size: z.string(),
         polish_notes: z.array(z.string()),
@@ -295,12 +375,33 @@ export const generatePolishedVisualPackTool = createTool({
       )
     );
 
-    const generated: Array<Awaited<ReturnType<typeof generateSingleAsset>>> = [];
+    const generated: Array<{
+      name: string;
+      type: string;
+      asset_key: string;
+      aspect_ratio: string;
+      image_size: string;
+      polish_notes: string[];
+      source_model: string;
+    }> = [];
     const failures: Array<{ asset: string; error: string }> = [];
 
     for (const [i, result] of results.entries()) {
       if (result.status === "fulfilled") {
-        generated.push(result.value);
+        const full = result.value;
+        // Store the actual image data in the run-scoped registry — never put it
+        // in the tool result that flows back through the conversation history.
+        const key = makeAssetKey(full.name);
+        registryForRun(currentRunId()).set(key, full.url_or_base64);
+        generated.push({
+          name: full.name,
+          type: full.type,
+          asset_key: key,
+          aspect_ratio: full.aspect_ratio,
+          image_size: full.image_size,
+          polish_notes: full.polish_notes,
+          source_model: full.source_model,
+        });
       } else {
         failures.push({
           asset: assets[i].name,
@@ -318,6 +419,7 @@ export const generatePolishedVisualPackTool = createTool({
         ...(failures.length > 0
           ? [`Failed: ${failures.map((f) => f.asset).join(", ")}`]
           : []),
+        "Copy each asset_key verbatim into your output's assets_created[].url_or_base64 field.",
         "Use transparent-background outputs for overlay composition unless a full-scene asset was requested.",
       ],
     };

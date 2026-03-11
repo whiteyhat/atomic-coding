@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertTriangle,
   Bot,
@@ -146,7 +147,12 @@ function EventItem({ event }: { event: WarRoomEvent }) {
   const hasPayload = Object.keys(event.payload ?? {}).length > 0;
 
   return (
-    <div
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: -6 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, height: 0, marginTop: 0 }}
+      transition={{ duration: 0.2, ease: "easeOut" }}
       className={cn(
         "rounded-[1rem] border border-white/8 bg-white/[0.03] px-3 py-2 transition-colors",
         hasPayload && "cursor-pointer hover:bg-white/[0.055]",
@@ -199,7 +205,7 @@ function EventItem({ event }: { event: WarRoomEvent }) {
           )}
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -235,9 +241,11 @@ export function LiveEventFeed({ events }: LiveEventFeedProps) {
       </div>
 
       <div className="space-y-2">
-        {visible.map((event) => (
-          <EventItem key={event.id} event={event} />
-        ))}
+        <AnimatePresence initial={false}>
+          {visible.map((event) => (
+            <EventItem key={event.id} event={event} />
+          ))}
+        </AnimatePresence>
       </div>
 
       {hiddenCount > 0 && (

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Toaster } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { PlatformAidProvider } from "@/components/platform-aid/platform-aid-provider";
 import { AuthProvider } from "@/lib/auth-provider";
@@ -41,6 +42,17 @@ export default function RootLayout({
             </TooltipProvider>
           </SWRProvider>
         </AuthProvider>
+        <Toaster
+          position="bottom-right"
+          theme="dark"
+          toastOptions={{
+            style: {
+              background: "#1b0b0f",
+              border: "1px solid rgba(255,255,255,0.08)",
+              color: "rgba(255,255,255,0.88)",
+            },
+          }}
+        />
       </body>
     </html>
   );

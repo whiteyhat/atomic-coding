@@ -17,6 +17,7 @@ import { buildTaskPrompt, getAgentSystemPrompt } from "./prompts.js";
 import { Task1OutputSchema, Task2OutputSchema, Task3OutputSchema, Task4OutputSchema, Task5OutputSchema, Task6OutputSchema, Task7OutputSchema, Task8OutputSchema, CheckerValidationOutputSchema, Task10OutputSchema, type Task1Scope, type Task8Asset, type ValidationSpecs } from "./types.js";
 import type { WarRoomTask, DispatchResult, TaskStatus } from "./types.js";
 import { ensureBoilerplateSeeded } from "./boilerplate-seeder.js";
+import { resolvePixelAssetKeys, clearPixelRegistryForRun, runWithPixelContext } from "../tools/pixel.js";
 
 const MAX_RETRY_CYCLES = 3;
 const MAX_TASK_RETRIES = 2;
@@ -651,7 +652,7 @@ async function autoSkipPermanentlyBlockedTasks(
       reason: `Auto-skipped: dependency task #${failedTaskNumber} failed permanently`,
     };
     await warrooms.updateTaskStatus(warRoomId, blockedTask.task_number, "completed", skipOutput);
-    await safeRecord("task_auto_skipped event", () =>
+    void safeRecord("task_auto_skipped event", () =>
       warrooms.recordEvent(warRoomId, "task_skipped", blockedTask.assigned_agent ?? "jarvis", blockedTask.task_number, {
         reason: `Dependency task #${failedTaskNumber} failed permanently`,
         blocked_by: failedTaskNumber,
@@ -801,7 +802,7 @@ async function dispatchToAgent(
   const dispatchStart = Date.now();
 
   // Record an initial thinking event so the UI shows activity immediately
-  await safeRecord("agent_thinking event", () =>
+  void safeRecord("agent_thinking event", () =>
     warrooms.recordEvent(warRoomId, "agent_thinking", agentName, task.task_number, {
       title: task.title,
       phase: "starting",
@@ -955,18 +956,21 @@ export async function runPipeline(warRoomId: string): Promise<void> {
 
   // Mark war room as running
   await warrooms.updateWarRoomStatus(warRoomId, "running");
-  await safeRecord("pipeline_started event", () =>
+  void safeRecord("pipeline_started event", () =>
     warrooms.recordEvent(warRoomId, "pipeline_started", "jarvis", null, {
       totalTasks: initialTasks.length,
     })
   );
-  await safeRecord("jarvis heartbeat", () =>
+  void safeRecord("jarvis heartbeat", () =>
     warrooms.upsertHeartbeat(warRoomId, "jarvis", "working", {
       phase: "orchestrating",
     })
   );
 
   const retryMap = new Map<number, number>();
+  // Cache completed task outputs so getWarRoom() doesn't need to re-serialize
+  // large JSONB columns on every loop iteration for already-finished tasks.
+  const taskOutputCache = new Map<number, Record<string, unknown> | null>();
   let iteration = 0;
 
   try {
@@ -979,7 +983,7 @@ export async function runPipeline(warRoomId: string): Promise<void> {
       // Check for cancellation
       if (currentRoom.status === "cancelled") {
         console.log("[orchestrator] pipeline cancelled by user", { warRoomId });
-        await safeRecord("jarvis idle heartbeat", () =>
+        void safeRecord("jarvis idle heartbeat", () =>
           warrooms.upsertHeartbeat(warRoomId, "jarvis", "idle")
         );
         return;
@@ -992,13 +996,13 @@ export async function runPipeline(warRoomId: string): Promise<void> {
           durationMs: Date.now() - pipelineStart,
         });
         await warrooms.updateWarRoomStatus(warRoomId, "failed");
-        await safeRecord("pipeline_timeout event", () =>
+        void safeRecord("pipeline_timeout event", () =>
           warrooms.recordEvent(warRoomId, "pipeline_timeout", "jarvis", null, {
             timeout_ms: PIPELINE_TIMEOUT_MS,
             elapsed_ms: Date.now() - pipelineStart,
           })
         );
-        await safeRecord("jarvis error heartbeat", () =>
+        void safeRecord("jarvis error heartbeat", () =>
           warrooms.upsertHeartbeat(warRoomId, "jarvis", "error", {
             error: "Pipeline timed out after 20 minutes",
           })
@@ -1007,6 +1011,13 @@ export async function runPipeline(warRoomId: string): Promise<void> {
       }
 
       const tasks = await syncTaskGraphStates(warRoomId, currentRoom.tasks);
+      // Restore completed task outputs from cache — avoids re-reading large JSONB
+      // from DB on every iteration for tasks whose output never changes.
+      for (const t of tasks) {
+        if (t.status === "completed" && taskOutputCache.has(t.task_number)) {
+          t.output = taskOutputCache.get(t.task_number) ?? null;
+        }
+      }
       const statusCounts = tasks.reduce(
         (acc, t) => { acc[t.status] = (acc[t.status] || 0) + 1; return acc; },
         {} as Record<string, number>
@@ -1014,7 +1025,7 @@ export async function runPipeline(warRoomId: string): Promise<void> {
       console.log(`[orchestrator] iteration ${iteration}`, { warRoomId, statusCounts });
 
       // Keep Jarvis heartbeat alive while orchestrating
-      await safeRecord("jarvis orchestrating heartbeat", () =>
+      void safeRecord("jarvis orchestrating heartbeat", () =>
         warrooms.upsertHeartbeat(warRoomId, "jarvis", "working", {
           phase: "orchestrating",
           iteration,
@@ -1037,7 +1048,7 @@ export async function runPipeline(warRoomId: string): Promise<void> {
             { warRoomId, statusCounts }
           );
           await warrooms.updateWarRoomStatus(warRoomId, "failed");
-          await safeRecord("pipeline_stuck event", () =>
+          void safeRecord("pipeline_stuck event", () =>
             warrooms.recordEvent(
               warRoomId,
               "pipeline_stuck",
@@ -1049,7 +1060,7 @@ export async function runPipeline(warRoomId: string): Promise<void> {
           return;
         }
         // Tasks are still running — adaptive polling (fast early, slower later)
-        const pollDelay = iteration <= 5 ? 500 : iteration <= 20 ? 1000 : 2000;
+        const pollDelay = iteration <= 5 ? 100 : iteration <= 20 ? 300 : 500;
         await sleep(pollDelay);
         continue;
       }
@@ -1075,7 +1086,7 @@ export async function runPipeline(warRoomId: string): Promise<void> {
             notes: ["Task 8 skipped: 3D games use 3D models and assets instead of 2D sprites."],
           };
           await warrooms.updateTaskStatus(warRoomId, 8, "completed", skipOutput);
-          await safeRecord("task_skipped event", () =>
+          void safeRecord("task_skipped event", () =>
             warrooms.recordEvent(warRoomId, "task_skipped", "pixel", 8, {
               reason: "3D games do not use 2D sprites",
             })
@@ -1105,7 +1116,7 @@ export async function runPipeline(warRoomId: string): Promise<void> {
             resolved_dependencies: task.depends_on,
           }
         );
-        await safeRecord(`${agent} dispatching heartbeat`, () =>
+        void safeRecord(`${agent} dispatching heartbeat`, () =>
           warrooms.upsertHeartbeat(warRoomId, agent, "working", {
             task_number: task.task_number,
             title: task.title,
@@ -1189,7 +1200,7 @@ export async function runPipeline(warRoomId: string): Promise<void> {
           });
 
           // Persist deterministic report as event for debugging
-          await safeRecord("deterministic_validation_report event", () =>
+          void safeRecord("deterministic_validation_report event", () =>
             warrooms.recordEvent(warRoomId, "deterministic_validation_report", agent, task.task_number, {
               passed: deterministicReport.passed,
               failure_count: deterministicReport.failures.length,
@@ -1211,10 +1222,10 @@ export async function runPipeline(warRoomId: string): Promise<void> {
                 ? `Passed with ${warningIssues.length} warning(s) — skipped LLM validation`
                 : "All deterministic checks passed — skipped LLM validation",
             });
-            await safeRecord(`${agent} idle heartbeat`, () =>
+            void safeRecord(`${agent} idle heartbeat`, () =>
               warrooms.upsertHeartbeat(warRoomId, agent, "idle")
             );
-            await safeRecord("validation_shortcircuit event", () =>
+            void safeRecord("validation_shortcircuit event", () =>
               warrooms.recordEvent(warRoomId, "validation_shortcircuit", agent, task.task_number, {
                 reason: "deterministic_passed",
               })
@@ -1258,10 +1269,10 @@ export async function runPipeline(warRoomId: string): Promise<void> {
               pre_fix_snapshot: { total_failures: 0, critical_failures: 0, warning_failures: 0 },
               notes: "All deterministic checks already pass — no fixes needed",
             });
-            await safeRecord(`${agent} idle heartbeat`, () =>
+            void safeRecord(`${agent} idle heartbeat`, () =>
               warrooms.upsertHeartbeat(warRoomId, agent, "idle")
             );
-            await safeRecord("fix_shortcircuit event", () =>
+            void safeRecord("fix_shortcircuit event", () =>
               warrooms.recordEvent(warRoomId, "fix_shortcircuit", agent, task.task_number, {
                 reason: "deterministic_passed",
               })
@@ -1281,7 +1292,7 @@ export async function runPipeline(warRoomId: string): Promise<void> {
             genre,
             currentRoom.game_format,
           );
-          await safeRecord("boilerplate_seeded event", () =>
+          void safeRecord("boilerplate_seeded event", () =>
             warrooms.recordEvent(warRoomId, "boilerplate_seeded", "forge", 2, {
               seeded: seedReport.seeded,
               already_existed: seedReport.already_existed,
@@ -1299,11 +1310,29 @@ export async function runPipeline(warRoomId: string): Promise<void> {
           });
         }
 
-        // Dispatch to Mastra agent
+        // Dispatch to Mastra agent.
+        // Pixel tasks (7 & 8) run inside a scoped AsyncLocalStorage context so
+        // generate-polished-visual-pack writes asset data to a per-run registry
+        // bucket instead of embedding it in the conversation history.
         const taskStart = Date.now();
-        const result = await dispatchToAgent(task, context, warRoomId);
+        const isPixelTask = task.task_number === 7 || task.task_number === 8;
+        const result = isPixelTask
+          ? await runWithPixelContext(warRoomId, () => dispatchToAgent(task, context, warRoomId))
+          : await dispatchToAgent(task, context, warRoomId);
 
         const taskDurationMs = Date.now() - taskStart;
+
+        // Resolve pixel asset registry keys → real URLs before persisting output.
+        // Must run for BOTH task 7 (UI assets) and task 8 (sprites), and for
+        // task 8 it must happen BEFORE processTask8Output which fetches the URLs.
+        if (result.success && isPixelTask && result.output) {
+          result.output = resolvePixelAssetKeys(result.output, warRoomId);
+        }
+
+        // After both pixel tasks have resolved, free the run's registry memory.
+        if (task.task_number === 8) {
+          clearPixelRegistryForRun(warRoomId);
+        }
 
         if (result.success && task.task_number === 8 && result.output) {
           try {
@@ -1315,7 +1344,7 @@ export async function runPipeline(warRoomId: string): Promise<void> {
             });
 
             const processedAssets = (result.output.assets_created as Task8Asset[] | undefined) ?? [];
-            await safeRecord("task8_assets_processed event", () =>
+            void safeRecord("task8_assets_processed event", () =>
               warrooms.recordEvent(warRoomId, "task8_assets_processed", "pixel", 8, {
                 asset_count: processedAssets.length,
                 background_removed_count: processedAssets.filter((asset) => asset.background_removed).length,
@@ -1333,7 +1362,7 @@ export async function runPipeline(warRoomId: string): Promise<void> {
           const gameSpecs = task3?.output?.validation_specs as AtomValidationSpecs | undefined;
           const detReport = await runDeterministicValidation(currentRoom.game_id, gameSpecs ?? null);
 
-          await safeRecord("deterministic_validation event", () =>
+          void safeRecord("deterministic_validation event", () =>
             warrooms.recordEvent(warRoomId, "deterministic_validation", "forge", 6, {
               passed: detReport.passed,
               failure_count: detReport.failures.length,
@@ -1359,18 +1388,20 @@ export async function runPipeline(warRoomId: string): Promise<void> {
         }
 
         if (result.success) {
+          // Cache output before writing to DB — downstream iterations read from cache.
+          taskOutputCache.set(task.task_number, result.output ?? null);
           await warrooms.updateTaskStatus(
             warRoomId,
             task.task_number,
             "completed",
             { ...result.output, _duration_ms: taskDurationMs }
           );
-          await safeRecord(`${agent} idle heartbeat`, () =>
+          void safeRecord(`${agent} idle heartbeat`, () =>
             warrooms.upsertHeartbeat(warRoomId, agent, "idle")
           );
 
           // Record task metrics
-          await safeRecord("task_metrics event", () =>
+          void safeRecord("task_metrics event", () =>
             warrooms.recordEvent(warRoomId, "task_metrics", agent, task.task_number, {
               duration_ms: taskDurationMs,
               response_length: result.output ? JSON.stringify(result.output).length : 0,
@@ -1395,7 +1426,7 @@ export async function runPipeline(warRoomId: string): Promise<void> {
                 totalAtoms: scope.complexity.total_atoms,
                 difficulty: scope.complexity.estimated_difficulty,
               });
-              await safeRecord("scope_complexity_warning event", () =>
+              void safeRecord("scope_complexity_warning event", () =>
                 warrooms.recordEvent(warRoomId, "scope_complexity_warning", "jarvis", 1, {
                   total_atoms: scope.complexity.total_atoms,
                   estimated_difficulty: scope.complexity.estimated_difficulty,
@@ -1441,7 +1472,7 @@ export async function runPipeline(warRoomId: string): Promise<void> {
                 const critical = postReport.failures.filter((f) =>
                   ["no_cycles", "required_atom", "duplicate_atom_name"].includes(f.rule)
                 );
-                await safeRecord("post_task_validation event", () =>
+                void safeRecord("post_task_validation event", () =>
                   warrooms.recordEvent(warRoomId, "post_task_validation", agent, task.task_number, {
                     passed: false,
                     failure_count: postReport.failures.length,
@@ -1457,7 +1488,7 @@ export async function runPipeline(warRoomId: string): Promise<void> {
                   await warrooms.updateTaskStatus(warRoomId, task.task_number, "failed", {
                     error: `Post-task validation: ${critical.map((f) => f.message).join("; ")}`,
                   });
-                  await safeRecord(`${agent} error heartbeat`, () =>
+                  void safeRecord(`${agent} error heartbeat`, () =>
                     warrooms.upsertHeartbeat(warRoomId, agent, "error", {
                       error: "Post-task validation failed",
                     })
@@ -1483,7 +1514,7 @@ export async function runPipeline(warRoomId: string): Promise<void> {
               const gameSpecs = task3?.output?.validation_specs as AtomValidationSpecs | undefined;
               const postFixReport = await runDeterministicValidation(currentRoom.game_id, gameSpecs ?? null);
 
-              await safeRecord("post_fix_validation event", () =>
+              void safeRecord("post_fix_validation event", () =>
                 warrooms.recordEvent(warRoomId, "post_fix_validation", "forge", 10, {
                   passed: postFixReport.passed,
                   failure_count: postFixReport.failures.length,
@@ -1524,7 +1555,7 @@ export async function runPipeline(warRoomId: string): Promise<void> {
                     post_fix_validation_failures: postFixReport.failures,
                     _duration_ms: taskDurationMs,
                   });
-                  await safeRecord(`${agent} error heartbeat`, () =>
+                  void safeRecord(`${agent} error heartbeat`, () =>
                     warrooms.upsertHeartbeat(warRoomId, agent, "error", {
                       error: "Post-fix validation failed — critical issues remain",
                     })
@@ -1594,7 +1625,7 @@ export async function runPipeline(warRoomId: string): Promise<void> {
                 resolved_dependencies: [9],
                 ready_at: new Date().toISOString(),
               });
-              await safeRecord("smart_retry_cycle event", () =>
+              void safeRecord("smart_retry_cycle event", () =>
                 warrooms.recordEvent(warRoomId, "smart_retry_cycle", "jarvis", 10, {
                   cycle: taskRetries + 1,
                   max: MAX_RETRY_CYCLES,
@@ -1623,7 +1654,7 @@ export async function runPipeline(warRoomId: string): Promise<void> {
                 waiting_on: [9],
                 resolved_dependencies: [],
               });
-              await safeRecord("retry_cycle event", () =>
+              void safeRecord("retry_cycle event", () =>
                 warrooms.recordEvent(warRoomId, "retry_cycle", "jarvis", 10, {
                   cycle: taskRetries + 1,
                   max: MAX_RETRY_CYCLES,
@@ -1661,7 +1692,7 @@ export async function runPipeline(warRoomId: string): Promise<void> {
                 ready_at: new Date().toISOString(),
               }
             );
-            await safeRecord("task_retry event", () =>
+            void safeRecord("task_retry event", () =>
               warrooms.recordEvent(
                 warRoomId,
                 "task_retry",
@@ -1686,7 +1717,7 @@ export async function runPipeline(warRoomId: string): Promise<void> {
               "failed",
               { error: result.error, _duration_ms: taskDurationMs }
             );
-            await safeRecord(`${agent} error heartbeat`, () =>
+            void safeRecord(`${agent} error heartbeat`, () =>
               warrooms.upsertHeartbeat(warRoomId, agent, "error", {
                 error: result.error,
               })
@@ -1755,7 +1786,7 @@ export async function runPipeline(warRoomId: string): Promise<void> {
       });
     }
 
-    await safeRecord("jarvis final idle heartbeat", () =>
+    void safeRecord("jarvis final idle heartbeat", () =>
       warrooms.upsertHeartbeat(warRoomId, "jarvis", "idle")
     );
   } catch (err) {
@@ -1776,14 +1807,14 @@ export async function runPipeline(warRoomId: string): Promise<void> {
         error: (statusErr as Error).message,
       });
     }
-    await safeRecord("pipeline_error event", () =>
+    void safeRecord("pipeline_error event", () =>
       warrooms.recordEvent(warRoomId, "pipeline_error", "jarvis", null, {
         error: errorMessage,
         stack: errorStack?.split("\n").slice(0, 5).join("\n"),
         elapsed_ms: Date.now() - pipelineStart,
       })
     );
-    await safeRecord("jarvis error heartbeat", () =>
+    void safeRecord("jarvis error heartbeat", () =>
       warrooms.upsertHeartbeat(warRoomId, "jarvis", "error", {
         error: errorMessage,
       })

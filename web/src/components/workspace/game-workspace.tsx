@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { deleteChatSession } from "@/lib/api";
 import { useChatSessions } from "@/lib/hooks/use-chat-sessions";
 import { useWarRooms } from "@/lib/hooks/use-war-rooms";
+import { useWarRoom } from "@/lib/use-war-room";
 import {
   buildWorkstreamItems,
   createFeatureDraftTarget,
@@ -215,6 +216,18 @@ export function GameWorkspace({
     (chatError instanceof Error ? chatError.message : null) ??
     (warRoomError instanceof Error ? warRoomError.message : null);
   const activeTargetKey = getActiveWorkspaceTargetKey(activeTarget);
+  const activeWarRoomId = isWarRoomTarget(activeTarget)
+    ? activeTarget.warRoomId
+    : null;
+
+  // Single authoritative subscription for the active war room — state is passed as props
+  // to WorkspaceGamePanel to avoid duplicate Supabase channel conflicts
+  const {
+    warRoom: pipelineWarRoom,
+    tasks: pipelineTasks,
+    events: pipelineEvents,
+    isComplete: isPipelineComplete,
+  } = useWarRoom(gameName, activeWarRoomId);
 
   return (
     <motion.div
@@ -353,6 +366,10 @@ export function GameWorkspace({
             <WorkspaceGamePanel
               gameName={gameName}
               gameFormat={gameFormat}
+              pipelineWarRoom={pipelineWarRoom}
+              pipelineTasks={pipelineTasks}
+              pipelineEvents={pipelineEvents}
+              isPipelineComplete={isPipelineComplete}
             />
           </ErrorBoundary>
         </div>

@@ -94,9 +94,13 @@ function getRuntimeContext(gameFormat: "2d" | "3d" | null | undefined): string {
 - Prefer scenes, sprites, cameras, tweens, tilemaps, and Arcade-style gameplay structure.
 - Do not plan Three.js render loops, meshes, or 3D camera math for 2D games unless the user explicitly asks for hybrid rendering.
 
-## Optional 2D Externals (available on request)
-- \`matter_js\` — Advanced 2D physics: polygon collisions, joints, constraints (Phaser Matter plugin)
+## Default 2D Externals (auto-installed)
+- \`atomic_assets\` — Universal asset loader with fallbacks (images, sprites, audio, placeholder textures)
 - \`howler_js\` — Audio library with spatial sound, crossfades, and sound sprites
+- \`matter_js\` — Advanced 2D physics: polygon collisions, joints, constraints (Phaser Matter plugin)
+- \`pathfinding_js\` — A* grid-based pathfinding for AI enemy movement and NPC navigation
+
+## Optional 2D Externals (available on request)
 - \`rot_js\` — Roguelike toolkit: dungeon generation, FOV, pathfinding, turn scheduling
 - \`seedrandom_js\` — Seeded PRNG for reproducible procedural generation and replays
 - \`noisejs\` — Perlin and Simplex noise for terrain, textures, and organic randomness

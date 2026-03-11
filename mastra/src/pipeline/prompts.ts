@@ -634,29 +634,7 @@ export function buildTaskPrompt(
       "Set passed=false and status='failed' if ANY error-severity failures exist. Warnings alone do not block."
     );
   } else if (task.task_number === 7) {
-    // Inject design reference from scope
-    const scope = context.scope as Record<string, unknown> | undefined;
-    if (scope) {
-      const uiReqs = scope.ui_requirements as Record<string, unknown> | undefined;
-      if (uiReqs) {
-        lines.push("", "## Design Reference (from scope)");
-        if (uiReqs.color_palette) {
-          lines.push("Color palette:", JSON.stringify(uiReqs.color_palette, null, 2));
-        }
-        if (uiReqs.art_style_hints) {
-          lines.push("Art style:", String(uiReqs.art_style_hints));
-        }
-        if (uiReqs.typography_style) {
-          lines.push("Typography:", String(uiReqs.typography_style));
-        }
-        if (uiReqs.component_inventory) {
-          lines.push("Component inventory:", JSON.stringify(uiReqs.component_inventory, null, 2));
-        }
-        if (uiReqs.layout_zones) {
-          lines.push("Layout zones:", JSON.stringify(uiReqs.layout_zones, null, 2));
-        }
-      }
-    }
+    // ui_requirements are already present inside the full ## Scope block above — no need to re-inject.
     lines.push(
       "",
       "## Instructions — Generate UI Assets (Multi-Phase)",
@@ -682,6 +660,9 @@ export function buildTaskPrompt(
       "9. Pass the design system colors and style as reference_notes on EVERY asset to maintain visual coherence.",
       "10. Generate core HUD elements first, then menus, then interactive button states.",
       "11. For buttons and interactive elements, generate separate assets for each state when possible.",
+      "   IMPORTANT: The tool returns an `asset_key` (e.g. \"pxl_ref_1_health_bar\") for each asset, not the raw image.",
+      "   Copy each asset_key verbatim into your output's assets_created[].url_or_base64 field.",
+      "   The system resolves keys to real image URLs after your output is recorded.",
       "",
       "### Phase 4: Quality Self-Check",
       "12. Review all generated assets against the design system.",

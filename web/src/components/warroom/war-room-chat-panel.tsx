@@ -186,7 +186,8 @@ function WarRoomDraftPanel({
         genre ?? undefined,
         gameFormat,
       );
-      await mutate(getWarRoomsKey(gameName));
+      // Fire cache invalidation in background — don't block navigation on it
+      void mutate(getWarRoomsKey(gameName));
       onWarRoomCreated(warRoom.id);
     } catch (dispatchError) {
       setError(
