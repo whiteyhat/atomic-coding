@@ -450,6 +450,50 @@ async function processTask8Output(args: {
   };
 }
 
+/**
+ * Extract a JSON object from an LLM response that may include markdown code
+ * fences, preamble prose, or trailing explanation text.
+ *
+ * Strategy (in order):
+ *  1. Bare JSON parse — fastest path when the model behaved perfectly.
+ *  2. Strip a single ```json … ``` or ``` … ``` code fence, then parse.
+ *  3. Scan for the outermost { … } block in the text and parse that.
+ */
+function extractJsonFromText(text: string): Record<string, unknown> {
+  const trimmed = text.trim();
+
+  // 1. Direct parse
+  try {
+    return JSON.parse(trimmed) as Record<string, unknown>;
+  } catch {
+    // continue
+  }
+
+  // 2. Strip markdown code fence
+  const fenceMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenceMatch?.[1]) {
+    try {
+      return JSON.parse(fenceMatch[1].trim()) as Record<string, unknown>;
+    } catch {
+      // continue
+    }
+  }
+
+  // 3. Find outermost { … } in the text
+  const start = trimmed.indexOf("{");
+  const end = trimmed.lastIndexOf("}");
+  if (start !== -1 && end > start) {
+    try {
+      return JSON.parse(trimmed.slice(start, end + 1)) as Record<string, unknown>;
+    } catch {
+      // continue
+    }
+  }
+
+  // All strategies failed — return a sentinel so validation produces a clear error
+  return { raw_response: text };
+}
+
 /** Schema map for output validation — tasks not listed here accept any JSON. */
 const OUTPUT_SCHEMAS: Record<number, import("zod").ZodSchema> = {
   1: Task1OutputSchema,
@@ -757,12 +801,23 @@ async function dispatchToAgent(
 
     clearInterval(heartbeatInterval);
 
-    let output: Record<string, unknown>;
-    try {
-      output = JSON.parse(result.text);
-    } catch {
-      output = { raw_response: result.text };
+    // result.text is the LAST step's text only. When the model's final action is a tool
+    // call (e.g. get-code-structure), result.text is "" — walk steps in reverse to find
+    // the last non-empty text the model produced before parsing.
+    const rawText =
+      result.text?.trim() ||
+      [...(result.steps ?? [])].reverse().find((s) => s.text?.trim())?.text?.trim() ||
+      "";
+
+    if (!rawText) {
+      console.warn("[orchestrator] agent produced no text output", {
+        taskNumber: task.task_number,
+        agent: agentName,
+        stepCount: result.steps?.length ?? 0,
+      });
     }
+
+    let output: Record<string, unknown> = extractJsonFromText(rawText);
 
     // Validate output against schema if one exists for this task
     const schema = OUTPUT_SCHEMAS[task.task_number];
@@ -775,6 +830,8 @@ async function dispatchToAgent(
         console.error(`[orchestrator] task ${task.task_number} output validation failed`, {
           errors: (parseResult as any).error.issues,
           outputKeys: Object.keys(output),
+          rawTextLength: rawText.length,
+          rawTextPreview: rawText.slice(0, 200),
         });
         return {
           success: false,
@@ -788,7 +845,7 @@ async function dispatchToAgent(
       taskNumber: task.task_number,
       agent: agentName,
       durationMs: Date.now() - dispatchStart,
-      responseLength: result.text.length,
+      responseLength: rawText.length,
       outputKeys: Object.keys(output),
     });
 

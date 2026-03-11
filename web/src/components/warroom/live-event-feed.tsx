@@ -1,14 +1,22 @@
 "use client";
 
+import { useState } from "react";
 import {
   AlertTriangle,
   Bot,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   Clock3,
   PlayCircle,
   Sparkles,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import type { WarRoomEvent } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -93,16 +101,121 @@ function eventTone(eventType: string): {
   }
 }
 
+function PayloadLog({ payload }: { payload: Record<string, unknown> }) {
+  const entries = Object.entries(payload).filter(
+    ([, v]) => v !== null && v !== undefined && v !== "",
+  );
+  if (entries.length === 0) return null;
+
+  return (
+    <div className="mt-2 rounded-lg border border-white/8 bg-black/40 px-3 py-2 font-mono text-[10px] leading-relaxed">
+      {entries.map(([key, value]) => {
+        let display: string;
+        if (typeof value === "object") {
+          try {
+            display = JSON.stringify(value, null, 2);
+          } catch {
+            display = String(value);
+          }
+        } else {
+          display = String(value);
+        }
+        const isMultiline = display.includes("\n");
+        return (
+          <div key={key} className={cn("flex gap-2", isMultiline && "flex-col")}>
+            <span className="shrink-0 text-white/35">{key}:</span>
+            <span
+              className={cn(
+                "text-white/70",
+                isMultiline && "whitespace-pre-wrap pl-2",
+              )}
+            >
+              {display}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function EventItem({ event }: { event: WarRoomEvent }) {
+  const [expanded, setExpanded] = useState(false);
+  const tone = eventTone(event.event_type);
+  const Icon = tone.icon;
+  const hasPayload = Object.keys(event.payload ?? {}).length > 0;
+
+  return (
+    <div
+      className={cn(
+        "rounded-[1rem] border border-white/8 bg-white/[0.03] px-3 py-2 transition-colors",
+        hasPayload && "cursor-pointer hover:bg-white/[0.055]",
+      )}
+      onClick={() => hasPayload && setExpanded((v) => !v)}
+    >
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-xl border border-white/8 bg-black/20">
+          <Icon className={cn("size-3.5", tone.iconClass)} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2">
+            <p className="truncate text-xs font-medium text-white/82">
+              {describeEvent(event)}
+            </p>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <span className="font-mono text-[10px] text-white/35">
+                {formatEventTime(event.created_at)}
+              </span>
+              {hasPayload && (
+                <ChevronRight
+                  className={cn(
+                    "size-3 text-white/25 transition-transform",
+                    expanded && "rotate-90",
+                  )}
+                />
+              )}
+            </div>
+          </div>
+          <div className="mt-1 flex items-center gap-2">
+            {event.agent && (
+              <Badge
+                variant="outline"
+                className={cn("rounded-full px-2 py-0.5 text-[10px] capitalize", tone.badge)}
+              >
+                {event.agent}
+              </Badge>
+            )}
+            {event.task_number != null && (
+              <Badge
+                variant="outline"
+                className="rounded-full border-white/12 bg-black/20 px-2 py-0.5 text-[10px] text-white/60"
+              >
+                #{event.task_number}
+              </Badge>
+            )}
+          </div>
+          {expanded && hasPayload && (
+            <PayloadLog payload={event.payload as Record<string, unknown>} />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 interface LiveEventFeedProps {
   events: WarRoomEvent[];
 }
 
 export function LiveEventFeed({ events }: LiveEventFeedProps) {
+  const [showAll, setShowAll] = useState(false);
   const safeEvents = Array.isArray(events) ? events : [];
 
   if (safeEvents.length === 0) return null;
 
-  const latest = [...safeEvents].slice(-6).reverse();
+  const sorted = [...safeEvents].reverse();
+  const visible = showAll ? sorted : sorted.slice(0, 3);
+  const hiddenCount = sorted.length - 3;
 
   return (
     <div className="rounded-[1.15rem] border border-white/8 bg-black/20 p-3 shadow-[0_10px_30px_rgba(10,5,6,0.18)]">
@@ -122,50 +235,27 @@ export function LiveEventFeed({ events }: LiveEventFeedProps) {
       </div>
 
       <div className="space-y-2">
-        {latest.map((event) => {
-          const tone = eventTone(event.event_type);
-          const Icon = tone.icon;
-
-          return (
-            <div
-              key={event.id}
-              className="flex items-start gap-3 rounded-[1rem] border border-white/8 bg-white/[0.03] px-3 py-2"
-            >
-              <div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-xl border border-white/8 bg-black/20">
-                <Icon className={cn("size-3.5", tone.iconClass)} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="truncate text-xs font-medium text-white/82">
-                    {describeEvent(event)}
-                  </p>
-                  <span className="shrink-0 font-mono text-[10px] text-white/35">
-                    {formatEventTime(event.created_at)}
-                  </span>
-                </div>
-                <div className="mt-1 flex items-center gap-2">
-                  {event.agent && (
-                    <Badge
-                      variant="outline"
-                      className={cn("rounded-full px-2 py-0.5 text-[10px] capitalize", tone.badge)}
-                    >
-                      {event.agent}
-                    </Badge>
-                  )}
-                  {event.task_number != null && (
-                    <Badge
-                      variant="outline"
-                      className="rounded-full border-white/12 bg-black/20 px-2 py-0.5 text-[10px] text-white/60"
-                    >
-                      #{event.task_number}
-                    </Badge>
-                  )}
-                </div>
-              </div>
-            </div>
-          );
-        })}
+        {visible.map((event) => (
+          <EventItem key={event.id} event={event} />
+        ))}
       </div>
+
+      {hiddenCount > 0 && (
+        <Collapsible open={showAll} onOpenChange={setShowAll}>
+          <CollapsibleTrigger asChild>
+            <button className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl border border-white/8 bg-white/[0.03] py-1.5 text-[11px] text-white/45 transition-colors hover:bg-white/[0.07] hover:text-white/70">
+              <ChevronDown
+                className={cn(
+                  "size-3 transition-transform",
+                  showAll && "rotate-180",
+                )}
+              />
+              {showAll ? "Show less" : `Show ${hiddenCount} more event${hiddenCount !== 1 ? "s" : ""}`}
+            </button>
+          </CollapsibleTrigger>
+          <CollapsibleContent />
+        </Collapsible>
+      )}
     </div>
   );
 }

@@ -322,6 +322,12 @@ function WarRoomDraftPanel({
               <Textarea
                 value={idea}
                 onChange={(event) => setIdea(event.currentTarget.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey && !isGeneratingQuestions && idea.trim()) {
+                    event.preventDefault();
+                    void handleGenerateQuestions();
+                  }
+                }}
                 placeholder="Example: Build a top-down arena shooter with one-minute rounds, heavy neon UI, and readable enemy attack tells for mobile-sized screens."
                 className="min-h-40 rounded-[1.35rem] border-white/10 bg-[#12070a]/80 px-4 py-4 text-sm leading-6 text-white placeholder:text-white/28"
               />

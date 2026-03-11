@@ -7,6 +7,7 @@ import {
   Ban,
   Bot,
   CheckCircle2,
+  ChevronDown,
   Hammer,
   Loader2,
   Paintbrush,
@@ -26,6 +27,11 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { ElapsedTimer } from "./elapsed-timer";
 import { LiveEventFeed } from "./live-event-feed";
 import { SuggestedPrompts } from "./suggested-prompts";
@@ -33,6 +39,7 @@ import { StatusBadge } from "./status-badge";
 import { TaskCard } from "./task-card";
 import { cn } from "@/lib/utils";
 import type { AgentName } from "@/lib/types";
+import type { WarRoomTaskState } from "@/lib/war-room-state";
 
 interface WarRoomPanelProps {
   gameName: string;
@@ -126,6 +133,86 @@ function statusTone(status: string): string {
   }
 }
 
+function PipelineSteps({ tasks }: { tasks: WarRoomTaskState[] }) {
+  const [showAll, setShowAll] = useState(false);
+
+  const sorted = [...tasks].sort((a, b) => a.task_number - b.task_number);
+
+  // Find the current step: first running/assigned, else last completed/failed
+  const currentIdx = (() => {
+    const active = sorted.findIndex(
+      (t) => t.status === "running" || t.status === "assigned",
+    );
+    if (active !== -1) return active;
+    // Fall back to the last completed/failed task
+    for (let i = sorted.length - 1; i >= 0; i--) {
+      if (sorted[i].status === "completed" || sorted[i].status === "failed") return i;
+    }
+    return 0;
+  })();
+
+  const visibleSlice = sorted.slice(currentIdx, currentIdx + 4);
+  const before = sorted.slice(0, currentIdx);
+  const after = sorted.slice(currentIdx + 4);
+  const hiddenCount = before.length + after.length;
+
+  return (
+    <div className="rounded-[1.7rem] border border-white/8 bg-black/20 p-4">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-white">Pipeline steps</p>
+          <p className="text-[11px] text-white/40">
+            Task-level diagnostics and dependency state across the full run
+          </p>
+        </div>
+        <Badge variant="outline" className="rounded-full border-white/12 bg-white/[0.05] px-3 py-1 text-[10px] uppercase tracking-[0.18em] text-white/60">
+          {tasks.length} steps
+        </Badge>
+      </div>
+
+      <Collapsible open={showAll} onOpenChange={setShowAll}>
+        {showAll && before.length > 0 && (
+          <div className="mb-2 space-y-2">
+            {before.map((task) => (
+              <TaskCard key={task.id} task={task} />
+            ))}
+          </div>
+        )}
+
+        <div className="space-y-2">
+          {visibleSlice.map((task) => (
+            <TaskCard key={task.id} task={task} />
+          ))}
+        </div>
+
+        {showAll && after.length > 0 && (
+          <div className="mt-2 space-y-2">
+            {after.map((task) => (
+              <TaskCard key={task.id} task={task} />
+            ))}
+          </div>
+        )}
+
+        {hiddenCount > 0 && (
+          <CollapsibleTrigger asChild>
+            <button className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl border border-white/8 bg-white/[0.03] py-1.5 text-[11px] text-white/45 transition-colors hover:bg-white/[0.07] hover:text-white/70">
+              <ChevronDown
+                className={cn(
+                  "size-3 transition-transform",
+                  showAll && "rotate-180",
+                )}
+              />
+              {showAll
+                ? "Show less"
+                : `Show ${hiddenCount} more step${hiddenCount !== 1 ? "s" : ""}`}
+            </button>
+          </CollapsibleTrigger>
+        )}
+      </Collapsible>
+    </div>
+  );
+}
+
 export function WarRoomPanel({
   gameName,
   warRoomId,
@@ -144,6 +231,18 @@ export function WarRoomPanel({
   } = useWarRoom(gameName, warRoomId);
   const [isCancelling, setIsCancelling] = useState(false);
   const [now, setNow] = useState(() => Date.now());
+  const [promptExpanded, setPromptExpanded] = useState(false);
+
+  const promptSummary = useMemo(() => {
+    const text = (warRoom?.prompt ?? "").trim();
+    const words = text.split(/\s+/);
+    if (words.length <= 12) return null;
+    // Stop at the first sentence boundary within the 12-word window if one exists
+    const window = words.slice(0, 12);
+    const sentenceEnd = window.findIndex((w) => /[.!?]$/.test(w));
+    const cutAt = sentenceEnd !== -1 ? sentenceEnd + 1 : 12;
+    return words.slice(0, cutAt).join(" ");
+  }, [warRoom?.prompt]);
 
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 1000);
@@ -216,9 +315,25 @@ export function WarRoomPanel({
                   <p className="text-[11px] text-white/42">Inline operator view for the live pipeline</p>
                 </div>
               </div>
-              <p className="mt-4 max-w-3xl text-sm leading-7 text-white/78">
-                {warRoom.prompt}
-              </p>
+              {promptSummary ? (
+                <Collapsible open={promptExpanded} onOpenChange={setPromptExpanded}>
+                  <CollapsibleTrigger className="mt-4 flex w-full items-start gap-2 text-left group">
+                    <p className="flex-1 text-sm leading-7 text-white/78">
+                      {promptExpanded ? warRoom.prompt : promptSummary}
+                    </p>
+                    <ChevronDown
+                      className={cn(
+                        "mt-1 size-3.5 shrink-0 text-white/35 transition-transform duration-200",
+                        promptExpanded && "rotate-180"
+                      )}
+                    />
+                  </CollapsibleTrigger>
+                </Collapsible>
+              ) : (
+                <p className="mt-4 max-w-3xl text-sm leading-7 text-white/78">
+                  {warRoom.prompt}
+                </p>
+              )}
             </div>
 
             <div className="flex items-center gap-2">
@@ -321,7 +436,7 @@ export function WarRoomPanel({
                 </p>
               </div>
               <Badge variant="outline" className="rounded-full border-white/12 bg-white/[0.05] px-3 py-1 text-[10px] uppercase tracking-[0.18em] text-white/60">
-                4 agents
+                {agentViews.filter((v) => v.status !== "idle" || v.tasksHandled > 0).length} agents
               </Badge>
             </div>
 
@@ -332,7 +447,7 @@ export function WarRoomPanel({
                 .map((view) => view.agent)}
               className="space-y-3"
             >
-              {agentViews.map((view) => {
+              {agentViews.filter((view) => view.status !== "idle" || view.tasksHandled > 0).map((view) => {
                 const theme = AGENT_THEME[view.agent];
                 const Icon = theme.icon;
                 const isActive = view.status === "working";
@@ -534,24 +649,7 @@ export function WarRoomPanel({
 
           <LiveEventFeed events={events} />
 
-          <div className="rounded-[1.7rem] border border-white/8 bg-black/20 p-4">
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-white">Pipeline steps</p>
-                <p className="text-[11px] text-white/40">
-                  Task-level diagnostics and dependency state across the full run
-                </p>
-              </div>
-              <Badge variant="outline" className="rounded-full border-white/12 bg-white/[0.05] px-3 py-1 text-[10px] uppercase tracking-[0.18em] text-white/60">
-                {tasks.length} steps
-              </Badge>
-            </div>
-            <div className="space-y-2">
-              {tasks.map((task) => (
-                <TaskCard key={task.id} task={task} />
-              ))}
-            </div>
-          </div>
+          <PipelineSteps tasks={tasks} />
 
           {warRoom.status === "failed" && (
             <div className="rounded-[1.5rem] border border-rose-300/18 bg-rose-500/[0.08] px-4 py-4">

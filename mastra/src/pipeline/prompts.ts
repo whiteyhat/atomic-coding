@@ -839,6 +839,16 @@ export function buildTaskPrompt(
       `Attempt: ${retryContext.attempt ?? "unknown"}`,
       `Error: ${retryContext.previous_error ?? "unknown"}`,
     );
+    if (task.task_number === 1) {
+      lines.push(
+        "",
+        "Your previous response was not valid JSON or was missing required fields entirely.",
+        "Required top-level keys: status (string literal \"completed\"), scope (object).",
+        "Required scope keys: genre, genre_rationale, core_mechanics (array), atoms (array, min 3),",
+        "  dependency_graph, architecture (string ≥50 chars), score_system, complexity, ui_requirements.",
+        "After calling get-code-structure ONCE, respond with ONLY the raw JSON object — start with `{`, end with `}`.",
+      );
+    }
     if (retryContext.deterministic_failures) {
       lines.push(
         "",
@@ -1162,6 +1172,13 @@ export function getAgentSystemPrompt(
         "- Wrong creation order: core atoms before their util/feature dependencies",
         "",
         "IMPORTANT: Do NOT call upsert-atom during task 1. Only plan — do not build.",
+        "",
+        "### CRITICAL OUTPUT RULE",
+        "After calling get-code-structure exactly ONCE, your very next message MUST be the raw JSON object — nothing else.",
+        "- Do NOT call any more tools after you start generating the JSON.",
+        "- Do NOT write any explanation, preamble, summary, or prose before or after the JSON.",
+        "- Your response must start with `{` and end with `}` — no markdown code fences, no backticks.",
+        "- If you produce anything other than a bare JSON object, the pipeline will fail and retry.",
         "",
         "## Task 12: Deliver & Suggest Follow-Up Prompts",
         "When assigned task 12, you MUST use the get-code-structure tool to read what was actually built.",
