@@ -248,7 +248,16 @@ export function getDefaultWorkspaceTarget(
     warRooms,
   });
 
+  // New game with no history — open the war room intake automatically
+  if (items.length === 0) {
+    return createWarRoomDraftTarget();
+  }
+
   return items[0]?.target ?? null;
+}
+
+export function gameHasPrototype(warRooms: WarRoom[]): boolean {
+  return warRooms.some((room) => room.status === "completed" && room.final_build_id !== null);
 }
 
 export function isDraftWorkstreamItem(item: WorkstreamItem): boolean {

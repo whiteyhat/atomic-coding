@@ -17,6 +17,7 @@ import {
   createFeatureDraftTarget,
   createWarRoomDraftTarget,
   createWarRoomTarget,
+  gameHasPrototype,
   getActiveWorkspaceTargetKey,
   getDefaultWorkspaceTarget,
   isFeatureTarget,
@@ -212,6 +213,7 @@ export function GameWorkspace({
     [gameName, mutateChatSessions],
   );
 
+  const hasPrototype = gameHasPrototype(warRooms);
   const combinedError =
     (chatError instanceof Error ? chatError.message : null) ??
     (warRoomError instanceof Error ? warRoomError.message : null);
@@ -257,6 +259,7 @@ export function GameWorkspace({
                     <WorkstreamList
                       chatSessionCount={chatSessions.length}
                       error={combinedError}
+                      hasPrototype={hasPrototype}
                       isCollapsed={isWorkstreamCollapsed}
                       isLoading={areChatsLoading || areWarRoomsLoading}
                       items={workstreamItems}
@@ -319,15 +322,17 @@ export function GameWorkspace({
                             </p>
                           </div>
                           <div className="flex gap-3">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              className="rounded-xl border border-white/10 bg-white/[0.04] text-white/75 hover:bg-white/[0.08] hover:text-white"
-                              onClick={() => handleCreateFeature()}
-                            >
-                              <Plus className="size-4" />
-                              New Feature
-                            </Button>
+                            {hasPrototype && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                className="rounded-xl border border-white/10 bg-white/[0.04] text-white/75 hover:bg-white/[0.08] hover:text-white"
+                                onClick={() => handleCreateFeature()}
+                              >
+                                <Plus className="size-4" />
+                                New Feature
+                              </Button>
+                            )}
                             <Button
                               type="button"
                               className="rounded-xl bg-[linear-gradient(135deg,rgba(251,113,133,0.96),rgba(244,63,94,0.84))] text-rose-50 hover:opacity-95"

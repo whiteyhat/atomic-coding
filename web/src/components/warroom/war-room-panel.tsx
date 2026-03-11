@@ -152,9 +152,9 @@ function PipelineSteps({ tasks }: { tasks: WarRoomTaskState[] }) {
     return 0;
   })();
 
-  const visibleSlice = sorted.slice(currentIdx, currentIdx + 4);
+  const visibleSlice = sorted.slice(currentIdx, currentIdx + 3);
   const before = sorted.slice(0, currentIdx);
-  const after = sorted.slice(currentIdx + 4);
+  const after = sorted.slice(currentIdx + 3);
   const hiddenCount = before.length + after.length;
 
   return (
@@ -350,7 +350,7 @@ export function WarRoomPanel({
   const isPipelineLive = !warRoom.completed_at;
 
   return (
-    <div className="@container flex h-full flex-col bg-[radial-gradient(circle_at_top,#45131d_0%,#1a090d_52%,#0d0406_100%)]">
+    <div className="@container min-w-0 w-full flex h-full flex-col bg-[radial-gradient(circle_at_top,#45131d_0%,#1a090d_52%,#0d0406_100%)]">
       <ScrollArea className="flex-1 min-h-0">
         <div className="space-y-4 px-5 py-5">
           <div className="overflow-hidden rounded-[1.8rem] border border-white/10 bg-[linear-gradient(155deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] p-5 shadow-[0_22px_60px_rgba(0,0,0,0.32)]">
@@ -497,9 +497,7 @@ export function WarRoomPanel({
             ) : (
             <Accordion
               type="multiple"
-              defaultValue={agentViews
-                .filter((view) => view.status === "working" || view.status === "error")
-                .map((view) => view.agent)}
+              defaultValue={[]}
               className="space-y-3"
             >
               {agentViews.filter((view) => view.status !== "idle").map((view) => {

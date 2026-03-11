@@ -125,54 +125,55 @@ export async function seedGameFromBoilerplate(
   const supabase = getSupabaseClient();
   const atoms = boilerplate.atoms_json;
 
-  // 1. Insert atoms (in dependency order — boilerplate atoms are already ordered)
-  for (const atom of atoms) {
-    const { error } = await supabase.from("atoms").upsert(
-      {
-        game_id: gameId,
-        name: atom.name,
-        code: atom.code,
-        type: atom.type,
-        description: atom.description || null,
-        inputs: atom.inputs || [],
-        outputs: atom.outputs || [],
-      },
-      { onConflict: "game_id,name" },
-    );
-    if (error) {
-      log("error", "seedGameFromBoilerplate: atom insert failed", {
-        atom: atom.name,
-        error: error.message,
-      });
-    }
-
-    // Insert dependencies
-    const deps = atom.dependencies || [];
-    if (deps.length > 0) {
-      await supabase.from("atom_dependencies").insert(
-        deps.map((dep) => ({
+  // 1. Insert all atoms in parallel
+  await Promise.all(
+    atoms.map(async (atom) => {
+      const { error } = await supabase.from("atoms").upsert(
+        {
           game_id: gameId,
-          atom_name: atom.name,
-          depends_on: dep,
-        })),
+          name: atom.name,
+          code: atom.code,
+          type: atom.type,
+          description: atom.description || null,
+          inputs: atom.inputs || [],
+          outputs: atom.outputs || [],
+        },
+        { onConflict: "game_id,name" },
       );
-    }
+      if (error) {
+        log("error", "seedGameFromBoilerplate: atom insert failed", {
+          atom: atom.name,
+          error: error.message,
+        });
+      }
+    }),
+  );
+
+  // Insert all dependencies in a single bulk insert
+  const allDeps = atoms.flatMap((atom) =>
+    (atom.dependencies || []).map((dep) => ({
+      game_id: gameId,
+      atom_name: atom.name,
+      depends_on: dep,
+    }))
+  );
+  if (allDeps.length > 0) {
+    await supabase.from("atom_dependencies").insert(allDeps);
   }
 
-  // 2. Install externals
+  // 2. Install externals — look up all registry IDs in one query, then bulk insert
   let externalCount = 0;
-  for (const extName of boilerplate.externals) {
-    const { data: entry } = await supabase
+  if (boilerplate.externals.length > 0) {
+    const { data: entries } = await supabase
       .from("external_registry")
-      .select("id")
-      .eq("name", extName)
-      .single();
+      .select("id, name")
+      .in("name", boilerplate.externals);
 
-    if (entry) {
-      const { error } = await supabase
-        .from("game_externals")
-        .insert({ game_id: gameId, registry_id: entry.id });
-      if (!error) externalCount++;
+    if (entries && entries.length > 0) {
+      const { error } = await supabase.from("game_externals").insert(
+        entries.map((entry) => ({ game_id: gameId, registry_id: entry.id })),
+      );
+      if (!error) externalCount = entries.length;
     }
   }
 

@@ -35,6 +35,7 @@ import { cn } from "@/lib/utils";
 interface WorkstreamListProps {
   chatSessionCount: number;
   error: string | null;
+  hasPrototype: boolean;
   isCollapsed: boolean;
   isLoading: boolean;
   items: WorkstreamItem[];
@@ -79,6 +80,7 @@ function WorkstreamIcon({ item }: { item: WorkstreamItem }) {
 export function WorkstreamList({
   chatSessionCount,
   error,
+  hasPrototype,
   isCollapsed,
   isLoading,
   items,
@@ -95,6 +97,12 @@ export function WorkstreamList({
   function handleNewChat() {
     if (!authenticated) {
       login();
+      return;
+    }
+
+    // Before the first prototype is built, always start a war room
+    if (!hasPrototype) {
+      onCreateWarRoom();
       return;
     }
 
@@ -369,28 +377,30 @@ export function WorkstreamList({
             </DialogHeader>
 
             <div className="grid gap-4 px-6 py-6 md:grid-cols-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setLauncherOpen(false);
-                  onCreateFeature();
-                }}
-                className="group relative overflow-hidden rounded-[1.6rem] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.03))] p-5 text-left transition-all hover:-translate-y-0.5 hover:border-white/18 hover:bg-white/[0.08]"
-              >
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(96,165,250,0.2),transparent_36%)] opacity-80" />
-                <div className="relative">
-                  <div className="flex size-11 items-center justify-center rounded-[1rem] border border-sky-300/20 bg-sky-500/10 text-sky-100">
-                    <MessageSquareMore className="size-5" />
+              {hasPrototype && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLauncherOpen(false);
+                    onCreateFeature();
+                  }}
+                  className="group relative overflow-hidden rounded-[1.6rem] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.03))] p-5 text-left transition-all hover:-translate-y-0.5 hover:border-white/18 hover:bg-white/[0.08]"
+                >
+                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(96,165,250,0.2),transparent_36%)] opacity-80" />
+                  <div className="relative">
+                    <div className="flex size-11 items-center justify-center rounded-[1rem] border border-sky-300/20 bg-sky-500/10 text-sky-100">
+                      <MessageSquareMore className="size-5" />
+                    </div>
+                    <p className="mt-5 text-lg font-semibold text-white">New Feature</p>
+                    <p className="mt-2 text-sm leading-6 text-white/58">
+                      Open a direct builder chat for targeted features, fixes, and fast iteration.
+                    </p>
+                    <div className="mt-5 text-[11px] uppercase tracking-[0.22em] text-sky-200/65">
+                      BEST FOR SIMPLE FEATURES OR FIXES
+                    </div>
                   </div>
-                  <p className="mt-5 text-lg font-semibold text-white">New Feature</p>
-                  <p className="mt-2 text-sm leading-6 text-white/58">
-                    Open a direct builder chat for targeted features, fixes, and fast iteration.
-                  </p>
-                  <div className="mt-5 text-[11px] uppercase tracking-[0.22em] text-sky-200/65">
-                    BEST FOR SIMPLE FEATURES OR FIXES
-                  </div>
-                </div>
-              </button>
+                </button>
+              )}
 
               <button
                 type="button"

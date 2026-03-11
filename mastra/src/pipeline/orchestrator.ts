@@ -58,6 +58,37 @@ function dedupeStrings(values: string[]): string[] {
   return [...new Set(values.filter(Boolean))];
 }
 
+/**
+ * Rough token estimate: 1 token ≈ 4 characters for English/code text.
+ * Used for pre-dispatch budget checks — not exact, but good enough to catch overflows.
+ */
+function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
+/**
+ * Token budget for a single agent dispatch (initial prompt + system prompt).
+ * Claude Sonnet 4.6 has a 1M token context window. We leave 15% headroom for
+ * the accumulated tool calls and assistant messages during the agentic loop.
+ */
+const PROMPT_TOKEN_BUDGET = 850_000;
+
+/**
+ * If the combined prompt exceeds the token budget, trim the middle section
+ * (dependency outputs) while preserving the task header/instructions and the end.
+ * This is a last-resort safety net — ideally sanitizeDependencyOutput prevents overflow.
+ */
+function trimPromptToTokenBudget(prompt: string, budget: number): string {
+  const maxChars = budget * 4;
+  if (prompt.length <= maxChars) return prompt;
+
+  const keepHead = Math.floor(maxChars * 0.75);
+  const keepTail = Math.floor(maxChars * 0.10);
+  const warning =
+    "\n\n[CONTEXT TRIMMED: dependency outputs exceeded token budget and were truncated to prevent overflow.]\n\n";
+  return prompt.slice(0, keepHead) + warning + prompt.slice(-keepTail);
+}
+
 function sanitizeAssetSegment(value: string): string {
   const normalized = value
     .trim()
@@ -334,6 +365,125 @@ async function uploadCanonicalTask8Asset(args: {
   }
 
   return data.publicUrl;
+}
+
+/**
+ * Upload a Task 7 UI asset to Supabase bundle storage and return the public URL.
+ * Mirrors uploadCanonicalTask8Asset but uses a "ui" subfolder.
+ */
+async function uploadCanonicalTask7Asset(args: {
+  bytes: Uint8Array;
+  contentType: string;
+  gameName: string;
+  warRoomId: string;
+  assetName: string;
+  index: number;
+}): Promise<string> {
+  const path = `${args.gameName}/ui/${args.warRoomId}/${String(args.index + 1).padStart(2, "0")}_${sanitizeAssetSegment(args.assetName)}${getExtensionForContentType(args.contentType)}`;
+  const supabase = getSupabaseClient();
+
+  const { error } = await supabase.storage
+    .from("bundles")
+    .upload(path, new Blob([args.bytes], { type: args.contentType }), {
+      cacheControl: "3600",
+      upsert: true,
+      contentType: args.contentType,
+    });
+
+  if (error) {
+    throw new Error(`Failed to upload Task 7 UI asset: ${error.message}`);
+  }
+
+  const { data } = supabase.storage
+    .from("bundles")
+    .getPublicUrl(path);
+
+  if (!data?.publicUrl) {
+    throw new Error("Failed to resolve public URL for Task 7 UI asset");
+  }
+
+  return data.publicUrl;
+}
+
+/**
+ * Post-process Task 7 (UI asset generation) output.
+ *
+ * OpenRouter/Gemini may return base64 data URIs instead of hosted HTTPS URLs.
+ * If those data URIs end up in Task 7's output, they flow into Task 8's
+ * dependency_outputs and massively inflate the prompt (100K–1.3M tokens per image).
+ *
+ * This function detects data URIs, uploads them to Supabase bundle storage, and
+ * replaces url_or_base64 with a short public HTTPS URL — eliminating the root cause
+ * of the context overflow. Mirroring what processTask8Output does for sprites.
+ */
+async function processTask7Output(args: {
+  gameId: string;
+  output: Record<string, unknown>;
+  warRoomId: string;
+}): Promise<Record<string, unknown>> {
+  const supabase = getSupabaseClient();
+  const assets = ((args.output.assets_created as Array<Record<string, unknown>> | undefined) ?? []).slice();
+  if (assets.length === 0) {
+    return args.output;
+  }
+
+  const { data: game, error: gameError } = await supabase
+    .from("games")
+    .select("name")
+    .eq("id", args.gameId)
+    .single();
+
+  if (gameError || !game) {
+    throw new Error(`Failed to resolve game name for Task 7 uploads: ${gameError?.message ?? "missing game"}`);
+  }
+
+  const processedAssets = await Promise.all(
+    assets.map(async (asset, index) => {
+      const urlOrBase64 = String(asset.url_or_base64 ?? "");
+
+      // Only upload if this is a data URI — already-hosted URLs are fine as-is.
+      if (!urlOrBase64.startsWith("data:")) {
+        return asset;
+      }
+
+      try {
+        const source = await fetchAssetBytes(urlOrBase64);
+        const canonicalUrl = await uploadCanonicalTask7Asset({
+          bytes: source.bytes,
+          contentType: source.contentType ?? "image/png",
+          gameName: game.name,
+          warRoomId: args.warRoomId,
+          assetName: String(asset.name ?? `ui_asset_${index + 1}`),
+          index,
+        });
+        return { ...asset, url_or_base64: canonicalUrl };
+      } catch (uploadErr) {
+        // Non-fatal: log and preserve original to avoid breaking the pipeline.
+        console.warn("[orchestrator] Task 7 asset upload failed — keeping original", {
+          assetName: asset.name,
+          warRoomId: args.warRoomId,
+          error: (uploadErr as Error).message,
+        });
+        return asset;
+      }
+    }),
+  );
+
+  const uploadedCount = processedAssets.filter(
+    (a, i) => a.url_or_base64 !== assets[i]?.url_or_base64,
+  ).length;
+  const notes = ((args.output.notes as string[] | undefined) ?? []).slice();
+  if (uploadedCount > 0) {
+    notes.push(
+      `${uploadedCount} Task 7 UI asset${uploadedCount === 1 ? "" : "s"} uploaded to canonical bundle storage.`,
+    );
+  }
+
+  return {
+    ...args.output,
+    assets_created: processedAssets,
+    notes: dedupeStrings(notes),
+  };
 }
 
 async function processTask8Output(args: {
@@ -779,7 +929,7 @@ async function dispatchToAgent(
     return { success: false, error: "No agent assigned to task" };
   }
 
-  const taskPrompt = buildTaskPrompt(task, context);
+  let taskPrompt = buildTaskPrompt(task, context);
   const genre = context.genre as string | null | undefined;
   const gameFormat = (context.game_format as "2d" | "3d" | null | undefined) ?? null;
   const systemPrompt = getAgentSystemPrompt(agentName, genre, gameFormat, task.task_number);
@@ -790,11 +940,26 @@ async function dispatchToAgent(
     : agentName === "jarvis" ? 15
     : 10;
 
+  // Pre-dispatch token budget guard: estimate total tokens and trim if over budget.
+  // sanitizeDependencyOutput() in prompts.ts is the primary line of defence; this is
+  // a secondary safety net that prevents a hard API crash with a graceful truncation.
+  const promptTokenEstimate = estimateTokens(taskPrompt + systemPrompt);
+  if (promptTokenEstimate > PROMPT_TOKEN_BUDGET) {
+    console.warn("[orchestrator] prompt exceeds token budget — trimming", {
+      taskNumber: task.task_number,
+      agent: agentName,
+      promptTokenEstimate,
+      budget: PROMPT_TOKEN_BUDGET,
+    });
+    taskPrompt = trimPromptToTokenBudget(taskPrompt, PROMPT_TOKEN_BUDGET - estimateTokens(systemPrompt));
+  }
+
   console.log("[orchestrator] dispatching to agent", {
     taskNumber: task.task_number,
     title: task.title,
     agent: agentName,
     promptLength: taskPrompt.length,
+    promptTokenEstimate,
     maxSteps,
     depKeys: Object.keys(context.dependency_outputs as Record<string, unknown> ?? {}),
   });
@@ -898,15 +1063,35 @@ async function dispatchToAgent(
   } catch (err) {
     clearInterval(heartbeatInterval);
 
+    const errMsg = (err as Error).message ?? "";
+    const isContextOverflow =
+      errMsg.includes("maximum context length") ||
+      errMsg.includes("context_length_exceeded") ||
+      errMsg.includes("context window");
+
     console.error("[orchestrator] agent dispatch failed", {
       taskNumber: task.task_number,
       agent: agentName,
       durationMs: Date.now() - dispatchStart,
-      error: (err as Error).message,
+      isContextOverflow,
+      promptTokenEstimate,
+      error: errMsg,
     });
+
+    if (isContextOverflow) {
+      void safeRecord("context_overflow event", () =>
+        warrooms.recordEvent(warRoomId, "context_overflow", agentName, task.task_number, {
+          prompt_length_chars: taskPrompt.length,
+          prompt_token_estimate: promptTokenEstimate,
+          dep_keys: Object.keys(context.dependency_outputs as Record<string, unknown> ?? {}),
+          error: errMsg,
+        })
+      );
+    }
+
     return {
       success: false,
-      error: `Agent dispatch failed: ${(err as Error).message}`,
+      error: `Agent dispatch failed: ${errMsg}`,
     };
   }
 }
@@ -1135,6 +1320,21 @@ export async function runPipeline(warRoomId: string): Promise<void> {
           scope: currentRoom.scope,
           dependency_outputs: depOutputs,
         };
+
+        // Fetch active externals for this game and inject into context.
+        // Fetched per-task so post-Task-2 seeding is reflected for downstream tasks.
+        // Pixel tasks (7, 8) skip this — they generate images, not code.
+        if (task.task_number !== 7 && task.task_number !== 8) {
+          const { data: extRows } = await getSupabaseClient()
+            .from("game_externals")
+            .select(
+              "external_registry(name, display_name, global_name, version, cdn_url, load_type, api_surface)"
+            )
+            .eq("game_id", currentRoom.game_id);
+          context.installed_externals = (extRows || [])
+            .map((row: any) => row.external_registry)
+            .filter(Boolean);
+        }
         const latestValidationOutputs =
           task.task_number === 10 ? getLatestValidationOutputs(tasks) : {};
         if (Object.keys(latestValidationOutputs).length > 0) {
@@ -1329,9 +1529,39 @@ export async function runPipeline(warRoomId: string): Promise<void> {
           result.output = resolvePixelAssetKeys(result.output, warRoomId);
         }
 
-        // After both pixel tasks have resolved, free the run's registry memory.
-        if (task.task_number === 8) {
+        // Free the run's registry memory immediately after each pixel task's keys
+        // are resolved. Task 7 and task 8 run sequentially (8 depends on 7) and each
+        // generates fresh pxl_ref_* keys, so clearing after resolution is safe.
+        // Clearing per-task (rather than only after task 8) prevents a memory leak
+        // when task 8 is auto-skipped because a dependency failed permanently.
+        if (isPixelTask) {
           clearPixelRegistryForRun(warRoomId);
+        }
+
+        // Task 7 post-processing: upload any base64 data URIs to Supabase so that
+        // Task 8's dependency_outputs never contains raw image blobs (context overflow root cause).
+        if (result.success && task.task_number === 7 && result.output) {
+          try {
+            result.output = await processTask7Output({
+              gameId: currentRoom.game_id,
+              output: result.output,
+              warRoomId,
+            });
+            const uiAssets = (result.output.assets_created as Array<Record<string, unknown>> | undefined) ?? [];
+            void safeRecord("task7_assets_processed event", () =>
+              warrooms.recordEvent(warRoomId, "task7_assets_processed", "pixel", 7, {
+                asset_count: uiAssets.length,
+              })
+            );
+          } catch (error) {
+            // Non-fatal: log the failure but don't abort the pipeline.
+            // The sanitizeDependencyOutput guard in prompts.ts is the primary protection;
+            // this upload is a secondary hardening step.
+            console.warn("[orchestrator] Task 7 asset post-processing failed (non-fatal)", {
+              warRoomId,
+              error: (error as Error).message,
+            });
+          }
         }
 
         if (result.success && task.task_number === 8 && result.output) {

@@ -1,5 +1,5 @@
 import { Agent } from "@mastra/core/agent";
-import { getCodeStructureTool, readAtomsTool } from "../tools/supabase.js";
+import { getCodeStructureTool, readAtomsTool, readExternalsTool } from "../tools/supabase.js";
 
 export const checker = new Agent({
   id: "checker",
@@ -18,5 +18,6 @@ export const checker = new Agent({
   tools: {
     "get-code-structure": getCodeStructureTool,
     "read-atoms": readAtomsTool,
+    "read-externals": readExternalsTool,
   },
 });

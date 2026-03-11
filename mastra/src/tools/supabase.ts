@@ -225,8 +225,50 @@ export const upsertAtomTool = createTool({
   },
 });
 
+export const readExternalsTool = createTool({
+  id: "read-externals",
+  description:
+    "Get the installed external libraries for a game, including their full API surface and window globals. Use this to understand what third-party libraries (Three.js, Phaser, etc.) are available before writing atom code.",
+  inputSchema: z.object({
+    gameId: z.string().describe("The game ID"),
+    names: z
+      .array(z.string())
+      .optional()
+      .describe("Filter to specific external names (e.g. ['three_js', 'phaser_js']). Omit to get all installed externals."),
+  }),
+  outputSchema: z.object({
+    externals: z.array(
+      z.object({
+        name: z.string(),
+        display_name: z.string(),
+        global_name: z.string(),
+        version: z.string(),
+        cdn_url: z.string(),
+        load_type: z.string(),
+        api_surface: z.string(),
+      })
+    ),
+  }),
+  execute: async ({ gameId, names }) => {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from("game_externals")
+      .select(
+        "external_registry(name, display_name, global_name, version, cdn_url, load_type, api_surface)"
+      )
+      .eq("game_id", gameId);
+    if (error) throw new Error(error.message);
+    const all = (data || [])
+      .map((row: any) => row.external_registry)
+      .filter(Boolean);
+    const filtered = names ? all.filter((e: any) => names.includes(e.name)) : all;
+    return { externals: filtered };
+  },
+});
+
 export const supabaseTools = {
   "get-code-structure": getCodeStructureTool,
   "read-atoms": readAtomsTool,
   "upsert-atom": upsertAtomTool,
+  "read-externals": readExternalsTool,
 };

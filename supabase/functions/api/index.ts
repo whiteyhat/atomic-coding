@@ -224,22 +224,18 @@ app.post("/games", requireAuth(), async (c) => {
       body.game_format,
     );
 
-    // Seed atoms and externals from boilerplate if genre is specified
+    // Seed atoms and externals from boilerplate if genre is specified (non-blocking)
     if (body.genre) {
-      try {
-        await boilerplates.seedGameFromBoilerplate(
-          game.id,
-          body.genre,
-          body.game_format ?? null,
+      boilerplates
+        .seedGameFromBoilerplate(game.id, body.genre, body.game_format ?? null)
+        .then(() => atoms.triggerRebuild(game.id))
+        .catch((seedErr: Error) =>
+          log("error", "Failed to seed boilerplate", {
+            gameId: game.id,
+            genre: body.genre,
+            error: seedErr.message,
+          })
         );
-        atoms.triggerRebuild(game.id);
-      } catch (seedErr) {
-        log("error", "Failed to seed boilerplate", {
-          gameId: game.id,
-          genre: body.genre,
-          error: (seedErr as Error).message,
-        });
-      }
     }
 
     return c.json(game, 201);

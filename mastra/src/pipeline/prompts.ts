@@ -2,6 +2,65 @@ import type { WarRoomTask } from "./types.js";
 import { SYSTEM_PROMPT, getGenreContext } from "../lib/system-prompt.js";
 import { buildPixelSystemPrompt, PIXEL_STYLE_PILLARS } from "../lib/pixel-guidelines.js";
 
+/**
+ * Fields each task needs from each of its dependency task outputs.
+ * Any key listed here is KEPT; all other fields are stripped before prompt injection.
+ * This prevents large blobs (e.g. base64 images, full atom code) from bloating context.
+ * "assets_created" is intentionally excluded from task_7 here because task 8 already
+ * injects design_system + art_direction separately, and the image data is useless to the LLM.
+ */
+const DEP_FIELD_ALLOWLIST: Record<number, Record<string, string[]>> = {
+  8: {
+    task_7: ["status", "design_system", "art_direction", "pack_cohesion_notes", "generation_model", "notes"],
+    task_6: ["status", "atoms_created", "atoms_modified", "notes"],
+  },
+  9: {
+    task_6: ["status", "atoms_created", "atoms_modified", "notes"],
+  },
+  11: {
+    task_6: ["status", "atoms_created", "atoms_modified", "notes"],
+    task_10: ["status", "atoms_fixed", "atoms_created", "failures_remaining", "notes"],
+  },
+};
+
+/**
+ * Sanitize a single dependency task output before stringifying into a prompt.
+ * Applies DEP_FIELD_ALLOWLIST for the current task, then strips any remaining
+ * assets_created arrays to prevent base64 image data from inflating the context.
+ */
+function sanitizeDependencyOutput(
+  taskNumber: number,
+  depKey: string,
+  value: unknown,
+): unknown {
+  if (typeof value !== "object" || !value) return value;
+  const output = value as Record<string, unknown>;
+
+  // Apply per-task allowlist if defined
+  const allowlist = DEP_FIELD_ALLOWLIST[taskNumber]?.[depKey];
+  let filtered: Record<string, unknown>;
+  if (allowlist) {
+    filtered = {};
+    for (const field of allowlist) {
+      if (field in output) filtered[field] = output[field];
+    }
+  } else {
+    filtered = { ...output };
+  }
+
+  // Final safety net: strip any assets_created array (may contain image URLs or base64)
+  // from ANY dependency output regardless of allowlist, to prevent context overflow.
+  if (Array.isArray(filtered.assets_created)) {
+    const count = (filtered.assets_created as unknown[]).length;
+    filtered = {
+      ...filtered,
+      assets_created: `[${count} assets — image data omitted from context to prevent overflow]`,
+    };
+  }
+
+  return filtered;
+}
+
 type GameFormat = "2d" | "3d" | null | undefined;
 
 function getRuntimeName(gameFormat: GameFormat): "phaser" | "three" {
@@ -64,6 +123,63 @@ function filterScopeAtoms(
   return { list, atoms: filtered };
 }
 
+type ExternalEntry = {
+  name: string;
+  display_name: string;
+  global_name: string;
+  version: string;
+  cdn_url?: string;
+  load_type?: string;
+  api_surface?: string;
+};
+
+/**
+ * Format the installed externals section for a task prompt.
+ * Code-writing tasks (Forge) get full api_surface + enforcement instructions.
+ * Planning/validation tasks (Jarvis/Checker) get a compact list.
+ * Pixel tasks (7, 8) get nothing — they generate images, not code.
+ */
+function formatExternalsSection(
+  externals: ExternalEntry[],
+  taskNumber: number
+): string | null {
+  if (!externals || externals.length === 0) return null;
+  if (taskNumber === 7 || taskNumber === 8) return null;
+
+  // Code-writing tasks — Forge: full api_surface + strong enforcement
+  if ([2, 4, 5, 6, 10].includes(taskNumber)) {
+    const lines = [
+      "## Active Externals — USE THESE, DO NOT REIMPLEMENT",
+      "These libraries are installed in this game. Your atoms MUST use them via their window globals.",
+      "Never implement 3D rendering, 2D physics, or game loops from scratch — use the installed externals.",
+      "",
+    ];
+    for (const ext of externals) {
+      lines.push(`### ${ext.display_name} (${ext.name})`);
+      lines.push(`- **Window global**: \`window.${ext.global_name}\``);
+      lines.push(`- **Version**: ${ext.version}`);
+      lines.push(`- **Access in atoms**: \`const ${ext.global_name} = window.${ext.global_name};\``);
+      if (ext.api_surface) {
+        lines.push("", "**API Surface:**", ext.api_surface);
+      }
+      lines.push("");
+    }
+    lines.push("Call `read-externals` with specific names if you need more API detail.");
+    return lines.join("\n");
+  }
+
+  // Planning (Jarvis 1, 12) and validation (Checker 3, 9, 11): compact list
+  const lines = [
+    "## Installed Externals",
+    "These libraries are active in this game:",
+    "",
+  ];
+  for (const ext of externals) {
+    lines.push(`- **${ext.display_name}** (\`${ext.name}\`): \`window.${ext.global_name}\` — v${ext.version}`);
+  }
+  return lines.join("\n");
+}
+
 /**
  * Build the user prompt for a pipeline task.
  * Includes task details, context, user request, scope, and dependency outputs.
@@ -88,6 +204,13 @@ export function buildTaskPrompt(
     "## User Request",
     String(context.prompt ?? ""),
   ];
+
+  // Inject active externals so every agent knows which libraries are installed
+  const installedExternals = context.installed_externals as ExternalEntry[] | undefined;
+  if (installedExternals) {
+    const extSection = formatExternalsSection(installedExternals, task.task_number);
+    if (extSection) lines.push("", extSection);
+  }
 
   // Inject genre boilerplate for task 1 so Jarvis sees genre-specific atoms
   if (task.task_number === 1 && context.genre) {
@@ -131,7 +254,8 @@ export function buildTaskPrompt(
   if (depOutputs && Object.keys(depOutputs).length > 0) {
     lines.push("", "## Previous Task Outputs");
     for (const [key, value] of Object.entries(depOutputs)) {
-      lines.push(`### ${key}`, JSON.stringify(value, null, 2));
+      const sanitized = sanitizeDependencyOutput(task.task_number, key, value);
+      lines.push(`### ${key}`, JSON.stringify(sanitized, null, 2));
     }
   }
 
@@ -694,24 +818,8 @@ export function buildTaskPrompt(
   } else if (task.task_number === 8) {
     const gameFormat = (context.game_format as GameFormat) ?? null;
     const runtimeLabel = getRuntimeLabel(gameFormat);
-    // Inject design reference from scope and Task 7 output
-    const scope = context.scope as Record<string, unknown> | undefined;
-    if (scope) {
-      const uiReqs = scope.ui_requirements as Record<string, unknown> | undefined;
-      if (uiReqs) {
-        lines.push("", "## Design Reference (from scope)");
-        if (uiReqs.color_palette) {
-          lines.push("Color palette:", JSON.stringify(uiReqs.color_palette, null, 2));
-        }
-        if (uiReqs.art_style_hints) {
-          lines.push("Art style:", String(uiReqs.art_style_hints));
-        }
-      }
-      const spriteReqs = scope.sprite_requirements as Record<string, unknown> | undefined;
-      if (spriteReqs) {
-        lines.push("", "## Sprite Requirements (from scope)", JSON.stringify(spriteReqs, null, 2));
-      }
-    }
+    // Note: ui_requirements and sprite_requirements are already in the full ## Scope block above.
+    // Injecting them again here would double the token cost for no additional signal.
     // Extract Task 7 design system from dependency outputs for visual coherence
     const depOutputs = context.dependency_outputs as Record<string, unknown> | undefined;
     if (depOutputs) {

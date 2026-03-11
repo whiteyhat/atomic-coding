@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { getSupabaseBrowserClient } from "./supabase";
 import type {
@@ -42,6 +42,9 @@ export function useWarRoom(
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Unique ID per hook instance — prevents channel name collisions when multiple
+  // useWarRoom hooks are active for the same warRoomId (e.g. game-workspace + war-room-panel).
+  const instanceId = useId();
   const channelRef = useRef<RealtimeChannel | null>(null);
 
   const isComplete =
@@ -114,7 +117,10 @@ export function useWarRoom(
 
       // Unique channel name per attempt to avoid Supabase binding collisions
       subscribeAttempt++;
-      const channelName = `war-room:${warRoomId}:${subscribeAttempt}`;
+      // Include instanceId so two useWarRoom hooks for the same warRoomId
+      // never share a channel name — duplicate topics on the same Supabase
+      // connection cause one subscription to silently drop its events.
+      const channelName = `war-room:${warRoomId}:${instanceId}:${subscribeAttempt}`;
 
       const channel = supabase
         .channel(channelName)
@@ -184,7 +190,7 @@ export function useWarRoom(
           if (
             !cancelled &&
             !reconnecting &&
-            (status === "TIMED_OUT" || status === "CLOSED")
+            (status === "TIMED_OUT" || status === "CLOSED" || status === "CHANNEL_ERROR")
           ) {
             reconnecting = true;
             console.warn("[useWarRoom] reconnecting after", status);
@@ -210,7 +216,7 @@ export function useWarRoom(
         channelRef.current = null;
       }
     };
-  }, [isComplete, processEvent, warRoomId]);
+  }, [instanceId, isComplete, processEvent, warRoomId]);
 
   return {
     warRoom,
