@@ -621,6 +621,50 @@ export function isPipelineComplete(tasks: WarRoomTask[]): boolean {
   );
 }
 
+/**
+ * When a task fails permanently, any downstream task that is still "blocked"
+ * and can never become runnable (all its deps are now completed or failed)
+ * must be auto-skipped. Without this the pipeline deadlocks: isPipelineComplete
+ * stays false while getNextRunnableTasks returns [] indefinitely.
+ */
+async function autoSkipPermanentlyBlockedTasks(
+  warRoomId: string,
+  failedTaskNumber: number
+): Promise<void> {
+  // Re-fetch tasks so we have the latest statuses (the failed task was just updated)
+  const latestTasks = await warrooms.getTasks(warRoomId);
+  const byNumber = new Map(latestTasks.map((t) => [t.task_number, t]));
+
+  const toSkip = latestTasks.filter((t) => {
+    if (t.status !== "blocked") return false;
+    // All dependencies must be terminal (completed or failed)
+    return t.depends_on.every((dep) => {
+      const depTask = byNumber.get(dep);
+      return depTask?.status === "completed" || depTask?.status === "failed";
+    });
+  });
+
+  for (const blockedTask of toSkip) {
+    const skipOutput = {
+      status: "completed",
+      skipped: true,
+      reason: `Auto-skipped: dependency task #${failedTaskNumber} failed permanently`,
+    };
+    await warrooms.updateTaskStatus(warRoomId, blockedTask.task_number, "completed", skipOutput);
+    await safeRecord("task_auto_skipped event", () =>
+      warrooms.recordEvent(warRoomId, "task_skipped", blockedTask.assigned_agent ?? "jarvis", blockedTask.task_number, {
+        reason: `Dependency task #${failedTaskNumber} failed permanently`,
+        blocked_by: failedTaskNumber,
+      })
+    );
+    console.log("[orchestrator] auto-skipped permanently blocked task", {
+      warRoomId,
+      taskNumber: blockedTask.task_number,
+      blockedBy: failedTaskNumber,
+    });
+  }
+}
+
 /** Collect outputs from completed dependency tasks. */
 function gatherDependencyOutputs(
   task: WarRoomTask,
@@ -741,7 +785,7 @@ async function dispatchToAgent(
   const maxSteps = task.task_number === 2 ? 10
     : task.task_number === 10 ? 40
     : agentName === "forge" ? 25
-    : agentName === "pixel" ? 20
+    : agentName === "pixel" ? 8   // Pixel uses image generation tools; high maxSteps causes context overflow
     : agentName === "jarvis" ? 15
     : 10;
 
@@ -1647,6 +1691,13 @@ export async function runPipeline(warRoomId: string): Promise<void> {
                 error: result.error,
               })
             );
+
+            // Auto-skip any tasks that are now permanently blocked because this
+            // task failed. Without this, the pipeline deadlocks: isPipelineComplete
+            // returns false (blocked ≠ terminal), getNextRunnableTasks returns [],
+            // and the stuck-detection fires. Skip tasks whose every dependency is
+            // now completed or failed so the pipeline can advance past them.
+            await autoSkipPermanentlyBlockedTasks(warRoomId, task.task_number);
           }
         }
       });

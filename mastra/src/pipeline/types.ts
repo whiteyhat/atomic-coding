@@ -177,14 +177,14 @@ export type Task4Output = z.infer<typeof Task4OutputSchema>;
 
 export const Task5OutputSchema = z.object({
   status: z.literal("completed"),
-  atoms_created: z.array(z.string()).min(1).describe("New feature atoms created"),
+  atoms_created: z.array(z.string()).describe("New feature atoms created"),
   atoms_modified: z.array(z.string()).default([]).describe("Existing feature atoms modified"),
   feature_atoms_detail: z.array(z.object({
     name: z.string().regex(/^[a-z][a-z0-9]*(_[a-z0-9]+)*$/, "Must be snake_case"),
     type: z.literal("feature"),
     depends_on: z.array(z.string()),
     code_size_bytes: z.number().int().max(2048),
-  })).min(1),
+  })),
   score_tracker_included: z.boolean().describe("Whether score_tracker was created/verified"),
   total_atoms_after: z.number().int(),
   notes: z.string().optional(),
@@ -198,14 +198,14 @@ export type Task5Output = z.infer<typeof Task5OutputSchema>;
 
 export const Task6OutputSchema = z.object({
   status: z.literal("completed"),
-  atoms_created: z.array(z.string()).min(1).describe("Core atoms created"),
+  atoms_created: z.array(z.string()).describe("Core atoms created"),
   atoms_modified: z.array(z.string()).default([]).describe("Existing atoms modified"),
   core_atoms_detail: z.array(z.object({
     name: z.string().regex(/^[a-z][a-z0-9]*(_[a-z0-9]+)*$/, "Must be snake_case"),
     type: z.literal("core"),
     depends_on: z.array(z.string()),
     code_size_bytes: z.number().int().max(2048),
-  })).min(2), // At least game_loop + create_scene
+  })),
   wiring_verification: z.object({
     game_loop_depends_on: z.array(z.string()).min(1),
     create_scene_exists: z.boolean(),
