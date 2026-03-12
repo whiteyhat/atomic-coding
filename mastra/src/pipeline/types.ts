@@ -484,4 +484,8 @@ export interface DispatchResult {
   success: boolean;
   output?: Record<string, unknown>;
   error?: string;
+  /** true if the error came from a transient provider issue (rate limit, server error) */
+  isRetryable?: boolean;
+  /** HTTP status code from the AI provider, if available */
+  providerStatusCode?: number;
 }

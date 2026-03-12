@@ -1,6 +1,6 @@
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
-import { getSupabaseClient } from "../lib/supabase.js";
+import { getSupabaseClient, resolveGameId } from "../lib/supabase.js";
 
 /** Fire-and-forget: trigger the rebuild-bundle Edge Function */
 function triggerRebuild(gameId: string): void {
@@ -37,7 +37,7 @@ export const getCodeStructureTool = createTool({
   description:
     "Get the full atom map and code structure for a game. Returns all atoms with their types, inputs, outputs, and dependencies.",
   inputSchema: z.object({
-    gameId: z.string().describe("The game ID to get code structure for"),
+    gameId: z.string().describe("The game ID (UUID) or game name/slug"),
     type: z
       .enum(["core", "feature", "util"])
       .optional()
@@ -55,7 +55,8 @@ export const getCodeStructureTool = createTool({
       })
     ),
   }),
-  execute: async ({ gameId, type }) => {
+  execute: async ({ gameId: rawGameId, type }) => {
+    const gameId = await resolveGameId(rawGameId);
     const supabase = getSupabaseClient();
 
     let query = supabase
@@ -87,7 +88,7 @@ export const readAtomsTool = createTool({
   description:
     "Read the source code and metadata for specific atoms by name.",
   inputSchema: z.object({
-    gameId: z.string().describe("The game ID"),
+    gameId: z.string().describe("The game ID (UUID) or game name/slug"),
     names: z.array(z.string()).describe("Atom names to read"),
   }),
   outputSchema: z.object({
@@ -103,7 +104,8 @@ export const readAtomsTool = createTool({
       })
     ),
   }),
-  execute: async ({ gameId, names }) => {
+  execute: async ({ gameId: rawGameId, names }) => {
+    const gameId = await resolveGameId(rawGameId);
     const supabase = getSupabaseClient();
 
     const { data: atoms, error } = await supabase
@@ -136,7 +138,7 @@ export const upsertAtomTool = createTool({
   description:
     "Create or update an atom in the game. The atom name must be snake_case and the code must be under 2KB.",
   inputSchema: z.object({
-    gameId: z.string().describe("The game ID"),
+    gameId: z.string().describe("The game ID (UUID) or game name/slug"),
     name: z.string().describe("Atom name (snake_case)"),
     type: z.enum(["core", "feature", "util"]).describe("Atom type"),
     code: z.string().describe("JavaScript function code (max 2KB)"),
@@ -162,7 +164,8 @@ export const upsertAtomTool = createTool({
     success: z.boolean(),
     atom: z.object({ name: z.string(), type: z.string() }),
   }),
-  execute: async ({ gameId, name, type, code, description, inputs, outputs, depends_on, skipRebuild }) => {
+  execute: async ({ gameId: rawGameId, name, type, code, description, inputs, outputs, depends_on, skipRebuild }) => {
+    const gameId = await resolveGameId(rawGameId);
     const supabase = getSupabaseClient();
 
     // 1. Validate code size
@@ -230,7 +233,7 @@ export const readExternalsTool = createTool({
   description:
     "Get the installed external libraries for a game, including their full API surface and window globals. Use this to understand what third-party libraries (Three.js, Phaser, etc.) are available before writing atom code.",
   inputSchema: z.object({
-    gameId: z.string().describe("The game ID"),
+    gameId: z.string().describe("The game ID (UUID) or game name/slug"),
     names: z
       .array(z.string())
       .optional()
@@ -249,7 +252,8 @@ export const readExternalsTool = createTool({
       })
     ),
   }),
-  execute: async ({ gameId, names }) => {
+  execute: async ({ gameId: rawGameId, names }) => {
+    const gameId = await resolveGameId(rawGameId);
     const supabase = getSupabaseClient();
     const { data, error } = await supabase
       .from("game_externals")

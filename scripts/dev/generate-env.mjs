@@ -58,6 +58,11 @@ writeEnvFile(
 
 console.log(`Generated local env files for ${mode} mode using ${config.path}`);
 
+/** Replace localhost/127.0.0.1 with host.docker.internal for Docker networking. */
+function dockerizeUrl(url) {
+  return url.replace(/127\.0\.0\.1|localhost/, "host.docker.internal");
+}
+
 function getHybridSupabaseValues(values) {
   requireValues(values, [
     "DEV_SUPABASE_URL",
@@ -103,8 +108,11 @@ function buildWebEnv(base, defaults, supabase) {
     SUPABASE_SERVICE_ROLE_KEY: supabase.serviceRoleKey,
     OPENROUTER_API_KEY: base.OPENROUTER_API_KEY,
     BUU_API_KEY: base.BUU_API_KEY,
-    NEXT_PUBLIC_PRIVY_APP_ID: base.NEXT_PUBLIC_PRIVY_APP_ID,
-    PRIVY_APP_SECRET: base.PRIVY_APP_SECRET,
+    NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: base.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
+    CLERK_SECRET_KEY: base.CLERK_SECRET_KEY,
+    NEXT_PUBLIC_CLERK_SIGN_IN_URL: base.NEXT_PUBLIC_CLERK_SIGN_IN_URL,
+    NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL: base.NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL,
+    CLERK_JWKS_URL: base.CLERK_JWKS_URL,
     MASTRA_SERVER_URL: defaults.MASTRA_SERVER_URL,
     DEV_AUTH_BYPASS: defaults.DEV_AUTH_BYPASS,
     NEXT_PUBLIC_DEV_AUTH_BYPASS: defaults.DEV_AUTH_BYPASS,
@@ -121,6 +129,7 @@ function buildMastraEnv(base, defaults, supabase) {
     SUPABASE_ANON_KEY: supabase.anonKey,
     SUPABASE_SERVICE_ROLE_KEY: supabase.serviceRoleKey,
     OPENROUTER_API_KEY: base.OPENROUTER_API_KEY,
+    FAL_API_KEY: base.FAL_API_KEY,
     PORT: defaults.PORT,
   };
 }
@@ -132,9 +141,8 @@ function buildSupabaseEnv(base, defaults, supabase) {
     SUPABASE_SERVICE_ROLE_KEY: supabase.serviceRoleKey,
     OPENROUTER_API_KEY: base.OPENROUTER_API_KEY,
     SUPABASE_ACCESS_TOKEN: base.SUPABASE_ACCESS_TOKEN,
-    MASTRA_SERVER_URL: defaults.MASTRA_SERVER_URL,
-    NEXT_PUBLIC_PRIVY_APP_ID: base.NEXT_PUBLIC_PRIVY_APP_ID,
-    PRIVY_APP_SECRET: base.PRIVY_APP_SECRET,
+    CLERK_JWKS_URL: base.CLERK_JWKS_URL,
+    MASTRA_SERVER_URL: mode === "local" ? dockerizeUrl(defaults.MASTRA_SERVER_URL) : defaults.MASTRA_SERVER_URL,
     DEV_AUTH_BYPASS: defaults.DEV_AUTH_BYPASS,
     DEV_AUTH_BYPASS_USER_ID: defaults.DEV_AUTH_BYPASS_USER_ID,
     DEV_AUTH_BYPASS_TOKEN: defaults.DEV_AUTH_BYPASS_TOKEN,

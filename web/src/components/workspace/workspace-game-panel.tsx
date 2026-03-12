@@ -291,10 +291,12 @@ export function WorkspaceGamePanel({
   // Derive active thinking phase
   const activePhase = activeTask?.active_phase ?? null;
 
-  // Reset loading when pipeline completes so the iframe spinner shows briefly
+  // Reset loading when pipeline completes — force-refresh iframe so onLoad fires again
   useEffect(() => {
     if (isPipelineComplete && warRoom) {
       setIsLoading(true);
+      iframeKey.current += 1;
+      setRefreshKey(iframeKey.current);
     }
   }, [isPipelineComplete, warRoom]);
 

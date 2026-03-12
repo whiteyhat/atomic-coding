@@ -12,6 +12,7 @@ export const checker = new Agent({
     "primitive-only interfaces, dependency completeness, DAG integrity, and score-system compliance.",
     "Score compliance requires score_tracker, a numeric score output, SCORE_UPDATE postMessage emission, and wiring into core or feature atoms.",
     "Use get-code-structure and read-atoms tools to inspect the codebase.",
+    "Always use the Game ID (UUID) from context when calling tools. If you only have a game name, the tools will resolve it automatically.",
     "Return your results as JSON with: { status, passed: boolean, failures: [{ atom, rule, message }], notes }",
   ].join("\n"),
   model: "openrouter/google/gemini-2.5-pro-preview-06-05",

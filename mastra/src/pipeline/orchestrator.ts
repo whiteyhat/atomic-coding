@@ -1,4 +1,5 @@
 import { inflateSync } from "node:zlib";
+import { APICallError } from "ai";
 import { mastra } from "../mastra.js";
 import { getSupabaseClient } from "../lib/supabase.js";
 import {
@@ -23,6 +24,7 @@ const MAX_RETRY_CYCLES = 3;
 const MAX_TASK_RETRIES = 2;
 const PIPELINE_TIMEOUT_MS = 20 * 60 * 1000; // 20 minutes
 const TASK_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes per task
+const PROVIDER_RETRY_DELAY_MS = [2_000, 5_000, 10_000]; // stepped backoff per attempt
 
 /**
  * Safe wrapper for non-critical DB operations (event recording, heartbeat updates).
@@ -59,19 +61,19 @@ function dedupeStrings(values: string[]): string[] {
 }
 
 /**
- * Rough token estimate: 1 token ≈ 4 characters for English/code text.
+ * Rough token estimate: 1 token ≈ 3 characters (conservative for JSON-heavy content).
  * Used for pre-dispatch budget checks — not exact, but good enough to catch overflows.
  */
 function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 4);
+  return Math.ceil(text.length / 2); // ~1 token per 2 chars (conservative for JSON-heavy content)
 }
 
 /**
  * Token budget for a single agent dispatch (initial prompt + system prompt).
- * Claude Sonnet 4.6 has a 1M token context window. We leave 15% headroom for
+ * Claude Sonnet 4.6 has a 1M token context window. We leave 40% headroom for
  * the accumulated tool calls and assistant messages during the agentic loop.
  */
-const PROMPT_TOKEN_BUDGET = 850_000;
+const PROMPT_TOKEN_BUDGET = 400_000;
 
 /**
  * If the combined prompt exceeds the token budget, trim the middle section
@@ -79,7 +81,7 @@ const PROMPT_TOKEN_BUDGET = 850_000;
  * This is a last-resort safety net — ideally sanitizeDependencyOutput prevents overflow.
  */
 function trimPromptToTokenBudget(prompt: string, budget: number): string {
-  const maxChars = budget * 4;
+  const maxChars = budget * 2; // Match estimateTokens ratio (2 chars/token)
   if (prompt.length <= maxChars) return prompt;
 
   const keepHead = Math.floor(maxChars * 0.75);
@@ -299,38 +301,48 @@ async function fetchAssetBytes(urlOrBase64: string): Promise<{
 
 async function removeBackground(
   bytes: Uint8Array,
-  fileName: string,
+  _fileName: string,
   contentType: string | null,
 ): Promise<Uint8Array> {
-  const apiKey = process.env.REMOVE_BG_API_KEY;
+  const apiKey = process.env.FAL_API_KEY;
   if (!apiKey) {
-    throw new Error("REMOVE_BG_API_KEY is not configured");
+    throw new Error("FAL_API_KEY is not configured");
   }
 
-  const formData = new FormData();
-  formData.set(
-    "image_file",
-    new Blob([bytes], { type: contentType ?? "application/octet-stream" }),
-    fileName,
-  );
-  formData.set("format", "png");
-  formData.set("size", "auto");
-  formData.set("crop", "false");
+  const mime = contentType ?? "image/png";
+  const base64 = Buffer.from(bytes).toString("base64");
+  const dataUrl = `data:${mime};base64,${base64}`;
 
-  const response = await fetch("https://api.remove.bg/v1.0/removebg", {
+  const response = await fetch("https://fal.run/pixelcut/background-removal", {
     method: "POST",
     headers: {
-      "X-Api-Key": apiKey,
+      Authorization: `Key ${apiKey}`,
+      "Content-Type": "application/json",
     },
-    body: formData,
+    body: JSON.stringify({
+      image_url: dataUrl,
+      output_format: "rgba",
+      sync_mode: true,
+    }),
   });
 
   if (!response.ok) {
     const message = await response.text().catch(() => "");
-    throw new Error(`remove.bg failed: ${response.status} ${message}`.trim());
+    throw new Error(`FAL background-removal failed: ${response.status} ${message}`.trim());
   }
 
-  return new Uint8Array(await response.arrayBuffer());
+  const result = (await response.json()) as { image?: { url?: string } };
+  const imageUrl = result.image?.url;
+  if (!imageUrl) {
+    throw new Error("FAL background-removal returned no image URL");
+  }
+
+  const imageResponse = await fetch(imageUrl);
+  if (!imageResponse.ok) {
+    throw new Error(`Failed to download FAL result image: ${imageResponse.status}`);
+  }
+
+  return new Uint8Array(await imageResponse.arrayBuffer());
 }
 
 async function uploadCanonicalTask8Asset(args: {
@@ -929,29 +941,47 @@ async function dispatchToAgent(
     return { success: false, error: "No agent assigned to task" };
   }
 
-  let taskPrompt = buildTaskPrompt(task, context);
   const genre = context.genre as string | null | undefined;
   const gameFormat = (context.game_format as "2d" | "3d" | null | undefined) ?? null;
   const systemPrompt = getAgentSystemPrompt(agentName, genre, gameFormat, task.task_number);
   const maxSteps = task.task_number === 2 ? 10
     : task.task_number === 10 ? 40
     : agentName === "forge" ? 25
-    : agentName === "pixel" ? 8   // Pixel uses image generation tools; high maxSteps causes context overflow
+    : agentName === "pixel" ? 5   // get-code-structure + 1-3 generate-polished-visual-pack calls + output
     : agentName === "jarvis" ? 15
     : 10;
 
-  // Pre-dispatch token budget guard: estimate total tokens and trim if over budget.
-  // sanitizeDependencyOutput() in prompts.ts is the primary line of defence; this is
-  // a secondary safety net that prevents a hard API crash with a graceful truncation.
-  const promptTokenEstimate = estimateTokens(taskPrompt + systemPrompt);
-  if (promptTokenEstimate > PROMPT_TOKEN_BUDGET) {
-    console.warn("[orchestrator] prompt exceeds token budget — trimming", {
+  // Pre-dispatch token budget guard: progressively compact the prompt until it fits.
+  // sanitizeDependencyOutput() in prompts.ts is the primary defence; compaction levels
+  // provide a secondary safety net by stripping scope/dep sections progressively.
+  let compactLevel = 0;
+  let taskPrompt = buildTaskPrompt(task, context, compactLevel);
+  let promptTokenEstimate = estimateTokens(taskPrompt + systemPrompt);
+
+  while (promptTokenEstimate > PROMPT_TOKEN_BUDGET && compactLevel < 4) {
+    compactLevel++;
+    console.warn("[orchestrator] prompt exceeds token budget — compacting", {
       taskNumber: task.task_number,
       agent: agentName,
+      compactLevel,
+      promptTokenEstimate,
+      budget: PROMPT_TOKEN_BUDGET,
+    });
+    taskPrompt = buildTaskPrompt(task, context, compactLevel);
+    promptTokenEstimate = estimateTokens(taskPrompt + systemPrompt);
+  }
+
+  // Last-resort blind trim if compaction levels weren't enough
+  if (promptTokenEstimate > PROMPT_TOKEN_BUDGET) {
+    console.warn("[orchestrator] prompt still over budget after compaction — trimming", {
+      taskNumber: task.task_number,
+      agent: agentName,
+      compactLevel,
       promptTokenEstimate,
       budget: PROMPT_TOKEN_BUDGET,
     });
     taskPrompt = trimPromptToTokenBudget(taskPrompt, PROMPT_TOKEN_BUDGET - estimateTokens(systemPrompt));
+    promptTokenEstimate = estimateTokens(taskPrompt + systemPrompt);
   }
 
   console.log("[orchestrator] dispatching to agent", {
@@ -1064,10 +1094,33 @@ async function dispatchToAgent(
     clearInterval(heartbeatInterval);
 
     const errMsg = (err as Error).message ?? "";
+
+    // Extract rich error info from AI SDK's APICallError
+    let statusCode: number | undefined;
+    let responseBody: string | undefined;
+    let isRetryable: boolean | undefined;
+    let retryAfter: string | undefined;
+
+    if (APICallError.isInstance(err)) {
+      statusCode = err.statusCode;
+      responseBody = err.responseBody;
+      isRetryable = err.isRetryable;
+      retryAfter = err.responseHeaders?.["retry-after"];
+    }
+
     const isContextOverflow =
       errMsg.includes("maximum context length") ||
       errMsg.includes("context_length_exceeded") ||
-      errMsg.includes("context window");
+      errMsg.includes("context window") ||
+      errMsg.includes("prompt is too long") ||
+      (responseBody?.includes("prompt is too long") ?? false) ||
+      (responseBody?.includes("context_length_exceeded") ?? false);
+
+    // Context overflow is retryable — the orchestrator can compact the prompt and retry.
+    // The SDK marks 400 errors as non-retryable, but overflow is a special case.
+    if (isContextOverflow) {
+      isRetryable = true;
+    }
 
     console.error("[orchestrator] agent dispatch failed", {
       taskNumber: task.task_number,
@@ -1076,6 +1129,10 @@ async function dispatchToAgent(
       isContextOverflow,
       promptTokenEstimate,
       error: errMsg,
+      statusCode,
+      isRetryable,
+      retryAfter,
+      responseBody: responseBody?.slice(0, 500),
     });
 
     if (isContextOverflow) {
@@ -1089,9 +1146,15 @@ async function dispatchToAgent(
       );
     }
 
+    const errorDetail = statusCode
+      ? `Agent dispatch failed (HTTP ${statusCode}): ${errMsg}`
+      : `Agent dispatch failed: ${errMsg}`;
+
     return {
       success: false,
-      error: `Agent dispatch failed: ${errMsg}`,
+      error: errorDetail,
+      isRetryable,
+      providerStatusCode: statusCode,
     };
   }
 }
@@ -1820,6 +1883,45 @@ export async function runPipeline(warRoomId: string): Promise<void> {
         // Retry logic for failed tasks
         if (!result.success) {
           const taskRetries = retryMap.get(task.task_number) ?? 0;
+
+          // Non-retryable provider error (auth failure, invalid model, bad request):
+          // skip all retries and fail immediately. Strict === false check so that
+          // non-provider errors (isRetryable === undefined) still go through normal retry.
+          if (result.isRetryable === false) {
+            console.error("[orchestrator] non-retryable provider error — skipping retries", {
+              warRoomId,
+              taskNumber: task.task_number,
+              statusCode: result.providerStatusCode,
+              error: result.error,
+            });
+            await warrooms.updateTaskStatus(
+              warRoomId,
+              task.task_number,
+              "failed",
+              { error: result.error, _duration_ms: taskDurationMs, non_retryable: true }
+            );
+            void safeRecord(`${agent} error heartbeat`, () =>
+              warrooms.upsertHeartbeat(warRoomId, agent, "error", {
+                error: result.error,
+              })
+            );
+            await autoSkipPermanentlyBlockedTasks(warRoomId, task.task_number);
+            return;
+          }
+
+          // Backoff delay for retryable provider errors (rate limit, server error).
+          // Non-provider failures (isRetryable === undefined) retry immediately as before.
+          if (result.isRetryable === true && taskRetries < MAX_TASK_RETRIES) {
+            const delayMs = PROVIDER_RETRY_DELAY_MS[Math.min(taskRetries, PROVIDER_RETRY_DELAY_MS.length - 1)];
+            console.log("[orchestrator] backing off before retry", {
+              warRoomId,
+              taskNumber: task.task_number,
+              delayMs,
+              attempt: taskRetries + 1,
+              statusCode: result.providerStatusCode,
+            });
+            await sleep(delayMs);
+          }
 
           if (task.task_number === 10 && taskRetries < MAX_RETRY_CYCLES) {
             retryMap.set(10, taskRetries + 1);

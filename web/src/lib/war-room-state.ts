@@ -171,6 +171,7 @@ export function applyWarRoomEvent(
         nextTask.active_phase = toString(event.payload.phase);
         return nextTask;
       case "task_pending":
+      case "task_retry_manual":
         nextTask.status = "pending";
         nextTask.started_at = null;
         nextTask.completed_at = null;

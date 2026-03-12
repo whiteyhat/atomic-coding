@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import dynamic from "next/dynamic";
@@ -82,6 +82,8 @@ export function GameWorkspace({
   const [activeTarget, setActiveTarget] = useState<ActiveWorkspaceTarget | null>(null);
   const [sidebarWidth, setSidebarWidth] = useState(520);
   const [isResizing, setIsResizing] = useState(false);
+  const resizeRef = useRef<HTMLDivElement>(null);
+  const resizeState = useRef<{ startX: number; startWidth: number } | null>(null);
   const [isWorkstreamCollapsed, setIsWorkstreamCollapsed] = useState(true);
 
   // Hydrate from localStorage after mount to avoid SSR mismatch
@@ -161,30 +163,30 @@ export function GameWorkspace({
     });
   }, [areChatsLoading, areWarRoomsLoading, chatSessions, warRooms]);
 
-  const handleResizeStart = useCallback(
-    (event: React.MouseEvent) => {
-      event.preventDefault();
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      resizeState.current = { startX: e.clientX, startWidth: sidebarWidth };
       setIsResizing(true);
-      const startX = event.clientX;
-      const startWidth = sidebarWidth;
-
-      function onMouseMove(moveEvent: MouseEvent) {
-        const delta = moveEvent.clientX - startX;
-        const nextWidth = Math.min(Math.max(startWidth + delta, 420), 780);
-        setSidebarWidth(nextWidth);
-      }
-
-      function onMouseUp() {
-        setIsResizing(false);
-        document.removeEventListener("mousemove", onMouseMove);
-        document.removeEventListener("mouseup", onMouseUp);
-      }
-
-      document.addEventListener("mousemove", onMouseMove);
-      document.addEventListener("mouseup", onMouseUp);
+      e.currentTarget.setPointerCapture(e.pointerId);
     },
     [sidebarWidth],
   );
+
+  const handlePointerMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (!resizeState.current) return;
+      const delta = e.clientX - resizeState.current.startX;
+      const nextWidth = Math.min(Math.max(resizeState.current.startWidth + delta, 420), 780);
+      setSidebarWidth(nextWidth);
+    },
+    [],
+  );
+
+  const handlePointerUp = useCallback(() => {
+    resizeState.current = null;
+    setIsResizing(false);
+  }, []);
 
   const handleCreateFeature = useCallback((initialPrompt?: string | null) => {
     setTab("chat");
@@ -360,11 +362,15 @@ export function GameWorkspace({
           </WorkspaceSidebar>
 
           <div
+            ref={resizeRef}
             className={cn(
-              "w-1 shrink-0 cursor-col-resize transition-colors hover:bg-rose-500/30",
-              isResizing ? "bg-rose-500/40" : "bg-transparent",
+              "w-1.5 shrink-0 cursor-col-resize transition-colors touch-none",
+              isResizing ? "bg-rose-500/40" : "hover:bg-rose-500/30",
             )}
-            onMouseDown={handleResizeStart}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onLostPointerCapture={handlePointerUp}
           />
 
           <ErrorBoundary label="Game Preview">

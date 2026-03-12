@@ -92,6 +92,20 @@ async function apiFetch<T>(
     }
   }
 
+  // Server-side: use Clerk session token when no client getter is available
+  if (!headers.Authorization && typeof window === "undefined") {
+    try {
+      const { auth } = await import("@clerk/nextjs/server");
+      const session = await auth();
+      const token = await session.getToken();
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+    } catch {
+      // Not in a request context or Clerk not available
+    }
+  }
+
   if (!headers.Authorization && DEV_AUTH_BYPASS) {
     headers.Authorization = `Bearer ${DEV_AUTH_BYPASS_TOKEN}`;
     if (typeof window === "undefined" && !headers.Origin) {
@@ -466,6 +480,17 @@ export async function cancelWarRoom(
   return apiFetch(
     `/games/${encodeURIComponent(gameName)}/warrooms/${warRoomId}/cancel`,
     { method: "POST" }
+  );
+}
+
+export async function retryWarRoomTask(
+  gameName: string,
+  warRoomId: string,
+  taskNumber: number,
+): Promise<void> {
+  await apiFetch(
+    `/games/${encodeURIComponent(gameName)}/warrooms/${warRoomId}/tasks/${taskNumber}/retry`,
+    { method: "POST" },
   );
 }
 

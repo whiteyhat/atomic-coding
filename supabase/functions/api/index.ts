@@ -963,6 +963,50 @@ app.post("/games/:name/warrooms/:id/heartbeat", async (c) => {
   }
 });
 
+/** POST /games/:name/warrooms/:id/tasks/:num/retry -- retry a failed task */
+app.post("/games/:name/warrooms/:id/tasks/:num/retry", requireAuth(), async (c) => {
+  try {
+    const warRoomId = c.req.param("id");
+    const taskNumber = parseInt(c.req.param("num"), 10);
+    if (isNaN(taskNumber) || taskNumber < 1 || taskNumber > 12) {
+      return c.json({ error: "task number must be 1-12" }, 400);
+    }
+
+    const room = await warrooms.getWarRoom(warRoomId);
+    if (!room) return c.json({ error: "War room not found" }, 404);
+
+    const task = room.tasks.find((t) => t.task_number === taskNumber);
+    if (!task) return c.json({ error: "Task not found" }, 404);
+    if (task.status !== "failed") {
+      return c.json({ error: `Cannot retry task with status '${task.status}'` }, 400);
+    }
+
+    // Reset task to pending
+    const updated = await warrooms.updateTaskStatus(warRoomId, taskNumber, "pending");
+    await warrooms.recordEvent(warRoomId, "task_retry_manual", task.assigned_agent, taskNumber, {
+      previous_error: task.output?.error ?? null,
+    });
+
+    // Resume war room if it was terminal
+    if (room.status === "failed" || room.status === "completed") {
+      await warrooms.updateWarRoomStatus(warRoomId, "running");
+    }
+
+    // Re-trigger orchestrator
+    triggerOrchestrator(warRoomId).catch((err) => {
+      log("error", "retry triggerOrchestrator: background error", {
+        warRoomId,
+        taskNumber,
+        error: (err as Error).message,
+      });
+    });
+
+    return c.json(updated);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 500);
+  }
+});
+
 /** POST /games/:name/warrooms/:id/tasks/:num/status -- update task status */
 app.post("/games/:name/warrooms/:id/tasks/:num/status", async (c) => {
   try {

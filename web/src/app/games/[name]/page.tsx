@@ -15,7 +15,8 @@ export default async function GamePage({ params }: GamePageProps) {
   let game;
   try {
     game = await getGame(decodedName);
-  } catch {
+  } catch (err) {
+    console.log(err);
     notFound();
   }
 

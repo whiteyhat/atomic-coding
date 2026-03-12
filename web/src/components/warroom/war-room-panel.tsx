@@ -18,7 +18,7 @@ import {
 import { useWarRoom } from "@/lib/use-war-room";
 import { buildWarRoomAgentViewModels } from "@/lib/war-room-console";
 import { toast } from "sonner";
-import { cancelWarRoom } from "@/lib/api";
+import { cancelWarRoom, retryWarRoomTask } from "@/lib/api";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -134,7 +134,13 @@ function statusTone(status: string): string {
   }
 }
 
-function PipelineSteps({ tasks }: { tasks: WarRoomTaskState[] }) {
+function PipelineSteps({
+  tasks,
+  onRetryTask,
+}: {
+  tasks: WarRoomTaskState[];
+  onRetryTask?: (taskNumber: number) => Promise<void>;
+}) {
   const [showAll, setShowAll] = useState(false);
 
   const sorted = [...tasks].sort((a, b) => a.task_number - b.task_number);
@@ -175,21 +181,21 @@ function PipelineSteps({ tasks }: { tasks: WarRoomTaskState[] }) {
         {showAll && before.length > 0 && (
           <div className="mb-2 space-y-2">
             {before.map((task) => (
-              <TaskCard key={task.id} task={task} />
+              <TaskCard key={task.id} task={task} onRetry={onRetryTask ? () => onRetryTask(task.task_number) : undefined} />
             ))}
           </div>
         )}
 
         <div className="space-y-2">
           {visibleSlice.map((task) => (
-            <TaskCard key={task.id} task={task} />
+            <TaskCard key={task.id} task={task} onRetry={onRetryTask ? () => onRetryTask(task.task_number) : undefined} />
           ))}
         </div>
 
         {showAll && after.length > 0 && (
           <div className="mt-2 space-y-2">
             {after.map((task) => (
-              <TaskCard key={task.id} task={task} />
+              <TaskCard key={task.id} task={task} onRetry={onRetryTask ? () => onRetryTask(task.task_number) : undefined} />
             ))}
           </div>
         )}
@@ -703,7 +709,20 @@ export function WarRoomPanel({
 
           <LiveEventFeed events={events} />
 
-          <PipelineSteps tasks={tasks} />
+          <PipelineSteps
+            tasks={tasks}
+            onRetryTask={async (taskNumber) => {
+              try {
+                await retryWarRoomTask(gameName, warRoom.id, taskNumber);
+                toast.success(`Task #${taskNumber} queued for retry`);
+                await refresh();
+              } catch (err) {
+                toast.error(
+                  err instanceof Error ? err.message : "Failed to retry task",
+                );
+              }
+            }}
+          />
 
           {warRoom.status === "failed" && (
             <div className="rounded-[1.5rem] border border-rose-300/18 bg-rose-500/[0.08] px-4 py-4">

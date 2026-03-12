@@ -13,6 +13,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Collapsible,
   CollapsibleContent,
@@ -109,10 +110,12 @@ function StatusTone({ task }: { task: WarRoomTaskState }) {
 
 interface TaskCardProps {
   task: WarRoomTaskState;
+  onRetry?: () => Promise<void>;
 }
 
-export function TaskCard({ task }: TaskCardProps) {
+export function TaskCard({ task, onRetry }: TaskCardProps) {
   const [open, setOpen] = useState(task.status === "running" || task.status === "failed");
+  const [isRetrying, setIsRetrying] = useState(false);
   const startedAt = formatTimestamp(task.started_at);
   const completedAt = formatTimestamp(task.completed_at);
 
@@ -255,9 +258,34 @@ export function TaskCard({ task }: TaskCardProps) {
           {task.error_message && (
             <div className="flex items-start gap-2 rounded-xl border border-rose-400/18 bg-rose-500/[0.08] px-3 py-2 text-rose-100">
               <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-              <span className="break-words text-[11px] leading-relaxed">
+              <span className="min-w-0 flex-1 break-words text-[11px] leading-relaxed">
                 {task.error_message}
               </span>
+              {task.status === "failed" && onRetry && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 shrink-0 gap-1 rounded-lg border border-rose-300/20 bg-rose-500/15 px-2 text-[10px] font-medium text-rose-100 hover:bg-rose-500/25 hover:text-white"
+                  disabled={isRetrying}
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    setIsRetrying(true);
+                    try {
+                      await onRetry();
+                    } finally {
+                      setIsRetrying(false);
+                    }
+                  }}
+                >
+                  {isRetrying ? (
+                    <Loader2 className="size-3 animate-spin" />
+                  ) : (
+                    <RotateCcw className="size-3" />
+                  )}
+                  Retry
+                </Button>
+              )}
             </div>
           )}
 

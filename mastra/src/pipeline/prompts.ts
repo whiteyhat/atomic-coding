@@ -10,7 +10,13 @@ import { buildPixelSystemPrompt, PIXEL_STYLE_PILLARS } from "../lib/pixel-guidel
  * injects design_system + art_direction separately, and the image data is useless to the LLM.
  */
 const DEP_FIELD_ALLOWLIST: Record<number, Record<string, string[]>> = {
+  7: {
+    // Scope is already injected via context.scope — only keep status from Task 1
+    task_1: ["status"],
+  },
   8: {
+    task_1: ["status"],
+    task_5: ["status", "atoms_created", "notes"],
     task_7: ["status", "design_system", "art_direction", "pack_cohesion_notes", "generation_model", "notes"],
     task_6: ["status", "atoms_created", "atoms_modified", "notes"],
   },
@@ -186,7 +192,8 @@ function formatExternalsSection(
  */
 export function buildTaskPrompt(
   task: WarRoomTask,
-  context: Record<string, unknown>
+  context: Record<string, unknown>,
+  compactLevel = 0,
 ): string {
   const gameFormat = (context.game_format as GameFormat) ?? null;
   const runtimeLabel = getRuntimeLabel(gameFormat);
@@ -228,7 +235,7 @@ export function buildTaskPrompt(
     }
     const boilerplateAtoms = context.boilerplate_atoms as Array<Record<string, unknown>> | undefined;
     if (boilerplateAtoms && boilerplateAtoms.length > 0) {
-      lines.push("", "## Boilerplate Atom Specifications", JSON.stringify(boilerplateAtoms, null, 2));
+      lines.push("", "## Boilerplate Atom Specifications", JSON.stringify(boilerplateAtoms));
     }
   }
 
@@ -241,22 +248,53 @@ export function buildTaskPrompt(
       const filtered = atoms
         .filter((a) => a.type === typeFilter)
         .sort((a, b) => a.creation_order - b.creation_order);
-      lines.push("", `## Your Atoms to Implement (${typeFilter} only, sorted by creation_order)`, JSON.stringify(filtered, null, 2));
+      lines.push("", `## Your Atoms to Implement (${typeFilter} only, sorted by creation_order)`, JSON.stringify(filtered));
     }
-    lines.push("", "## Full Scope (for reference)", JSON.stringify(scope, null, 2));
+    lines.push("", "## Full Scope (for reference)", JSON.stringify(scope));
   } else if (context.scope) {
-    lines.push("", "## Scope", JSON.stringify(context.scope, null, 2));
+    // Pixel tasks only need visual requirements, not the full atom architecture
+    if (task.task_number === 7 || task.task_number === 8) {
+      const scope = context.scope as Record<string, unknown>;
+      const pixelScope: Record<string, unknown> = {
+        genre: scope.genre,
+        core_mechanics: scope.core_mechanics,
+        ui_requirements: scope.ui_requirements,
+        sprite_requirements: scope.sprite_requirements,
+        // Level 1+: strip architecture to save tokens (agent can call get-code-structure)
+        ...(compactLevel < 1 ? { architecture: scope.architecture } : {}),
+      };
+      let scopeJson = JSON.stringify(pixelScope);
+      // Level 4: hard-cap scope to 5K chars
+      if (compactLevel >= 4 && scopeJson.length > 5000) {
+        scopeJson = scopeJson.slice(0, 5000) + "…[truncated]";
+      }
+      lines.push("", "## Scope (visual requirements)", scopeJson);
+    } else {
+      let scopeJson = JSON.stringify(context.scope);
+      if (compactLevel >= 4 && scopeJson.length > 5000) {
+        scopeJson = scopeJson.slice(0, 5000) + "…[truncated]";
+      }
+      lines.push("", "## Scope", scopeJson);
+    }
   }
 
+  // Level 3+: drop dependency outputs entirely (agent can use tools to fetch what it needs)
   const depOutputs = context.dependency_outputs as
     | Record<string, unknown>
     | undefined;
-  if (depOutputs && Object.keys(depOutputs).length > 0) {
+  if (compactLevel < 3 && depOutputs && Object.keys(depOutputs).length > 0) {
     lines.push("", "## Previous Task Outputs");
     for (const [key, value] of Object.entries(depOutputs)) {
       const sanitized = sanitizeDependencyOutput(task.task_number, key, value);
-      lines.push(`### ${key}`, JSON.stringify(sanitized, null, 2));
+      let depJson = JSON.stringify(sanitized);
+      // Level 2+: cap each dep output to 2K chars
+      if (compactLevel >= 2 && depJson.length > 2000) {
+        depJson = depJson.slice(0, 2000) + "…[truncated]";
+      }
+      lines.push(`### ${key}`, depJson);
     }
+  } else if (compactLevel >= 3 && depOutputs && Object.keys(depOutputs).length > 0) {
+    lines.push("", "## Previous Task Outputs", "[Omitted to fit context window — use get-code-structure and read-atoms tools to inspect game state.]");
   }
 
   const latestValidationOutputs = context.latest_validation_outputs as
@@ -265,7 +303,7 @@ export function buildTaskPrompt(
   if (latestValidationOutputs && Object.keys(latestValidationOutputs).length > 0) {
     lines.push("", "## Latest Validation Outputs");
     for (const [key, value] of Object.entries(latestValidationOutputs)) {
-      lines.push(`### ${key}`, JSON.stringify(value, null, 2));
+      lines.push(`### ${key}`, JSON.stringify(value));
     }
   }
 
@@ -799,7 +837,7 @@ export function buildTaskPrompt(
       "```json",
       "{",
       '  "status": "completed",',
-      '  "design_system": {',
+      '  "design_system": {', 
       '    "palette": { "primary": "#...", "secondary": "#...", "accent": "#...", "background": "#...", "text": "#...", "danger": "#...", "success": "#..." },',
       '    "typography_feel": "pixel-art retro",',
       '    "icon_language": "bold outlined icons",',
@@ -829,7 +867,7 @@ export function buildTaskPrompt(
           "",
           "## Task 7 Design System (MATCH THIS for visual coherence)",
           "Task 7 established a design system for UI assets. Your sprites and textures MUST align with this visual language.",
-          JSON.stringify(task7Output.design_system, null, 2),
+          JSON.stringify(task7Output.design_system),
         );
         if (task7Output.art_direction) {
           lines.push("Art direction:", String(task7Output.art_direction));
@@ -942,7 +980,7 @@ export function buildTaskPrompt(
       lines.push(
         "",
         "Deterministic validation failures (confirmed, must be fixed):",
-        JSON.stringify(retryContext.deterministic_failures, null, 2),
+        JSON.stringify(retryContext.deterministic_failures),
       );
     }
     lines.push(
@@ -960,11 +998,20 @@ export function buildTaskPrompt(
       "## Partial Progress from Previous Attempt",
       "This task was retried. Some atoms may already exist from the previous attempt.",
       "Check with get-code-structure before re-creating atoms.",
-      JSON.stringify(partialOutput, null, 2)
+      JSON.stringify(partialOutput)
     );
   }
 
-  return lines.join("\n");
+  const result = lines.join("\n");
+
+  console.log("[prompts] buildTaskPrompt", {
+    taskNumber: task.task_number,
+    compactLevel,
+    totalChars: result.length,
+    estimatedTokens: Math.ceil(result.length / 2),
+  });
+
+  return result;
 }
 
 /**
