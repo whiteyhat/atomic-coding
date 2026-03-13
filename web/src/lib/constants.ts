@@ -20,6 +20,11 @@ export const API_BASE = `${SUPABASE_URL}/functions/v1/api`;
 
 export const CLERK_PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ?? "";
 
+// ── Buu ──────────────────────────────────────────────────────────────────────
+
+export const BUU_API_URL =
+  process.env.NEXT_PUBLIC_BUU_API_URL ?? "https://dev.api.buu.fun";
+
 // ── Mastra ───────────────────────────────────────────────────────────────────
 
 export const MASTRA_SERVER_URL = process.env.MASTRA_SERVER_URL ?? "";

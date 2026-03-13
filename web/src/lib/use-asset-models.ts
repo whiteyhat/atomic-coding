@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import type { AssetModel, AssetModelPage } from "./types";
+import { BUU_API_URL } from "./constants";
 
-const API_URL = "https://dev.api.buu.fun/v1/models/public";
+const API_URL = `${BUU_API_URL}/v1/models/public`;
 const PAGE_SIZE = 20;
 
 export interface UseAssetModelsReturn {

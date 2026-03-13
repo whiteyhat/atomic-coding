@@ -13,7 +13,7 @@ import { z } from "npm:zod@^4.1.13";
 // Reads x-buu-api-key header for auth and x-buu-api-url for the API base.
 // =============================================================================
 
-const DEFAULT_API_URL = "https://dev.api.buu.fun";
+const DEFAULT_API_URL = "http://localhost:4001";
 
 function createMcpServer(apiKey: string, apiUrl: string): McpServer {
   const server = new McpServer({

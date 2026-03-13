@@ -36,6 +36,7 @@ const defaults = {
   DEV_AUTH_BYPASS_USER_ID: base.DEV_AUTH_BYPASS_USER_ID || LOCAL_BYPASS_USER_ID,
   DEV_AUTH_BYPASS_TOKEN: base.DEV_AUTH_BYPASS_TOKEN || LOCAL_BYPASS_TOKEN,
   PORT: base.PORT || "4500",
+  BUU_API_URL: base.BUU_API_URL || "https://dev.api.buu.fun",
 };
 
 requireValues(base, ["OPENROUTER_API_KEY"]);
@@ -108,6 +109,7 @@ function buildWebEnv(base, defaults, supabase) {
     SUPABASE_SERVICE_ROLE_KEY: supabase.serviceRoleKey,
     OPENROUTER_API_KEY: base.OPENROUTER_API_KEY,
     BUU_API_KEY: base.BUU_API_KEY,
+    NEXT_PUBLIC_BUU_API_URL: defaults.BUU_API_URL,
     NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: base.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
     CLERK_SECRET_KEY: base.CLERK_SECRET_KEY,
     NEXT_PUBLIC_CLERK_SIGN_IN_URL: base.NEXT_PUBLIC_CLERK_SIGN_IN_URL,
@@ -131,6 +133,7 @@ function buildMastraEnv(base, defaults, supabase) {
     OPENROUTER_API_KEY: base.OPENROUTER_API_KEY,
     FAL_API_KEY: base.FAL_API_KEY,
     BUU_API_KEY: base.BUU_API_KEY,
+    BUU_API_URL: defaults.BUU_API_URL,
     PORT: defaults.PORT,
   };
 }
@@ -142,6 +145,7 @@ function buildSupabaseEnv(base, defaults, supabase) {
     SUPABASE_SERVICE_ROLE_KEY: supabase.serviceRoleKey,
     OPENROUTER_API_KEY: base.OPENROUTER_API_KEY,
     BUU_API_KEY: base.BUU_API_KEY,
+    BUU_API_URL: defaults.BUU_API_URL,
     SUPABASE_ACCESS_TOKEN: base.SUPABASE_ACCESS_TOKEN,
     CLERK_JWKS_URL: base.CLERK_JWKS_URL,
     MASTRA_SERVER_URL: mode === "local" ? dockerizeUrl(defaults.MASTRA_SERVER_URL) : defaults.MASTRA_SERVER_URL,
