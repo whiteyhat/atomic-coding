@@ -15,7 +15,14 @@ import {
   X,
 } from "lucide-react";
 import type { Game } from "@/lib/types";
-import { createGame } from "@/lib/api";
+import { createGame, installExternal, listBoilerplates } from "@/lib/api";
+import { useRegistry } from "@/lib/hooks";
+import {
+  EXTENSION_CATEGORIES,
+  EXTENSION_CATALOG,
+  getExtensionsForFormat,
+} from "@/lib/extension-categories";
+import { CARD_META, DEFAULT_META } from "@/components/console/externals-tab";
 import {
   type GameFormat,
   getDefaultGameFormatForGenre,
@@ -37,7 +44,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { GenreSelector } from "./genre-selector";
 
-const STEP_LABELS = ["Name", "Format", "Genre", "Review"] as const;
+const STEP_LABELS = ["Name", "Format", "Genre", "Add-ons", "Review"] as const;
 const MAX_NAME_LENGTH = 100;
 const MAX_DESCRIPTION_LENGTH = 500;
 const REVIEW_FALLBACK_COPY =
@@ -99,6 +106,9 @@ export function CreateGameWizard({
   const previousNextDisabledRef = useRef(true);
   const pulseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [shouldPulseNext, setShouldPulseNext] = useState(false);
+  const [selectedAddons, setSelectedAddons] = useState<Set<string>>(new Set());
+  const [boilerplateExternals, setBoilerplateExternals] = useState<string[]>([]);
+  const { data: registry } = useRegistry();
 
   useEffect(() => {
     if (open && !wasOpenRef.current) {
@@ -112,10 +122,25 @@ export function CreateGameWizard({
       setNameError(null);
       setSubmitError(null);
       setLoading(false);
+      setSelectedAddons(new Set());
     }
 
     wasOpenRef.current = open;
   }, [open, initialGenre]);
+
+  // Fetch boilerplate externals when genre+format change
+  useEffect(() => {
+    if (!genre || !gameFormat) {
+      setBoilerplateExternals([]);
+      return;
+    }
+    listBoilerplates()
+      .then((bps) => {
+        const bp = bps.find((b) => b.slug === genre && b.game_format === gameFormat);
+        setBoilerplateExternals(bp?.externals ?? []);
+      })
+      .catch(() => setBoilerplateExternals([]));
+  }, [genre, gameFormat]);
 
   useEffect(() => {
     if (!gameFormat || !genre || isGenreSupportedInFormat(genre, gameFormat)) {
@@ -137,10 +162,11 @@ export function CreateGameWizard({
   const isPrevDisabled = step === 0 || loading;
   const isNextDisabled =
     loading ||
-    step === 3 ||
+    step === 4 ||
     (step === 0 && !isNameValid) ||
     (step === 1 && !selectedGameFormat) ||
-    (step === 2 && !selectedGenre);
+    (step === 2 && (!selectedGenre || !isNameValid)) ||
+    (step === 3 && !isNameValid);
   const keyboardHint =
     step === 0
       ? "Press Enter to continue. Use Cmd/Ctrl+Enter in the description box."
@@ -148,7 +174,9 @@ export function CreateGameWizard({
         ? "Choose 2D or 3D, then press Enter to continue."
         : step === 2
           ? "Choose a template, then press Enter to continue."
-          : "Press Enter to create once everything looks right.";
+          : step === 3
+            ? "Toggle add-ons, then press Enter to continue."
+            : "Press Enter to create once everything looks right.";
 
   useEffect(() => {
     if (!open) {
@@ -170,7 +198,7 @@ export function CreateGameWizard({
       triggerNextPulse();
     }
 
-    if (step === 3 || isNextDisabled) {
+    if (step === 4 || isNextDisabled) {
       setShouldPulseNext(false);
     }
 
@@ -264,6 +292,25 @@ export function CreateGameWizard({
     setStep(2);
   }
 
+  function goToAddonsStep() {
+    if (!selectedGameFormat) {
+      setStep(1);
+      return;
+    }
+
+    if (!selectedGenre) {
+      setStep(2);
+      return;
+    }
+
+    if (!validateName("Give your game a name before picking add-ons.")) {
+      setStep(0);
+      return;
+    }
+
+    setStep(3);
+  }
+
   function goToReviewStep() {
     if (!selectedGameFormat) {
       setStep(1);
@@ -280,7 +327,7 @@ export function CreateGameWizard({
       return;
     }
 
-    setStep(3);
+    setStep(4);
   }
 
   function handlePreviousStep() {
@@ -302,6 +349,11 @@ export function CreateGameWizard({
     }
 
     if (step === 2) {
+      goToAddonsStep();
+      return;
+    }
+
+    if (step === 3) {
       goToReviewStep();
     }
   }
@@ -325,6 +377,11 @@ export function CreateGameWizard({
     }
 
     if (nextStep === 3) {
+      goToAddonsStep();
+      return;
+    }
+
+    if (nextStep === 4) {
       goToReviewStep();
     }
   }
@@ -360,11 +417,16 @@ export function CreateGameWizard({
     }
 
     if (step === 2) {
-      goToReviewStep();
+      goToAddonsStep();
       return;
     }
 
     if (step === 3) {
+      goToReviewStep();
+      return;
+    }
+
+    if (step === 4) {
       void handleCreate();
     }
   }
@@ -401,6 +463,17 @@ export function CreateGameWizard({
         selectedGameFormat.value,
       );
 
+      // Install extra add-ons selected by the user (fire-and-forget)
+      if (selectedAddons.size > 0) {
+        Promise.all(
+          Array.from(selectedAddons).map((extName) =>
+            installExternal(game.name, extName).catch((err) =>
+              console.warn(`Failed to install addon ${extName}:`, err),
+            ),
+          ),
+        ).catch(() => {});
+      }
+
       onCreated?.(game);
       onOpenChange(false);
       router.push(`/games/${encodeURIComponent(game.name)}`);
@@ -410,7 +483,7 @@ export function CreateGameWizard({
 
       if (isDuplicateNameError(message)) {
         setNameError("That game name already exists. Try a different one.");
-        setStep(0);
+        setSubmitError("Game name already taken \u2014 go back to step 1 to pick a new one.");
       } else {
         setSubmitError(message);
       }
@@ -437,10 +510,10 @@ export function CreateGameWizard({
                 Create Flow
               </div>
               <DialogTitle className="text-2xl font-semibold tracking-tight text-white sm:text-[2rem]">
-                Launch a new game in four sharp moves
+                Launch a new game in five sharp moves
               </DialogTitle>
               <DialogDescription className="max-w-2xl text-sm leading-6 text-white/60">
-                Shape the concept, choose 2D or 3D, pick a starter scaffold, and ship directly into the editor.
+                Shape the concept, choose 2D or 3D, pick a scaffold, add optional extras, and ship into the editor.
               </DialogDescription>
             </DialogHeader>
 
@@ -514,7 +587,7 @@ export function CreateGameWizard({
           </div>
 
           <div className="border-b border-white/8 px-5 py-4 sm:px-7">
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-5">
               {STEP_LABELS.map((label, index) => {
                 const isCurrent = index === step;
                 const isComplete = index < step;
@@ -556,7 +629,9 @@ export function CreateGameWizard({
                               ? "Pick dimension"
                               : index === 2
                                 ? "Choose scaffold"
-                                : "Final pass"}
+                                : index === 3
+                                  ? "Pick extras"
+                                  : "Final pass"}
                         </p>
                       </div>
                     </div>
@@ -725,6 +800,26 @@ export function CreateGameWizard({
                           </p>
                         </div>
 
+                        {!isNameValid && (
+                          <div className="rounded-[1.4rem] border border-amber-300/20 bg-amber-500/5 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+                            <label htmlFor="wizard-inline-name" className="text-sm font-medium text-white">
+                              Name your game first
+                            </label>
+                            <Input
+                              id="wizard-inline-name"
+                              value={name}
+                              onChange={(event) => handleNameChange(event.target.value)}
+                              maxLength={MAX_NAME_LENGTH}
+                              placeholder="my-awesome-game"
+                              disabled={loading}
+                              className="mt-2 h-12 rounded-xl border-white/10 bg-[#1f0c11] text-base text-white placeholder:text-white/25 focus-visible:border-amber-300/30 focus-visible:ring-amber-300/20"
+                            />
+                            {nameError ? (
+                              <p className="mt-1.5 text-xs text-rose-200">{nameError}</p>
+                            ) : null}
+                          </div>
+                        )}
+
                         <GenreSelector
                           value={genre}
                           gameFormat={selectedGameFormat?.value ?? null}
@@ -737,10 +832,121 @@ export function CreateGameWizard({
                     ) : null}
 
                     {step === 3 ? (
-                      <div className="space-y-8 pb-2">
+                      <div className="space-y-6 pb-2">
                         <div className="max-w-2xl">
                           <p className="text-sm uppercase tracking-[0.28em] text-white/35">
                             Step 4
+                          </p>
+                          <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">
+                            Pick your add-ons
+                          </h2>
+                          <p className="mt-3 text-sm leading-6 text-white/60">
+                            Optional libraries that give your game extra powers. Genre essentials are already included.
+                          </p>
+                        </div>
+
+                        {gameFormat &&
+                          EXTENSION_CATEGORIES.filter((cat) => {
+                            const relevant = getExtensionsForFormat(gameFormat);
+                            return relevant.some(
+                              (ext) => EXTENSION_CATALOG[ext]?.category === cat.key,
+                            );
+                          }).map((cat) => (
+                            <div key={cat.key} className="space-y-2">
+                              <h3 className="text-xs font-medium uppercase tracking-[0.2em] text-white/45">
+                                {cat.label}
+                              </h3>
+                              <div className="grid gap-2 md:grid-cols-2">
+                                {getExtensionsForFormat(gameFormat)
+                                  .filter(
+                                    (ext) =>
+                                      EXTENSION_CATALOG[ext]?.category === cat.key,
+                                  )
+                                  .map((extName) => {
+                                    const isIncluded =
+                                      boilerplateExternals.includes(extName);
+                                    const isSelected = selectedAddons.has(extName);
+                                    const registryEntry = registry?.find(
+                                      (r) => r.name === extName,
+                                    );
+                                    if (!registryEntry) return null;
+                                    const meta =
+                                      CARD_META[extName] ?? DEFAULT_META;
+                                    const Icon = meta.icon;
+
+                                    return (
+                                      <button
+                                        key={extName}
+                                        type="button"
+                                        disabled={isIncluded || loading}
+                                        onClick={() => {
+                                          setSelectedAddons((prev) => {
+                                            const next = new Set(prev);
+                                            if (next.has(extName))
+                                              next.delete(extName);
+                                            else next.add(extName);
+                                            return next;
+                                          });
+                                        }}
+                                        className={cn(
+                                          "group relative w-full text-left rounded-[1.4rem] border p-4 transition-all",
+                                          isIncluded
+                                            ? "border-emerald-300/20 bg-emerald-500/5 opacity-60 cursor-default"
+                                            : isSelected
+                                              ? "border-rose-300/30 bg-rose-500/10"
+                                              : "border-white/8 bg-white/[0.03] hover:border-white/15 hover:bg-white/[0.05]",
+                                        )}
+                                      >
+                                        <div className="flex items-center gap-3">
+                                          <div
+                                            className={cn(
+                                              "flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br",
+                                              meta.color,
+                                            )}
+                                          >
+                                            <Icon className="size-4 text-white/80" />
+                                          </div>
+                                          <div className="min-w-0 flex-1">
+                                            <div className="flex items-center gap-2">
+                                              <span className="text-sm font-medium text-white">
+                                                {registryEntry.display_name}
+                                              </span>
+                                              {isIncluded && (
+                                                <span className="text-[10px] uppercase tracking-wider text-emerald-300/70">
+                                                  Included
+                                                </span>
+                                              )}
+                                            </div>
+                                            <p className="text-[11px] text-white/50">
+                                              {meta.tagline}
+                                            </p>
+                                          </div>
+                                          <div className="shrink-0">
+                                            {isIncluded ? (
+                                              <Check className="size-4 text-emerald-400" />
+                                            ) : isSelected ? (
+                                              <div className="flex size-5 items-center justify-center rounded-full bg-rose-500/20 ring-1 ring-rose-500/40">
+                                                <Check className="size-3 text-rose-400" />
+                                              </div>
+                                            ) : (
+                                              <div className="size-5 rounded-full border border-dashed border-white/15" />
+                                            )}
+                                          </div>
+                                        </div>
+                                      </button>
+                                    );
+                                  })}
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                    ) : null}
+
+                    {step === 4 ? (
+                      <div className="space-y-8 pb-2">
+                        <div className="max-w-2xl">
+                          <p className="text-sm uppercase tracking-[0.28em] text-white/35">
+                            Step 5
                           </p>
                           <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">
                             Review and confirm
@@ -775,9 +981,15 @@ export function CreateGameWizard({
                           </div>
                           <div className="rounded-[1.6rem] border border-white/10 bg-white/[0.03] p-4">
                             <p className="text-[11px] uppercase tracking-[0.24em] text-white/35">
-                              Launch mode
+                              Add-ons
                             </p>
-                            <p className="mt-3 text-lg font-semibold text-white">Open editor instantly</p>
+                            <p className="mt-3 text-lg font-semibold text-white">
+                              {selectedAddons.size > 0
+                                ? Array.from(selectedAddons)
+                                    .map((n) => registry?.find((r) => r.name === n)?.display_name ?? n)
+                                    .join(", ")
+                                : "None selected"}
+                            </p>
                           </div>
                         </div>
 
@@ -798,7 +1010,7 @@ export function CreateGameWizard({
                 </div>
 
                 <div className="flex min-h-12 items-center justify-end">
-                  {step === 3 ? (
+                  {step === 4 ? (
                     <Button
                       type="button"
                       onClick={handleCreate}
@@ -835,7 +1047,7 @@ export function CreateGameWizard({
                     </p>
                   </div>
                   <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] uppercase tracking-[0.24em] text-white/45">
-                    {step + 1}/4
+                    {step + 1}/5
                   </div>
                 </div>
 
@@ -887,6 +1099,11 @@ export function CreateGameWizard({
                       <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/65">
                         Genre atoms
                       </div>
+                      {selectedAddons.size > 0 && (
+                        <div className="rounded-full border border-rose-300/20 bg-rose-500/10 px-3 py-1 text-xs text-rose-200/80">
+                          +{selectedAddons.size} add-on{selectedAddons.size > 1 ? "s" : ""}
+                        </div>
+                      )}
                       <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/65">
                         AI-ready workspace
                       </div>

@@ -59,7 +59,7 @@ interface ExternalsTabProps {
 
 /* ── Friendly metadata for no-coders ──────────────────────────────────────── */
 
-const CARD_META: Record<
+export const CARD_META: Record<
   string,
   { icon: LucideIcon; tagline: string; color: string }
 > = {
@@ -154,7 +154,7 @@ const CARD_META: Record<
   },
 };
 
-const DEFAULT_META = {
+export const DEFAULT_META = {
   icon: Box,
   tagline: "Extend your game with additional capabilities",
   color: "from-zinc-500/20 to-slate-500/20",

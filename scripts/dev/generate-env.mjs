@@ -130,6 +130,7 @@ function buildMastraEnv(base, defaults, supabase) {
     SUPABASE_SERVICE_ROLE_KEY: supabase.serviceRoleKey,
     OPENROUTER_API_KEY: base.OPENROUTER_API_KEY,
     FAL_API_KEY: base.FAL_API_KEY,
+    BUU_API_KEY: base.BUU_API_KEY,
     PORT: defaults.PORT,
   };
 }
@@ -140,6 +141,7 @@ function buildSupabaseEnv(base, defaults, supabase) {
     SUPABASE_ANON_KEY: supabase.anonKey,
     SUPABASE_SERVICE_ROLE_KEY: supabase.serviceRoleKey,
     OPENROUTER_API_KEY: base.OPENROUTER_API_KEY,
+    BUU_API_KEY: base.BUU_API_KEY,
     SUPABASE_ACCESS_TOKEN: base.SUPABASE_ACCESS_TOKEN,
     CLERK_JWKS_URL: base.CLERK_JWKS_URL,
     MASTRA_SERVER_URL: mode === "local" ? dockerizeUrl(defaults.MASTRA_SERVER_URL) : defaults.MASTRA_SERVER_URL,
