@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { useTranslations } from "next-intl";
 import { Badge } from "@/components/ui/badge";
 import { type GameFormat, getGameGenresForFormat } from "@/lib/game-genres";
 import { cn } from "@/lib/utils";
@@ -12,6 +13,8 @@ interface GenreSelectorProps {
 }
 
 export function GenreSelector({ value, onChange, gameFormat = null }: GenreSelectorProps) {
+  const t = useTranslations("wizard");
+  const tCommon = useTranslations("common");
   const genres = getGameGenresForFormat(gameFormat);
 
   return (
@@ -61,7 +64,7 @@ export function GenreSelector({ value, onChange, gameFormat = null }: GenreSelec
                       : "border-white/10 bg-white/5 text-white/45",
                   )}
                 >
-                  {isSelected ? "Selected" : "Template"}
+                  {isSelected ? tCommon("selected") : t("template")}
                 </Badge>
                 <div className="flex size-8 items-center justify-center rounded-full border border-white/10 bg-black/20">
                   <Icon className={cn("size-3.5", isSelected ? genre.iconClass : "text-white/45")} />

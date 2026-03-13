@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import {
   Dialog,
   DialogContent,
@@ -38,6 +39,7 @@ export function PublishDialog({
   triggerClassName,
   triggerLabel,
 }: PublishDialogProps) {
+  const t = useTranslations("games");
   const [open, setOpen] = useState(false);
   const [slug, setSlug] = useState(publicSlug ?? gameName.toLowerCase().replace(/[^a-z0-9-]/g, "-"));
   const [loading, setLoading] = useState(false);
@@ -82,18 +84,18 @@ export function PublishDialog({
           className={triggerClassName}
         >
           <Globe className="size-3.5 mr-1.5" />
-          {triggerLabel ?? (isPublished ? "Published" : "Publish")}
+          {triggerLabel ?? (isPublished ? t("published") : t("publish"))}
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>
-            {isPublished ? "Manage Publication" : "Publish Game"}
+            {isPublished ? t("managePublication") : t("publishGame")}
           </DialogTitle>
           <DialogDescription>
             {isPublished
-              ? "Your game is live! Share the link or unpublish it."
-              : "Make your game playable by anyone with the link."}
+              ? t("gameLiveDescription")
+              : t("makePlayableDescription")}
           </DialogDescription>
         </DialogHeader>
 
@@ -107,14 +109,14 @@ export function PublishDialog({
                 disabled={loading}
               >
                 {loading && <Loader2 className="size-3.5 mr-1.5 animate-spin" />}
-                Unpublish
+                {t("unpublish")}
               </Button>
             </DialogFooter>
           </div>
         ) : (
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="pub-slug">Public URL slug</Label>
+              <Label htmlFor="pub-slug">{t("publicUrlSlug")}</Label>
               <div className="flex items-center gap-1 text-sm text-muted-foreground">
                 <span>/play/</span>
                 <Input
@@ -125,7 +127,7 @@ export function PublishDialog({
                   }
                   disabled={loading}
                   className="flex-1"
-                  placeholder="my-game"
+                  placeholder={t("myGamePlaceholder")}
                 />
               </div>
             </div>
@@ -133,7 +135,7 @@ export function PublishDialog({
             <DialogFooter>
               <Button onClick={handlePublish} disabled={loading || !slug.trim()}>
                 {loading && <Loader2 className="size-3.5 mr-1.5 animate-spin" />}
-                Publish
+                {t("publish")}
               </Button>
             </DialogFooter>
           </div>

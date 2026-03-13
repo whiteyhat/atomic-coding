@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { Link, useRouter } from "@/i18n/navigation";
+import { useTranslations } from "next-intl";
 import useSWR from "swr";
 import {
   Activity,
@@ -42,16 +42,16 @@ function getHealthTone(status: "ok" | "error" | "not_configured") {
   }
 }
 
-function getHealthLabel(status: "ok" | "error" | "not_configured") {
+function getHealthLabel(status: "ok" | "error" | "not_configured", t: (key: "healthy" | "healthUnavailable" | "notConfigured" | "unknown") => string) {
   switch (status) {
     case "ok":
-      return "Healthy";
+      return t("healthy");
     case "error":
-      return "Unavailable";
+      return t("healthUnavailable");
     case "not_configured":
-      return "Not configured";
+      return t("notConfigured");
     default:
-      return "Unknown";
+      return t("unknown");
   }
 }
 
@@ -92,6 +92,8 @@ function SettingsProfileForm({
   profile: UserProfile;
   onSaved: (profile: UserProfile) => Promise<void>;
 }) {
+  const t = useTranslations("settings");
+  const tCommon = useTranslations("common");
   const [displayNameInput, setDisplayNameInput] = useState(profile.display_name ?? "");
   const [avatarUrlInput, setAvatarUrlInput] = useState(profile.avatar_url ?? "");
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
@@ -122,12 +124,12 @@ function SettingsProfileForm({
             avatar_url: avatarUrlInput.trim() ? avatarUrlInput.trim() : null,
           });
           await onSaved(updated);
-          setSaveMessage("Profile saved.");
+          setSaveMessage(t("profileSaved"));
         } catch (error) {
           setSaveError(
             error instanceof Error
               ? error.message
-              : "Unable to save your profile right now.",
+              : t("unableToSaveProfile"),
           );
         }
       })();
@@ -139,20 +141,20 @@ function SettingsProfileForm({
       <div className="grid gap-5 md:grid-cols-2">
         <div className="space-y-2">
           <Label htmlFor="settings-display-name" className="text-white/80">
-            Display name
+            {t("displayName")}
           </Label>
           <Input
             id="settings-display-name"
             value={displayNameInput}
             onChange={(event) => setDisplayNameInput(event.target.value)}
-            placeholder="Your creator name"
+            placeholder={t("creatorNamePlaceholder")}
             className="border-white/10 bg-[#1c0b0f] text-white placeholder:text-white/35"
           />
         </div>
 
         <div className="space-y-2">
           <Label htmlFor="settings-avatar-url" className="text-white/80">
-            Avatar URL
+            {t("avatarUrl")}
           </Label>
           <Input
             id="settings-avatar-url"
@@ -166,7 +168,7 @@ function SettingsProfileForm({
       </div>
 
       <div className="rounded-[1.5rem] border border-white/8 bg-[#1c0b0f] px-4 py-3 text-sm text-white/60">
-        Changes persist to your authenticated `user_profiles` row and are isolated to your account.
+        {t("changesPersistNote")}
       </div>
 
       {(saveMessage || saveError) && (
@@ -184,7 +186,7 @@ function SettingsProfileForm({
       <div className="flex flex-wrap gap-3">
         <Button type="submit" disabled={!isDirty || isSaving}>
           <Save className="mr-2 size-4" />
-          {isSaving ? "Saving..." : "Save profile"}
+          {isSaving ? t("saving") : t("saveProfile")}
         </Button>
         <Button
           type="button"
@@ -194,7 +196,7 @@ function SettingsProfileForm({
           className="border-white/10 bg-white/5 text-white hover:bg-white/10 hover:text-white"
         >
           <RefreshCcw className="mr-2 size-4" />
-          Reset
+          {tCommon("reset")}
         </Button>
       </div>
     </form>
@@ -273,14 +275,15 @@ function SettingsHealthSkeleton() {
 }
 
 function SettingsHeroSkeleton() {
+  const t = useTranslations("settings");
   return (
     <div className="grid gap-3 sm:grid-cols-2">
       <div className="rounded-[1.75rem] border border-white/8 bg-white/[0.03] p-4">
-        <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-white/40">User</p>
+        <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-white/40">{t("user")}</p>
         <SkeletonBlock className="mt-3 h-4 w-40" />
       </div>
       <div className="rounded-[1.75rem] border border-white/8 bg-white/[0.03] p-4">
-        <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-white/40">Profile updated</p>
+        <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-white/40">{t("profileUpdated")}</p>
         <SkeletonBlock className="mt-3 h-4 w-32" />
       </div>
     </div>
@@ -290,6 +293,8 @@ function SettingsHeroSkeleton() {
 /* ── Main shell ────────────────────────────────────────────────────── */
 
 export function SettingsShell() {
+  const t = useTranslations("settings");
+  const tCommon = useTranslations("common");
   const router = useRouter();
   const { user, ready, authenticated, logout, isDevBypass } = useAppAuth();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -349,13 +354,13 @@ export function SettingsShell() {
             <div className="grid gap-6 p-6 md:p-8 lg:grid-cols-[1.1fr_0.9fr] lg:p-10">
               <div>
                 <p className="text-xs font-medium uppercase tracking-[0.24em] text-white/45">
-                  Creator Settings
+                  {t("creatorSettings")}
                 </p>
                 <h1 className="mt-3 max-w-2xl text-3xl font-semibold tracking-tight text-white md:text-4xl">
-                  Manage your profile and keep the platform’s core runtime details in one place.
+                  {t("manageProfileTitle")}
                 </h1>
                 <p className="mt-4 max-w-2xl text-sm leading-6 text-white/60 md:text-base">
-                  This page keeps account edits, system health, supported models, and operating docs attached to the same creator surface.
+                  {t("manageProfileDescription")}
                 </p>
               </div>
 
@@ -365,18 +370,18 @@ export function SettingsShell() {
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="rounded-[1.75rem] border border-white/8 bg-white/[0.03] p-4">
                     <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-white/40">
-                      User
+                      {t("user")}
                     </p>
-                    <p className="mt-3 break-all text-sm text-white">{user?.id ?? "Unavailable"}</p>
+                    <p className="mt-3 break-all text-sm text-white">{user?.id ?? tCommon("unavailable")}</p>
                   </div>
                   <div className="rounded-[1.75rem] border border-white/8 bg-white/[0.03] p-4">
                     <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-white/40">
-                      Profile updated
+                      {t("profileUpdated")}
                     </p>
                     <p className="mt-3 text-sm text-white">
                       {profile?.updated_at
                         ? new Date(profile.updated_at).toLocaleString()
-                        : "Not available"}
+                        : t("notAvailable")}
                     </p>
                   </div>
                 </div>
@@ -388,14 +393,14 @@ export function SettingsShell() {
           {profileError && !profile && (
             <div className="rounded-[2rem] border border-rose-400/20 bg-rose-400/10 p-6 text-center">
               <p className="text-sm text-rose-200">
-                {profileError instanceof Error ? profileError.message : "The profile request failed."}
+                {profileError instanceof Error ? profileError.message : t("profileRequestFailed")}
               </p>
               <Button
                 type="button"
                 className="mt-4"
                 onClick={() => { void mutateProfile(); }}
               >
-                Retry
+                {tCommon("retry")}
               </Button>
             </div>
           )}
@@ -404,9 +409,9 @@ export function SettingsShell() {
             <div className="space-y-5">
               {/* Profile form */}
               <SettingsSection
-                eyebrow="Profile"
-                title="Creator profile"
-                description="Update the public-facing identity attached to your account. Only profile fields are editable here in v1."
+                eyebrow={t("profileEyebrow")}
+                title={t("creatorProfile")}
+                description={t("creatorProfileDescription")}
               >
                 {isLoading ? (
                   <SettingsProfileSkeleton />
@@ -423,9 +428,9 @@ export function SettingsShell() {
 
               {/* Platform overview */}
               <SettingsSection
-                eyebrow="Platform"
-                title="Platform overview"
-                description="Read-only runtime facts surfaced from the app configuration and current health contract."
+                eyebrow={t("platformEyebrow")}
+                title={t("platformOverview")}
+                description={t("platformOverviewDescription")}
               >
                 {isHealthLoading && !health ? (
                   <SettingsPlatformSkeleton />
@@ -449,9 +454,9 @@ export function SettingsShell() {
 
               {/* Docs — fully static, no data needed */}
               <SettingsSection
-                eyebrow="Operations"
-                title="Docs and runbooks"
-                description="Quick links to the repo-hosted references that explain how this platform is wired and deployed."
+                eyebrow={t("operationsEyebrow")}
+                title={t("docsAndRunbooks")}
+                description={t("docsAndRunbooksDescription")}
               >
                 <div className="grid gap-3 md:grid-cols-3">
                   {SETTINGS_DOC_LINKS.map((link) => (
@@ -480,25 +485,25 @@ export function SettingsShell() {
             <div className="space-y-5">
               {/* Identity */}
               <SettingsSection
-                eyebrow="Identity"
-                title="Connected identities"
-                description="These values are read-only here and reflect the active authenticated session."
+                eyebrow={t("identityEyebrow")}
+                title={t("connectedIdentities")}
+                description={t("connectedIdentitiesDescription")}
               >
                 {isLoading ? (
                   <SettingsIdentitySkeleton />
                 ) : (
                   <div className="space-y-3">
                     <ReadOnlyRow
-                      label="Email"
-                      value={user?.email?.address ?? profile?.email ?? "No email attached"}
+                      label={t("email")}
+                      value={user?.email?.address ?? profile?.email ?? t("noEmailAttached")}
                     />
                     <ReadOnlyRow
-                      label="User ID"
-                      value={user?.id ?? "Unavailable"}
+                      label={t("userId")}
+                      value={user?.id ?? tCommon("unavailable")}
                     />
                     <ReadOnlyRow
-                      label="Auth mode"
-                      value={isDevBypass ? "Local dev auth bypass" : "Clerk authentication"}
+                      label={t("authMode")}
+                      value={isDevBypass ? t("localDevAuthBypass") : t("clerkAuthentication")}
                     />
                   </div>
                 )}
@@ -506,9 +511,9 @@ export function SettingsShell() {
 
               {/* Health */}
               <SettingsSection
-                eyebrow="Health"
-                title="System health"
-                description="Safe service checks from the internal health route. No secrets are exposed here."
+                eyebrow={t("healthEyebrow")}
+                title={t("systemHealth")}
+                description={t("systemHealthDescription")}
               >
                 {isHealthLoading && !health ? (
                   <SettingsHealthSkeleton />
@@ -534,7 +539,7 @@ export function SettingsShell() {
                             <span
                               className={`rounded-full border px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.18em] ${getHealthTone(item.status)}`}
                             >
-                              {getHealthLabel(item.status)}
+                              {getHealthLabel(item.status, t)}
                             </span>
                           </div>
                           <p className="mt-3 text-sm leading-6 text-white/55">{item.description}</p>
@@ -546,7 +551,7 @@ export function SettingsShell() {
                       <p className="mt-4 text-sm text-white/45">
                         {healthError instanceof Error
                           ? healthError.message
-                          : "Unable to refresh health right now."}
+                          : t("unableToRefreshHealth")}
                       </p>
                     )}
                   </>
@@ -560,22 +565,22 @@ export function SettingsShell() {
                     className="border-white/10 bg-white/5 text-white hover:bg-white/10 hover:text-white"
                   >
                     <RefreshCcw className="mr-2 size-4" />
-                    Refresh health
+                    {t("refreshHealth")}
                   </Button>
                 </div>
               </SettingsSection>
 
               {/* Account actions */}
               <SettingsSection
-                eyebrow="Account"
-                title="Account actions"
-                description="Use sign out to end the active creator session from this device."
+                eyebrow={t("accountEyebrow")}
+                title={t("accountActions")}
+                description={t("accountActionsDescription")}
               >
                 <div className="space-y-3">
                   <div className="rounded-[1.5rem] border border-white/8 bg-white/[0.03] p-4 text-sm leading-6 text-white/55">
                     {isDevBypass
-                      ? "Local development auth bypass is active, so sign-out is disabled for this session."
-                      : "Signing out returns you to the login flow and clears the active authenticated session."}
+                      ? t("devBypassSignOutDisabled")
+                      : t("signOutDescription")}
                   </div>
 
                   <div className="flex flex-wrap gap-3">
@@ -586,7 +591,7 @@ export function SettingsShell() {
                       className="bg-rose-500 text-white hover:bg-rose-400"
                     >
                       <LogOut className="mr-2 size-4" />
-                      Sign out
+                      {tCommon("signOut")}
                     </Button>
                   </div>
                 </div>

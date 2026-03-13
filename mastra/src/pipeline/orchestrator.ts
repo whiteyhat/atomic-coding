@@ -310,7 +310,7 @@ async function removeBackground(
   const formData = new FormData();
   formData.set(
     "image_file",
-    new Blob([bytes], { type: contentType ?? "application/octet-stream" }),
+    new Blob([bytes.buffer as ArrayBuffer], { type: contentType ?? "application/octet-stream" }),
     fileName,
   );
   formData.set("format", "png");
@@ -346,7 +346,7 @@ async function uploadCanonicalTask8Asset(args: {
 
   const { error } = await supabase.storage
     .from("bundles")
-    .upload(path, new Blob([args.bytes], { type: args.contentType }), {
+    .upload(path, new Blob([args.bytes.buffer as ArrayBuffer], { type: args.contentType }), {
       cacheControl: "3600",
       upsert: true,
       contentType: args.contentType,
@@ -384,7 +384,7 @@ async function uploadCanonicalTask7Asset(args: {
 
   const { error } = await supabase.storage
     .from("bundles")
-    .upload(path, new Blob([args.bytes], { type: args.contentType }), {
+    .upload(path, new Blob([args.bytes.buffer as ArrayBuffer], { type: args.contentType }), {
       cacheControl: "3600",
       upsert: true,
       contentType: args.contentType,

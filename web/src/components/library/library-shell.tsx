@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
-import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useTranslations } from "next-intl";
+import { useSearchParams } from "next/navigation";
+import { Link, usePathname, useRouter } from "@/i18n/navigation";
 import useSWR from "swr";
 import { motion } from "framer-motion";
 import {
@@ -72,72 +73,36 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-const BUILD_FILTER_OPTIONS: Array<{
-  value: LibraryBuildFilter;
-  label: string;
-}> = [
-  { value: "all", label: "All builds" },
-  { value: "ready", label: "Ready" },
-  { value: "building", label: "Building" },
-  { value: "error", label: "Error" },
-  { value: "none", label: "No build" },
-];
+type TranslationFn = ReturnType<typeof useTranslations<"library">>;
 
-const FORMAT_FILTER_OPTIONS: Array<{
-  value: LibraryFormatFilter;
-  label: string;
-}> = [
-  { value: "all", label: "All formats" },
-  { value: "2d", label: "2D only" },
-  { value: "3d", label: "3D only" },
-];
-
-const VISIBILITY_FILTER_OPTIONS: Array<{
-  value: LibraryVisibilityFilter;
-  label: string;
-}> = [
-  { value: "all", label: "All visibility" },
-  { value: "published", label: "Published" },
-  { value: "private", label: "Private" },
-];
-
-const SORT_OPTIONS: Array<{
-  value: LibrarySort;
-  label: string;
-}> = [
-  { value: "updated", label: "Recently updated" },
-  { value: "created", label: "Recently created" },
-  { value: "name", label: "Name (A-Z)" },
-];
-
-function getBuildMeta(status: LibraryCreation["activeBuildStatus"]) {
+function getBuildMeta(status: LibraryCreation["activeBuildStatus"], t: TranslationFn) {
   switch (status) {
     case "success":
       return {
-        label: "Ready build",
-        shortLabel: "Ready",
+        label: t("readyBuild"),
+        shortLabel: t("readyShort"),
         className:
           "border-emerald-300/30 bg-emerald-400/15 text-emerald-50",
         detailClassName: "text-emerald-300",
       };
     case "building":
       return {
-        label: "Build running",
-        shortLabel: "Building",
+        label: t("buildRunning"),
+        shortLabel: t("buildingShort"),
         className: "border-sky-300/30 bg-sky-400/15 text-sky-50",
         detailClassName: "text-sky-300",
       };
     case "error":
       return {
-        label: "Build failed",
-        shortLabel: "Error",
+        label: t("buildFailedLabel"),
+        shortLabel: t("errorShort"),
         className: "border-red-300/30 bg-red-400/15 text-red-50",
         detailClassName: "text-red-300",
       };
     default:
       return {
-        label: "No build yet",
-        shortLabel: "No build",
+        label: t("noBuildYet"),
+        shortLabel: t("noBuildShort"),
         className: "border-white/12 bg-white/8 text-white/70",
         detailClassName: "text-white/45",
       };

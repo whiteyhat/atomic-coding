@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import {
   Dialog,
   DialogContent,
@@ -31,6 +32,7 @@ export function LaunchTokenDialog({
   existingLaunch,
   onSaved,
 }: LaunchTokenDialogProps) {
+  const t = useTranslations("games");
   const [open, setOpen] = useState(false);
   const [tokenName, setTokenName] = useState(existingLaunch?.token_name ?? "");
   const [tokenSymbol, setTokenSymbol] = useState(existingLaunch?.token_symbol ?? "");
@@ -69,7 +71,7 @@ export function LaunchTokenDialog({
       <DialogTrigger asChild>
         <Button variant="outline" size="sm">
           <Coins className="size-3.5 mr-1.5" />
-          {existingLaunch ? "Token" : "Launch Token"}
+          {existingLaunch ? t("token") : t("launchToken")}
           {existingLaunch && (
             <Badge variant="secondary" className="ml-1.5 text-[10px]">
               {statusLabel}
@@ -80,34 +82,34 @@ export function LaunchTokenDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>
-            {existingLaunch ? "Token Configuration" : "Launch a Token"}
+            {existingLaunch ? t("tokenConfiguration") : t("launchAToken")}
           </DialogTitle>
           <DialogDescription>
             {existingLaunch
-              ? "Update your game token settings. Blockchain deployment coming soon."
-              : "Configure a token for your game. This saves a draft — blockchain deployment is coming soon."}
+              ? t("updateTokenDescription")
+              : t("configureTokenDescription")}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
-              <Label htmlFor="token-name">Token Name</Label>
+              <Label htmlFor="token-name">{t("tokenName")}</Label>
               <Input
                 id="token-name"
                 value={tokenName}
                 onChange={(e) => setTokenName(e.target.value)}
-                placeholder="My Game Token"
+                placeholder={t("tokenNamePlaceholder")}
                 disabled={loading}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="token-symbol">Symbol</Label>
+              <Label htmlFor="token-symbol">{t("symbol")}</Label>
               <Input
                 id="token-symbol"
                 value={tokenSymbol}
                 onChange={(e) => setTokenSymbol(e.target.value.toUpperCase())}
-                placeholder="MGT"
+                placeholder={t("symbolPlaceholder")}
                 maxLength={10}
                 disabled={loading}
               />
@@ -116,7 +118,7 @@ export function LaunchTokenDialog({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
-              <Label htmlFor="total-supply">Total Supply</Label>
+              <Label htmlFor="total-supply">{t("totalSupply")}</Label>
               <Input
                 id="total-supply"
                 type="number"
@@ -126,7 +128,7 @@ export function LaunchTokenDialog({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="alloc-pct">Leaderboard Allocation %</Label>
+              <Label htmlFor="alloc-pct">{t("leaderboardAllocation")}</Label>
               <Input
                 id="alloc-pct"
                 type="number"
@@ -140,7 +142,7 @@ export function LaunchTokenDialog({
           </div>
 
           <p className="text-xs text-muted-foreground">
-            Top leaderboard players will receive {allocationPct}% of the total supply when the token launches.
+            {t("leaderboardAllocationDescription", { pct: allocationPct })}
           </p>
 
           {error && <p className="text-sm text-destructive">{error}</p>}
@@ -151,7 +153,7 @@ export function LaunchTokenDialog({
               disabled={loading || !tokenName.trim() || !tokenSymbol.trim()}
             >
               {loading && <Loader2 className="size-3.5 mr-1.5 animate-spin" />}
-              {existingLaunch ? "Update" : "Save Draft"}
+              {existingLaunch ? t("update") : t("saveDraft")}
             </Button>
           </DialogFooter>
         </div>

@@ -2,20 +2,35 @@
 
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import Link from "next/link";
-import { LogOut, Settings, User } from "lucide-react";
+import { useLocale, useTranslations } from "next-intl";
+import { Link, usePathname, useRouter } from "@/i18n/navigation";
+import { Globe, LogOut, Settings, User } from "lucide-react";
 import { getTimeOfDayGreeting } from "@/lib/dashboard";
 import { useAppAuth } from "@/lib/auth-provider";
+import { routing, type Locale } from "@/i18n/routing";
 import { fadeInUp } from "./dashboard-animations";
+
+const localeLabels: Record<Locale, string> = {
+  en: "English",
+  es: "Español",
+  fr: "Français",
+  de: "Deutsch",
+};
 
 interface DashboardHeaderProps {
   displayName: string;
 }
 
 export function DashboardHeader({ displayName }: DashboardHeaderProps) {
+  const tCommon = useTranslations("common");
+  const tNav = useTranslations("nav");
   const greeting = getTimeOfDayGreeting();
   const { user, logout } = useAppAuth();
+  const locale = useLocale();
+  const pathname = usePathname();
+  const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [langOpen, setLangOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   // Close on outside click
@@ -31,7 +46,7 @@ export function DashboardHeader({ displayName }: DashboardHeaderProps) {
   }, [menuOpen]);
 
   const email = user?.email?.address;
-  const subtitle = email || "Account";
+  const subtitle = email || tCommon("account");
 
   return (
     <motion.header
@@ -89,8 +104,53 @@ export function DashboardHeader({ displayName }: DashboardHeaderProps) {
                   className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm text-white/60 transition hover:bg-white/8 hover:text-white"
                 >
                   <Settings className="size-4" />
-                  Settings
+                  {tNav("settings")}
                 </Link>
+
+                {/* Language switcher */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setLangOpen((v) => !v)}
+                    className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm text-white/60 transition hover:bg-white/8 hover:text-white"
+                  >
+                    <Globe className="size-4" />
+                    {localeLabels[locale as Locale] ?? tCommon("language")}
+                  </button>
+                  <AnimatePresence>
+                    {langOpen && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.12 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="ml-6 border-l border-white/8 pl-2 py-1">
+                          {routing.locales.map((loc) => (
+                            <button
+                              key={loc}
+                              type="button"
+                              onClick={() => {
+                                setMenuOpen(false);
+                                setLangOpen(false);
+                                router.replace(pathname, { locale: loc });
+                              }}
+                              className={`flex w-full items-center rounded-lg px-3 py-1.5 text-sm transition hover:bg-white/8 hover:text-white ${
+                                loc === locale
+                                  ? "text-white font-medium"
+                                  : "text-white/50"
+                              }`}
+                            >
+                              {localeLabels[loc]}
+                            </button>
+                          ))}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+
                 <button
                   type="button"
                   onClick={() => {
@@ -100,7 +160,7 @@ export function DashboardHeader({ displayName }: DashboardHeaderProps) {
                   className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm text-white/60 transition hover:bg-white/8 hover:text-white"
                 >
                   <LogOut className="size-4" />
-                  Sign out
+                  {tCommon("signOut")}
                 </button>
               </div>
             </motion.div>

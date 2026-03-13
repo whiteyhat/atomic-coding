@@ -1,8 +1,8 @@
 "use client";
 
 import { motion } from "framer-motion";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { useTranslations } from "next-intl";
+import { Link, usePathname } from "@/i18n/navigation";
 import {
   BarChart3,
   Home,
@@ -23,10 +23,10 @@ import {
 } from "@/components/ui/tooltip";
 
 const navItems = [
-  { icon: Home, label: "Home", id: "home", href: "/dashboard" },
-  { icon: BarChart3, label: "Analytics", id: "stats", href: "/analytics" },
-  { icon: Gamepad2, label: "Library", id: "library", href: "/library" },
-  { icon: Shrimp, label: "OpenClaw", id: "openclaw", href: "/openclaw" },
+  { icon: Home, labelKey: "home" as const, id: "home", href: "/dashboard" },
+  { icon: BarChart3, labelKey: "analytics" as const, id: "stats", href: "/analytics" },
+  { icon: Gamepad2, labelKey: "library" as const, id: "library", href: "/library" },
+  { icon: Shrimp, labelKey: "openClaw" as const, id: "openclaw", href: "/openclaw" },
 ] as const;
 
 interface AppNavSidebarProps {
@@ -34,6 +34,8 @@ interface AppNavSidebarProps {
 }
 
 export function AppNavSidebar({ activeId = "library" }: AppNavSidebarProps) {
+  const tNav = useTranslations("nav");
+  const tCommon = useTranslations("common");
   const pathname = usePathname();
   const resolvedActiveId =
     pathname.startsWith("/analytics")
@@ -72,7 +74,7 @@ export function AppNavSidebar({ activeId = "library" }: AppNavSidebarProps) {
               sideOffset={14}
               className="rounded-xl border border-white/10 bg-[#1a0a0e]/95 px-3.5 py-2 text-[13px] font-medium tracking-wide text-white/90 shadow-[0_8px_30px_rgba(0,0,0,0.5),0_0_15px_rgba(244,63,94,0.08)] backdrop-blur-xl"
             >
-              Atomic Coding
+              {tNav("atomicCoding")}
             </TooltipContent>
           </Tooltip>
         </div>
@@ -84,7 +86,7 @@ export function AppNavSidebar({ activeId = "library" }: AppNavSidebarProps) {
           animate="visible"
           className="mt-4 flex flex-1 flex-col items-center gap-1"
         >
-          {navItems.map(({ icon: Icon, label, id, href }) => {
+          {navItems.map(({ icon: Icon, labelKey, id, href }) => {
             const isActive = id === resolvedActiveId;
 
             return (
@@ -121,7 +123,7 @@ export function AppNavSidebar({ activeId = "library" }: AppNavSidebarProps) {
                       : "border-white/10 text-white/90"
                   )}
                 >
-                  {label}
+                  {tNav(labelKey)}
                 </TooltipContent>
               </Tooltip>
             );
@@ -144,7 +146,7 @@ export function AppNavSidebar({ activeId = "library" }: AppNavSidebarProps) {
               sideOffset={14}
               className="rounded-xl border border-white/10 bg-[#1a0a0e]/95 px-3.5 py-2 text-[13px] font-medium tracking-wide text-white/50 shadow-[0_8px_30px_rgba(0,0,0,0.5)] backdrop-blur-xl"
             >
-              Bonding Curve · <span className="text-amber-400/80">COMING SOON</span>
+              {tNav("bondingCurve")} · <span className="text-amber-400/80">{tCommon("comingSoon")}</span>
             </TooltipContent>
           </Tooltip>
 
@@ -183,7 +185,7 @@ export function AppNavSidebar({ activeId = "library" }: AppNavSidebarProps) {
                   : "border-white/10 text-white/90"
               )}
             >
-              Settings
+              {tNav("settings")}
             </TooltipContent>
           </Tooltip>
         </motion.nav>
@@ -201,7 +203,7 @@ export function AppNavSidebar({ activeId = "library" }: AppNavSidebarProps) {
               sideOffset={14}
               className="rounded-xl border border-cyan-300/15 bg-[#1a0a0e]/95 px-3.5 py-2 text-[13px] font-medium tracking-wide text-cyan-100 shadow-[0_8px_30px_rgba(0,0,0,0.5),0_0_15px_rgba(34,211,238,0.12)] backdrop-blur-xl"
             >
-              Atomic Aid Agent
+              {tNav("atomicAidAgent")}
             </TooltipContent>
           </Tooltip>
         </div>

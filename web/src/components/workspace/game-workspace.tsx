@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
+import { useRouter } from "@/i18n/navigation";
 import { motion } from "framer-motion";
 import dynamic from "next/dynamic";
 import { Plus, Sparkles, Swords } from "lucide-react";
@@ -76,6 +77,7 @@ export function GameWorkspace({
   isPublished,
   publicSlug,
 }: GameWorkspaceProps) {
+  const t = useTranslations("workspace");
   const router = useRouter();
   const [tab, setTab] = useState<SidebarTab>("chat");
   const [visitedTabs, setVisitedTabs] = useState<Set<SidebarTab>>(new Set(["chat"]));
@@ -316,9 +318,9 @@ export function GameWorkspace({
                             <Sparkles className="size-7" />
                           </div>
                           <div>
-                            <p className="text-lg font-semibold text-white">Choose a workstream</p>
+                            <p className="text-lg font-semibold text-white">{t("chooseWorkstream")}</p>
                             <p className="mt-2 max-w-md text-sm leading-6 text-white/48">
-                              Open a feature thread, revisit a war room run, or start a new chat from the workstream rail.
+                              {t("chooseWorkstreamDescription")}
                             </p>
                           </div>
                           <div className="flex gap-3">
@@ -330,7 +332,7 @@ export function GameWorkspace({
                                 onClick={() => handleCreateFeature()}
                               >
                                 <Plus className="size-4" />
-                                New Feature
+                                {t("newFeature")}
                               </Button>
                             )}
                             <Button
@@ -339,7 +341,7 @@ export function GameWorkspace({
                               onClick={handleCreateWarRoom}
                             >
                               <Swords className="size-4" />
-                              War Room
+                              {t("warRoom")}
                             </Button>
                           </div>
                         </div>

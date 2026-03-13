@@ -10,7 +10,8 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
+import { usePathname, useRouter } from "@/i18n/navigation";
 import {
   Atom,
   ArrowUpRight,
@@ -215,13 +216,14 @@ function getDesktopPanelMetrics(): DesktopPanelMetrics | null {
 }
 
 function SpeechBubble({ onDismiss }: { onDismiss: () => void }) {
+  const t = useTranslations("platformAid");
   return (
     <div
       className="absolute -top-16 left-3 animate-[bubble-pop_0.4s_ease-out] cursor-pointer whitespace-nowrap rounded-[1.2rem] border-2 border-cyan-200/40 bg-white px-3.5 py-2 text-[11px] font-bold tracking-wide text-slate-900 shadow-[3px_3px_0px_rgba(0,0,0,0.25)] transition-transform hover:scale-105"
       style={{ fontFamily: "'Comic Sans MS', 'Chalkboard SE', cursive" }}
       onClick={onDismiss}
     >
-      Hey pal! Drop me a message!
+      {t("speechBubble")}
       <div className="absolute -bottom-2 left-4 size-0 border-x-[7px] border-t-[9px] border-x-transparent border-t-white drop-shadow-[2px_2px_0px_rgba(0,0,0,0.18)]" />
       <div className="absolute -bottom-[11px] left-[15px] size-0 border-x-[8px] border-t-[10px] border-x-transparent border-t-cyan-200/40" />
     </div>
@@ -235,6 +237,7 @@ function TriggerButton({
   className?: string;
   isFloating?: boolean;
 }) {
+  const t = useTranslations("platformAid");
   const { available, hasBeenOpened, open, toggle } = usePlatformAid();
   const [bubbleDismissed, setBubbleDismissed] = useState(false);
 
@@ -265,7 +268,7 @@ function TriggerButton({
       <button
         type="button"
         onClick={handleToggle}
-        aria-label={open ? "Close Atomic Aid Agent" : "Open Atomic Aid Agent"}
+        aria-label={open ? t("closeAgent") : t("openAgent")}
         className={cn(
           "relative flex items-center justify-center rounded-[1.1rem] border transition-all duration-200",
           open
@@ -321,6 +324,7 @@ function PlatformAidSidebarPanel({
   sending: boolean;
   suggestions: string[];
 }) {
+  const t = useTranslations("platformAid");
   const { currentPageId, open } = usePlatformAid();
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -360,7 +364,7 @@ function PlatformAidSidebarPanel({
     <>
       <button
         type="button"
-        aria-label="Close Atomic Aid Agent"
+        aria-label={t("closeAgent")}
         className={cn(
           "fixed inset-0 z-[59] bg-black/55 transition-opacity duration-200",
           "lg:rounded-[2rem] lg:bg-black/42",
@@ -382,14 +386,13 @@ function PlatformAidSidebarPanel({
             <div>
               <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.22em] text-cyan-100/70">
                 <Sparkles className="size-3.5" />
-                Atomic Aid Agent
+                {t("agentTitle")}
               </div>
               <h2 className="mt-2 text-xl font-semibold text-white">
-                Platform aid
+                {t("platformAid")}
               </h2>
               <p className="mt-1 max-w-sm text-sm leading-6 text-white/55">
-                Route-aware help for onboarding, navigation, publishing,
-                OpenClaw, and platform workflows.
+                {t("agentDescription")}
               </p>
             </div>
 
@@ -405,8 +408,8 @@ function PlatformAidSidebarPanel({
           <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[11px] font-medium text-white/65">
             <span className="size-1.5 rounded-full bg-emerald-300" />
             {currentPageId === "other"
-              ? "Standby"
-              : `Focused on ${currentPageId}`}
+              ? t("statusStandby")
+              : t("statusFocused", { pageId: currentPageId })}
           </div>
         </div>
 
@@ -416,8 +419,7 @@ function PlatformAidSidebarPanel({
         >
           {messages.length === 0 ? (
             <div className="rounded-[1.4rem] border border-dashed border-white/12 bg-white/[0.03] p-4 text-sm leading-6 text-white/55">
-              Ask about where to start, how publishing works, what OpenClaw
-              does, how War Room fits in, or where a feature lives.
+              {t("emptyState")}
             </div>
           ) : null}
 
@@ -505,7 +507,7 @@ function PlatformAidSidebarPanel({
               onChange={(event) => onInputChange(event.target.value)}
               onKeyDown={handleKeyDown}
               rows={3}
-              placeholder="Ask about the platform, onboarding, publishing, OpenClaw, or where something lives."
+              placeholder={t("placeholder")}
               className="min-h-[92px] w-full resize-none border-0 bg-transparent px-0 py-0 text-sm text-white outline-none placeholder:text-white/30"
             />
             <div className="mt-3 flex items-center justify-end gap-3">
@@ -534,6 +536,7 @@ export function PlatformAidProvider({
 }: {
   children: React.ReactNode;
 }) {
+  const t = useTranslations("platformAid");
   const pathname = usePathname();
   const router = useRouter();
   const { getAccessToken, user } = useAppAuth();
@@ -772,11 +775,11 @@ export function PlatformAidProvider({
           role: "agent",
           text:
             rawEvent.error ??
-            "Atomic Aid Agent is temporarily unavailable. Try again shortly.",
+            t("temporarilyUnavailable"),
         },
       ]);
     },
-    [applyContextEvent, currentPageId],
+    [applyContextEvent, currentPageId, t],
   );
 
   const sendMessage = useCallback(
@@ -895,7 +898,7 @@ export function PlatformAidProvider({
             text:
               error instanceof Error
                 ? error.message
-                : "Atomic Aid Agent is temporarily unavailable. Try again shortly.",
+                : t("temporarilyUnavailable"),
           },
         ]);
       }
@@ -910,6 +913,7 @@ export function PlatformAidProvider({
       resetTurnState,
       sending,
       sessionId,
+      t,
     ],
   );
 

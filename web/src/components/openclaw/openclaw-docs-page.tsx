@@ -1,6 +1,7 @@
 "use client";
 
-import Link from "next/link";
+import { useTranslations } from "next-intl";
+import { Link } from "@/i18n/navigation";
 import { useState } from "react";
 import useSWR from "swr";
 import { ArrowLeft, CheckCircle2, Copy, ExternalLink } from "lucide-react";
@@ -14,7 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-function CopyButton({ value, label }: { value: string; label: string }) {
+function CopyButton({ value, label, copiedLabel }: { value: string; label: string; copiedLabel: string }) {
   const [copied, setCopied] = useState(false);
 
   async function handleCopy() {
@@ -36,7 +37,7 @@ function CopyButton({ value, label }: { value: string; label: string }) {
       className="border-white/10 bg-white/5 text-white hover:bg-white/10 hover:text-white"
     >
       <Copy className="size-4" />
-      {copied ? "Copied" : label}
+      {copied ? copiedLabel : label}
     </Button>
   );
 }
@@ -57,6 +58,8 @@ function getMethodBadgeClass(method: string) {
 }
 
 export function OpenClawDocsPage() {
+  const t = useTranslations("openclaw");
+  const tCommon = useTranslations("common");
   const { data: manifestState, error } = useSWR(
     "openclaw-skill-manifest",
     async () => {
@@ -86,8 +89,8 @@ export function OpenClawDocsPage() {
   if (!manifest && !error) {
     return (
       <DashboardLoading
-        title="Loading OpenClaw docs"
-        description="Preparing the import contract, claim flow, and operator examples."
+        title={t("loadingDocs")}
+        description={t("loadingDocsDescription")}
       />
     );
   }
@@ -95,8 +98,8 @@ export function OpenClawDocsPage() {
   if (error || !manifest) {
     return (
       <DashboardStatusCard
-        title="Unable to load OpenClaw docs"
-        description={error instanceof Error ? error.message : "The skill manifest request failed."}
+        title={t("unableToLoadDocs")}
+        description={error instanceof Error ? error.message : tCommon("error")}
       />
     );
   }
@@ -125,42 +128,42 @@ export function OpenClawDocsPage() {
           >
             <Link href="/openclaw">
               <ArrowLeft className="size-4" />
-              Back to OpenClaw
+              {t("backToOpenClaw")}
             </Link>
           </Button>
 
           <div className="flex flex-wrap gap-2">
-            <CopyButton value={manifest.skill_json_url} label="Copy skill JSON" />
-            <CopyButton value={manifest.skill_manifest_url} label="Copy markdown" />
+            <CopyButton value={manifest.skill_json_url} label={t("copySkillJson")} copiedLabel={tCommon("copied")} />
+            <CopyButton value={manifest.skill_manifest_url} label={t("copyMarkdown")} copiedLabel={tCommon("copied")} />
           </div>
         </div>
 
         <section className="overflow-hidden rounded-[2rem] border border-white/8 bg-[linear-gradient(135deg,rgba(65,20,28,0.98),rgba(25,8,12,0.94))] p-6 shadow-[0_30px_120px_rgba(24,8,10,0.38)] md:p-8">
           <Badge className="rounded-full border border-rose-400/20 bg-rose-400/10 px-3 py-1 text-[11px] uppercase tracking-[0.24em] text-rose-200">
-            OpenClaw Docs
+            {t("docsTitle")}
           </Badge>
           <h1 className="mt-5 max-w-4xl text-3xl font-semibold tracking-tight text-white md:text-5xl">
-            Import flow, runtime contract, and operator surface for Atomic Coding.
+            {t("docsHeading")}
           </h1>
           <p className="mt-4 max-w-3xl text-sm leading-7 text-white/65 md:text-base">
-            Use these docs inside OpenClaw settings when attaching Atomic as an external control plane. The import remains owner scoped, Mastra remains built in, and the returned API key carries full owner parity across the platform.
+            {t("docsDescription")}
           </p>
 
           <div className="mt-7 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-[1.5rem] border border-white/8 bg-white/[0.04] p-4">
-              <p className="text-[11px] uppercase tracking-[0.2em] text-white/40">Workflow</p>
+              <p className="text-[11px] uppercase tracking-[0.2em] text-white/40">{t("workflow")}</p>
               <p className="mt-3 text-lg font-semibold text-white">{manifest.workflow}</p>
             </div>
             <div className="rounded-[1.5rem] border border-white/8 bg-white/[0.04] p-4">
-              <p className="text-[11px] uppercase tracking-[0.2em] text-white/40">Create session</p>
+              <p className="text-[11px] uppercase tracking-[0.2em] text-white/40">{t("createSession")}</p>
               <p className="mt-3 break-all text-sm text-white">{manifest.create_session_path}</p>
             </div>
             <div className="rounded-[1.5rem] border border-white/8 bg-white/[0.04] p-4">
-              <p className="text-[11px] uppercase tracking-[0.2em] text-white/40">Claim template</p>
+              <p className="text-[11px] uppercase tracking-[0.2em] text-white/40">{t("claimTemplate")}</p>
               <p className="mt-3 break-all text-sm text-white">{manifest.claim_path_template}</p>
             </div>
             <div className="rounded-[1.5rem] border border-white/8 bg-white/[0.04] p-4">
-              <p className="text-[11px] uppercase tracking-[0.2em] text-white/40">Heartbeat URL</p>
+              <p className="text-[11px] uppercase tracking-[0.2em] text-white/40">{t("heartbeatUrl")}</p>
               <p className="mt-3 break-all text-sm text-white">{manifest.heartbeat_url}</p>
             </div>
           </div>
@@ -174,15 +177,15 @@ export function OpenClawDocsPage() {
 
         <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
           <div className="rounded-[2rem] border border-white/8 bg-[#311519]/95 p-6 shadow-[0_24px_90px_rgba(24,8,10,0.24)]">
-            <p className="text-[11px] uppercase tracking-[0.24em] text-white/40">Quickstart</p>
-            <h2 className="mt-3 text-2xl font-semibold text-white">Import sequence</h2>
+            <p className="text-[11px] uppercase tracking-[0.24em] text-white/40">{t("quickstart")}</p>
+            <h2 className="mt-3 text-2xl font-semibold text-white">{t("importSequence")}</h2>
             <div className="mt-5 space-y-3">
               {[
-                "Open `/openclaw` inside Atomic Coding and generate a claim session.",
-                "Paste the one-time claim URL into OpenClaw settings so it can read the handshake instructions.",
-                "POST the identity payload back to the same claim URL using the required `name` and `agent_url` fields.",
-                "Store the returned `api_key`, `api_base_url`, `skill_json_url`, and `heartbeat_url` inside OpenClaw.",
-                "Call the heartbeat endpoint roughly every five minutes and optionally configure webhooks for build and war room events.",
+                t("importStep1"),
+                t("importStep2"),
+                t("importStep3"),
+                t("importStep4"),
+                t("importStep5"),
               ].map((step, index) => (
                 <div key={step} className="rounded-[1.5rem] border border-white/8 bg-white/[0.03] p-4">
                   <div className="flex items-start gap-3">
@@ -197,13 +200,13 @@ export function OpenClawDocsPage() {
           </div>
 
           <div className="rounded-[2rem] border border-white/8 bg-[#311519]/95 p-6 shadow-[0_24px_90px_rgba(24,8,10,0.24)]">
-            <p className="text-[11px] uppercase tracking-[0.24em] text-white/40">Claim Payload</p>
-            <h2 className="mt-3 text-2xl font-semibold text-white">POST body example</h2>
+            <p className="text-[11px] uppercase tracking-[0.24em] text-white/40">{t("claimPayload")}</p>
+            <h2 className="mt-3 text-2xl font-semibold text-white">{t("postBodyExample")}</h2>
             <pre className="mt-5 overflow-x-auto rounded-[1.5rem] border border-white/8 bg-[#1b0a0e] p-4 text-sm leading-7 text-white/80">
               {claimPayloadExample}
             </pre>
             <div className="mt-4 flex flex-wrap gap-2">
-              <CopyButton value={claimPayloadExample} label="Copy payload" />
+              <CopyButton value={claimPayloadExample} label={t("copyPayload")} copiedLabel={tCommon("copied")} />
               <Button
                 type="button"
                 variant="outline"
@@ -212,7 +215,7 @@ export function OpenClawDocsPage() {
               >
                 <a href={manifest.docs_url} target="_blank" rel="noreferrer">
                   <ExternalLink className="size-4" />
-                  Open manifest endpoint
+                  {t("openManifestEndpoint")}
                 </a>
               </Button>
             </div>
@@ -221,8 +224,8 @@ export function OpenClawDocsPage() {
 
         <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
           <div className="rounded-[2rem] border border-white/8 bg-[#311519]/95 p-6 shadow-[0_24px_90px_rgba(24,8,10,0.24)]">
-            <p className="text-[11px] uppercase tracking-[0.24em] text-white/40">Capabilities</p>
-            <h2 className="mt-3 text-2xl font-semibold text-white">Owner control surface</h2>
+            <p className="text-[11px] uppercase tracking-[0.24em] text-white/40">{t("capabilities")}</p>
+            <h2 className="mt-3 text-2xl font-semibold text-white">{t("ownerControlSurface")}</h2>
             <div className="mt-5 space-y-3">
               {manifest.capabilities.map((group) => (
                 <div key={group.key} className="rounded-[1.5rem] border border-white/8 bg-white/[0.03] p-4">
@@ -255,8 +258,8 @@ export function OpenClawDocsPage() {
 
           <div className="space-y-5">
             <div className="rounded-[2rem] border border-white/8 bg-[#311519]/95 p-6 shadow-[0_24px_90px_rgba(24,8,10,0.24)]">
-              <p className="text-[11px] uppercase tracking-[0.24em] text-white/40">Webhook Events</p>
-              <h2 className="mt-3 text-2xl font-semibold text-white">Outbound notifications</h2>
+              <p className="text-[11px] uppercase tracking-[0.24em] text-white/40">{t("webhookEvents")}</p>
+              <h2 className="mt-3 text-2xl font-semibold text-white">{t("outboundNotifications")}</h2>
               <div className="mt-5 space-y-3">
                 {manifest.webhook_events.map((event) => (
                   <div key={event.key} className="rounded-[1.5rem] border border-white/8 bg-white/[0.03] p-4">
@@ -276,8 +279,8 @@ export function OpenClawDocsPage() {
             </div>
 
             <div className="rounded-[2rem] border border-white/8 bg-[#311519]/95 p-6 shadow-[0_24px_90px_rgba(24,8,10,0.24)]">
-              <p className="text-[11px] uppercase tracking-[0.24em] text-white/40">Scopes</p>
-              <h2 className="mt-3 text-2xl font-semibold text-white">Default key scopes</h2>
+              <p className="text-[11px] uppercase tracking-[0.24em] text-white/40">{t("scopes")}</p>
+              <h2 className="mt-3 text-2xl font-semibold text-white">{t("defaultKeyScopes")}</h2>
               <div className="mt-5 flex flex-wrap gap-2">
                 {manifest.scopes.map((scope) => (
                   <Badge

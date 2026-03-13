@@ -1,8 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { Link, usePathname } from "@/i18n/navigation";
 import {
   BarChart3,
   Home,
@@ -12,6 +11,7 @@ import {
   Coins,
   Shrimp,
 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { slideInLeft, fadeInUp, staggerContainer } from "./dashboard-animations";
 import {
@@ -23,12 +23,12 @@ import {
 import { PlatformAidSidebarTrigger } from "@/components/platform-aid/platform-aid-provider";
 
 const navItems = [
-  { icon: Home, label: "Home", id: "home", href: "/dashboard" },
-  { icon: BarChart3, label: "Analytics", id: "stats", href: "/analytics" },
-  { icon: LayoutGrid, label: "Library", id: "library", href: "/library" },
-  { icon: Shrimp, label: "OpenClaw", id: "openclaw", href: "/openclaw" },
-  { icon: Settings, label: "Settings", id: "settings", href: "/settings" },
-] as const;
+  { icon: Home, labelKey: "home" as const, id: "home", href: "/dashboard" },
+  { icon: BarChart3, labelKey: "analytics" as const, id: "stats", href: "/analytics" },
+  { icon: LayoutGrid, labelKey: "library" as const, id: "library", href: "/library" },
+  { icon: Shrimp, labelKey: "openClaw" as const, id: "openclaw", href: "/openclaw" },
+  { icon: Settings, labelKey: "settings" as const, id: "settings", href: "/settings" },
+];
 
 interface DashboardSidebarProps {
   activeId?: string;
@@ -37,6 +37,8 @@ interface DashboardSidebarProps {
 export function DashboardSidebar({
   activeId: activeIdProp,
 }: DashboardSidebarProps) {
+  const t = useTranslations("nav");
+  const tCommon = useTranslations("common");
   const pathname = usePathname();
   const activeId =
     activeIdProp ??
@@ -72,7 +74,7 @@ export function DashboardSidebar({
               sideOffset={14}
               className="rounded-xl border border-white/10 bg-[#1a0a0e]/95 px-3.5 py-2 text-[13px] font-medium tracking-wide text-white/90 shadow-[0_8px_30px_rgba(0,0,0,0.5),0_0_15px_rgba(244,63,94,0.08)] backdrop-blur-xl"
             >
-              Atomic Coding
+              {t("atomicCoding")}
             </TooltipContent>
           </Tooltip>
         </div>
@@ -84,7 +86,7 @@ export function DashboardSidebar({
           animate="visible"
           className="mt-6 flex flex-1 flex-col items-center gap-1"
         >
-          {navItems.map(({ icon: Icon, label, id, href }) => {
+          {navItems.map(({ icon: Icon, labelKey, id, href }) => {
             const isActive = id === activeId;
 
             return (
@@ -121,7 +123,7 @@ export function DashboardSidebar({
                       : "border-white/10 text-white/90 shadow-[0_8px_30px_rgba(0,0,0,0.5),0_0_15px_rgba(244,63,94,0.08)]",
                   )}
                 >
-                  {label}
+                  {t(labelKey)}
                 </TooltipContent>
               </Tooltip>
             );
@@ -144,7 +146,7 @@ export function DashboardSidebar({
               sideOffset={14}
               className="rounded-xl border border-white/10 bg-[#1a0a0e]/95 px-3.5 py-2 text-[13px] font-medium tracking-wide text-white/50 shadow-[0_8px_30px_rgba(0,0,0,0.5)] backdrop-blur-xl"
             >
-              Bonding Curve · <span className="text-amber-400/80">COMING SOON</span>
+              {t("bondingCurve")} · <span className="text-amber-400/80">{tCommon("comingSoon")}</span>
             </TooltipContent>
           </Tooltip>
         </motion.nav>
@@ -161,7 +163,7 @@ export function DashboardSidebar({
               sideOffset={14}
               className="rounded-xl border border-cyan-300/15 bg-[#1a0a0e]/95 px-3.5 py-2 text-[13px] font-medium tracking-wide text-cyan-100 shadow-[0_8px_30px_rgba(0,0,0,0.5),0_0_15px_rgba(34,211,238,0.12)] backdrop-blur-xl"
             >
-              Atomic Aid Agent
+              {t("atomicAidAgent")}
             </TooltipContent>
           </Tooltip>
         </div>

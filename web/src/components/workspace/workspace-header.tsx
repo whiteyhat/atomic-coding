@@ -1,7 +1,8 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { motion } from "framer-motion";
-import Link from "next/link";
+import { Link } from "@/i18n/navigation";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getGameGenre } from "@/lib/game-genres";
@@ -25,6 +26,7 @@ export function WorkspaceHeader({
   publicSlug,
   onRefresh,
 }: WorkspaceHeaderProps) {
+  const t = useTranslations("workspace");
   const genreInfo = getGameGenre(genre);
 
   return (
@@ -64,7 +66,7 @@ export function WorkspaceHeader({
 
       {gameFormat && (
         <span className="hidden sm:inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-medium text-white/65">
-          {gameFormat === "2d" ? "2D · Phaser" : "3D · Three.js"}
+          {gameFormat === "2d" ? t("format2d") : t("format3d")}
         </span>
       )}
 

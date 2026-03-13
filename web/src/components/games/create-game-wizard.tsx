@@ -1,7 +1,8 @@
 "use client";
 
 import { type KeyboardEvent as ReactKeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/i18n/navigation";
+import { useTranslations } from "next-intl";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowLeft,
@@ -40,8 +41,6 @@ import { GenreSelector } from "./genre-selector";
 const STEP_LABELS = ["Name", "Format", "Genre", "Review"] as const;
 const MAX_NAME_LENGTH = 100;
 const MAX_DESCRIPTION_LENGTH = 500;
-const REVIEW_FALLBACK_COPY =
-  "A polished new playground for AI-assisted mechanics, bold visuals, and instant iteration.";
 const GAME_FORMAT_OPTIONS = [
   {
     value: "2d" as const,
@@ -62,6 +61,9 @@ const GAME_FORMAT_OPTIONS = [
     gradientClass: "from-fuchsia-400/30 via-violet-300/15 to-transparent",
   },
 ] as const;
+
+const STEP_LABEL_KEYS = ["stepName", "stepFormat", "stepGenre", "stepReview"] as const;
+const STEP_DESCRIPTION_KEYS = ["identityFirst", "pickDimension", "chooseScaffold", "finalPass"] as const;
 
 function isDuplicateNameError(message: string): boolean {
   const normalized = message.toLowerCase();
@@ -86,6 +88,8 @@ export function CreateGameWizard({
   onCreated,
 }: CreateGameWizardProps) {
   const router = useRouter();
+  const t = useTranslations("wizard");
+  const tCommon = useTranslations("common");
   const { ready, authenticated } = useAppAuth();
   const [step, setStep] = useState(0);
   const [name, setName] = useState("");
@@ -131,7 +135,7 @@ export function CreateGameWizard({
     [gameFormat],
   );
   const previewName = name.trim() || "my-awesome-game";
-  const previewDescription = description.trim() || REVIEW_FALLBACK_COPY;
+  const previewDescription = description.trim() || t("reviewFallbackCopy");
   const isNameValid = name.trim().length > 0 && name.trim().length <= MAX_NAME_LENGTH;
   const canReview = isNameValid && !!selectedGameFormat && !!selectedGenre;
   const isPrevDisabled = step === 0 || loading;
@@ -143,12 +147,12 @@ export function CreateGameWizard({
     (step === 2 && !selectedGenre);
   const keyboardHint =
     step === 0
-      ? "Press Enter to continue. Use Cmd/Ctrl+Enter in the description box."
+      ? t("hintStep0")
       : step === 1
-        ? "Choose 2D or 3D, then press Enter to continue."
+        ? t("hintStep1")
         : step === 2
-          ? "Choose a template, then press Enter to continue."
-          : "Press Enter to create once everything looks right.";
+          ? t("hintStep2")
+          : t("hintStep3");
 
   useEffect(() => {
     if (!open) {
@@ -228,12 +232,12 @@ export function CreateGameWizard({
     const trimmedName = name.trim();
 
     if (!trimmedName) {
-      setNameError(nextMessage ?? "Give your game a name before continuing.");
+      setNameError(nextMessage ?? t("errorNameRequired"));
       return false;
     }
 
     if (trimmedName.length > MAX_NAME_LENGTH) {
-      setNameError(`Game names must be ${MAX_NAME_LENGTH} characters or less.`);
+      setNameError(t("errorNameTooLong", { length: MAX_NAME_LENGTH }));
       return false;
     }
 
@@ -251,7 +255,7 @@ export function CreateGameWizard({
   }
 
   function goToGenreStep() {
-    if (!validateName("Give your game a name before choosing a genre.")) {
+    if (!validateName(t("errorNameBeforeGenre"))) {
       setStep(0);
       return;
     }
@@ -275,7 +279,7 @@ export function CreateGameWizard({
       return;
     }
 
-    if (!validateName("Give your game a name before reviewing it.")) {
+    if (!validateName(t("errorNameBeforeReview"))) {
       setStep(0);
       return;
     }
@@ -380,13 +384,13 @@ export function CreateGameWizard({
       return;
     }
 
-    if (!validateName("Give your game a name before creating it.")) {
+    if (!validateName(t("errorNameBeforeCreate"))) {
       setStep(0);
       return;
     }
 
     if (!authenticated) {
-      setSubmitError(ready ? "Sign in to create a game." : "Checking your session...");
+      setSubmitError(ready ? t("errorSignIn") : t("errorCheckingSession"));
       return;
     }
 
@@ -406,10 +410,10 @@ export function CreateGameWizard({
       router.push(`/games/${encodeURIComponent(game.name)}`);
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : "Failed to create game.";
+        error instanceof Error ? error.message : t("errorCreateFailed");
 
       if (isDuplicateNameError(message)) {
-        setNameError("That game name already exists. Try a different one.");
+        setNameError(t("errorDuplicateName"));
         setStep(0);
       } else {
         setSubmitError(message);
@@ -418,6 +422,15 @@ export function CreateGameWizard({
       setLoading(false);
     }
   }
+
+  const formatLabelMap: Record<string, string> = {
+    "2d": t("game2d"),
+    "3d": t("game3d"),
+  };
+  const formatDescriptionMap: Record<string, string> = {
+    "2d": t("game2dDescription"),
+    "3d": t("game3dDescription"),
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -434,13 +447,13 @@ export function CreateGameWizard({
             <DialogHeader className="space-y-2 text-left">
               <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.32em] text-rose-300/70">
                 <Sparkles className="size-3" />
-                Create Flow
+                {t("createFlow")}
               </div>
               <DialogTitle className="text-2xl font-semibold tracking-tight text-white sm:text-[2rem]">
-                Launch a new game in four sharp moves
+                {t("launchTitle")}
               </DialogTitle>
               <DialogDescription className="max-w-2xl text-sm leading-6 text-white/60">
-                Shape the concept, choose 2D or 3D, pick a starter scaffold, and ship directly into the editor.
+                {t("launchDescription")}
               </DialogDescription>
             </DialogHeader>
 
@@ -451,7 +464,7 @@ export function CreateGameWizard({
                 className="mt-1 flex size-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/70 transition hover:border-white/20 hover:bg-white/10 hover:text-white"
               >
                 <X className="size-4" />
-                <span className="sr-only">Close</span>
+                <span className="sr-only">{tCommon("close")}</span>
               </button>
 
               <div className="flex flex-row gap-2">
@@ -467,7 +480,7 @@ export function CreateGameWizard({
                   )}
                 >
                   <ArrowLeft className="size-4" />
-                  <span className="sr-only">Previous step</span>
+                  <span className="sr-only">{t("previousStep")}</span>
                 </button>
 
                 <motion.button
@@ -507,7 +520,7 @@ export function CreateGameWizard({
                   )}
                 >
                   <ArrowRight className="size-4" />
-                  <span className="sr-only">Next step</span>
+                  <span className="sr-only">{t("nextStep")}</span>
                 </motion.button>
               </div>
             </div>
@@ -548,15 +561,9 @@ export function CreateGameWizard({
                         {isComplete ? <Check className="size-4" /> : `0${index + 1}`}
                       </div>
                       <div>
-                        <p className="text-sm font-medium text-white">{label}</p>
+                        <p className="text-sm font-medium text-white">{t(STEP_LABEL_KEYS[index])}</p>
                         <p className="text-xs text-white/45">
-                          {index === 0
-                            ? "Identity first"
-                            : index === 1
-                              ? "Pick dimension"
-                              : index === 2
-                                ? "Choose scaffold"
-                                : "Final pass"}
+                          {t(STEP_DESCRIPTION_KEYS[index])}
                         </p>
                       </div>
                     </div>
@@ -582,27 +589,27 @@ export function CreateGameWizard({
                       <div className="space-y-8 pb-2">
                         <div className="max-w-2xl">
                           <p className="text-sm uppercase tracking-[0.28em] text-white/35">
-                            Step 1
+                            {t("step1")}
                           </p>
                           <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">
-                            Name your game
+                            {t("nameYourGame")}
                           </h2>
                           <p className="mt-3 text-sm leading-6 text-white/60">
-                            Give your game a unique name. You can add a description later.
+                            {t("nameYourGameDescription")}
                           </p>
                         </div>
 
                         <div className="grid gap-5">
                           <div className="rounded-[1.6rem] border border-white/10 bg-white/[0.03] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
                             <label htmlFor="wizard-game-name" className="text-sm font-medium text-white">
-                              Game name
+                              {t("gameName")}
                             </label>
                             <Input
                               id="wizard-game-name"
                               value={name}
                               onChange={(event) => handleNameChange(event.target.value)}
                               maxLength={MAX_NAME_LENGTH}
-                              placeholder="my-awesome-game"
+                              placeholder={t("gameNamePlaceholder")}
                               disabled={loading}
                               className="mt-3 h-14 rounded-2xl border-white/10 bg-[#1f0c11] text-base text-white placeholder:text-white/25 focus-visible:border-rose-300/30 focus-visible:ring-rose-300/20"
                             />
@@ -618,19 +625,19 @@ export function CreateGameWizard({
 
                           <div className="rounded-[1.6rem] border border-white/10 bg-white/[0.03] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
                             <label htmlFor="wizard-game-description" className="text-sm font-medium text-white">
-                              Description
+                              {t("description")}
                             </label>
                             <Textarea
                               id="wizard-game-description"
                               value={description}
                               onChange={(event) => handleDescriptionChange(event.target.value)}
                               maxLength={MAX_DESCRIPTION_LENGTH}
-                              placeholder="A fast-paced platformer with physics"
+                              placeholder={t("descriptionPlaceholder")}
                               disabled={loading}
                               className="mt-3 min-h-32 rounded-[1.35rem] border-white/10 bg-[#1f0c11] text-base leading-7 text-white placeholder:text-white/25 focus-visible:border-rose-300/30 focus-visible:ring-rose-300/20"
                             />
                             <div className="mt-3 flex items-center justify-between text-xs text-white/35">
-                              <span>Set the tone now, refine the details later.</span>
+                              <span>{t("setToneHelper")}</span>
                               <span>{description.length}/{MAX_DESCRIPTION_LENGTH}</span>
                             </div>
                           </div>
@@ -642,13 +649,13 @@ export function CreateGameWizard({
                       <div className="space-y-8 pb-2">
                         <div className="max-w-2xl">
                           <p className="text-sm uppercase tracking-[0.28em] text-white/35">
-                            Step 2
+                            {t("step2")}
                           </p>
                           <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">
-                            Choose the game format
+                            {t("chooseGameFormat")}
                           </h2>
                           <p className="mt-3 text-sm leading-6 text-white/60">
-                            Set the project direction first. The next step only shows starter genres that fit the format you pick.
+                            {t("chooseGameFormatDescription")}
                           </p>
                         </div>
 
@@ -689,16 +696,16 @@ export function CreateGameWizard({
                                           : "border-white/10 bg-white/5 text-white/45",
                                       )}
                                     >
-                                      {isSelected ? "Selected" : "Format"}
+                                      {isSelected ? tCommon("selected") : t("format")}
                                     </Badge>
                                   </div>
 
                                   <div>
                                     <p className="text-xl font-semibold tracking-tight text-white">
-                                      {option.label}
+                                      {formatLabelMap[option.value]}
                                     </p>
                                     <p className="mt-3 max-w-md text-sm leading-6 text-white/65">
-                                      {option.description}
+                                      {formatDescriptionMap[option.value]}
                                     </p>
                                   </div>
                                 </div>
@@ -713,15 +720,13 @@ export function CreateGameWizard({
                       <div className="space-y-8 pb-2">
                         <div className="max-w-2xl">
                           <p className="text-sm uppercase tracking-[0.28em] text-white/35">
-                            Step 3
+                            {t("step3")}
                           </p>
                           <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">
-                            Choose a genre
+                            {t("chooseGenre")}
                           </h2>
                           <p className="mt-3 text-sm leading-6 text-white/60">
-                            Pick a starting template for your{" "}
-                            {selectedGameFormat?.label.toLowerCase() ?? "game"}. Each genre comes
-                            with pre-built atoms and a scaffold matched to that direction.
+                            {t("chooseGenreDescription", { format: formatLabelMap[selectedGameFormat?.value ?? ""]?.toLowerCase() ?? "game" })}
                           </p>
                         </div>
 
@@ -740,44 +745,44 @@ export function CreateGameWizard({
                       <div className="space-y-8 pb-2">
                         <div className="max-w-2xl">
                           <p className="text-sm uppercase tracking-[0.28em] text-white/35">
-                            Step 4
+                            {t("step4")}
                           </p>
                           <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">
-                            Review and confirm
+                            {t("reviewAndConfirm")}
                           </h2>
                           <p className="mt-3 text-sm leading-6 text-white/60">
-                            One final pass before the wizard generates your starter game and opens the editor.
+                            {t("reviewDescription")}
                           </p>
                         </div>
 
                         <div className="grid gap-4 md:grid-cols-2">
                           <div className="rounded-[1.6rem] border border-white/10 bg-white/[0.03] p-4">
                             <p className="text-[11px] uppercase tracking-[0.24em] text-white/35">
-                              Name
+                              {t("nameLabel")}
                             </p>
                             <p className="mt-3 text-lg font-semibold text-white">{previewName}</p>
                           </div>
                           <div className="rounded-[1.6rem] border border-white/10 bg-white/[0.03] p-4">
                             <p className="text-[11px] uppercase tracking-[0.24em] text-white/35">
-                              Game type
+                              {t("gameType")}
                             </p>
                             <p className="mt-3 text-lg font-semibold text-white">
-                              {selectedGameFormat?.label ?? "Choose 2D or 3D"}
+                              {selectedGameFormat ? formatLabelMap[selectedGameFormat.value] : t("choose2dOr3d")}
                             </p>
                           </div>
                           <div className="rounded-[1.6rem] border border-white/10 bg-white/[0.03] p-4">
                             <p className="text-[11px] uppercase tracking-[0.24em] text-white/35">
-                              Genre
+                              {t("genreLabel")}
                             </p>
                             <p className="mt-3 text-lg font-semibold text-white">
-                              {selectedGenre?.displayName ?? "Select a genre"}
+                              {selectedGenre?.displayName ?? t("selectGenre")}
                             </p>
                           </div>
                           <div className="rounded-[1.6rem] border border-white/10 bg-white/[0.03] p-4">
                             <p className="text-[11px] uppercase tracking-[0.24em] text-white/35">
-                              Launch mode
+                              {t("launchMode")}
                             </p>
-                            <p className="mt-3 text-lg font-semibold text-white">Open editor instantly</p>
+                            <p className="mt-3 text-lg font-semibold text-white">{t("openEditorInstantly")}</p>
                           </div>
                         </div>
 
@@ -808,11 +813,11 @@ export function CreateGameWizard({
                       {loading ? (
                         <>
                           <Loader2 className="size-4 animate-spin" />
-                          Creating game
+                          {t("creatingGame")}
                         </>
                       ) : (
                         <>
-                          Enter game maker
+                          {t("enterGameMaker")}
                           <Wand2 className="size-4" />
                         </>
                       )}
@@ -828,10 +833,10 @@ export function CreateGameWizard({
                 <div className="mb-5 flex items-center justify-between">
                   <div>
                     <p className="text-[11px] uppercase tracking-[0.28em] text-white/35">
-                      Live Preview
+                      {t("livePreview")}
                     </p>
                     <p className="mt-2 text-sm text-white/60">
-                      The card updates with each choice.
+                      {t("cardUpdatesWithChoice")}
                     </p>
                   </div>
                   <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] uppercase tracking-[0.24em] text-white/45">
@@ -849,14 +854,14 @@ export function CreateGameWizard({
                   <div className="relative flex min-h-24 items-start justify-between px-5 py-4 sm:min-h-28 sm:px-6 sm:py-5">
                     <div className="flex flex-wrap gap-2">
                       <Badge className={cn("rounded-full border px-3 py-1 text-[11px] font-medium tracking-[0.2em] uppercase", selectedGenre?.pillClass ?? "border-white/15 bg-white/10 text-white/80")}>
-                        {selectedGenre?.displayName ?? "Choose a genre"}
+                        {selectedGenre?.displayName ?? t("chooseAGenre")}
                       </Badge>
                       <Badge className={cn("rounded-full border px-3 py-1 text-[11px] font-medium tracking-[0.2em] uppercase", selectedGameFormat?.badgeClass ?? "border-white/15 bg-white/10 text-white/60")}>
-                        {selectedGameFormat?.label ?? "Choose 2D or 3D"}
+                        {selectedGameFormat ? formatLabelMap[selectedGameFormat.value] : t("choose2dOr3d")}
                       </Badge>
                     </div>
                     <div className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-[11px] uppercase tracking-[0.22em] text-white/45">
-                      Review card
+                      {t("reviewCard")}
                     </div>
                   </div>
 
@@ -869,7 +874,7 @@ export function CreateGameWizard({
                   <div className="relative space-y-3 px-5 pb-5 pt-2 sm:px-6">
                     <div>
                       <p className="text-[11px] uppercase tracking-[0.28em] text-white/35">
-                        Game name
+                        {t("gameName")}
                       </p>
                       <h3 className="mt-3 text-xl font-semibold tracking-tight text-white sm:text-2xl">
                         {previewName}
@@ -882,13 +887,13 @@ export function CreateGameWizard({
 
                     <div className="flex flex-wrap gap-2 pt-1">
                       <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/65">
-                        {selectedGameFormat?.label ?? "Pick a format"}
+                        {selectedGameFormat ? formatLabelMap[selectedGameFormat.value] : t("pickAFormat")}
                       </div>
                       <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/65">
-                        Genre atoms
+                        {t("genreAtoms")}
                       </div>
                       <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/65">
-                        AI-ready workspace
+                        {t("aiReadyWorkspace")}
                       </div>
                     </div>
                   </div>

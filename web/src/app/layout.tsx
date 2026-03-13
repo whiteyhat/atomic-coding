@@ -1,11 +1,7 @@
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import { Geist, Geist_Mono } from "next/font/google";
-import { Toaster } from "sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { PlatformAidProvider } from "@/components/platform-aid/platform-aid-provider";
-import { AuthProvider } from "@/lib/auth-provider";
-import { ErrorBoundary } from "@/components/ui/error-boundary";
-import { SWRProvider } from "@/lib/swr-provider";
+import { getLocale } from "next-intl/server";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -23,36 +19,15 @@ export const metadata: Metadata = {
   description: "Build Phaser and Three.js games with AI agents",
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  const locale = await getLocale();
+
   return (
-    <html lang="en" className="dark">
+    <html lang={locale} className="dark">
       <body
         className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}
       >
-        <AuthProvider>
-          <SWRProvider>
-            <TooltipProvider delayDuration={200}>
-              <PlatformAidProvider>
-                <ErrorBoundary>{children}</ErrorBoundary>
-              </PlatformAidProvider>
-            </TooltipProvider>
-          </SWRProvider>
-        </AuthProvider>
-        <Toaster
-          position="bottom-right"
-          theme="dark"
-          toastOptions={{
-            style: {
-              background: "#1b0b0f",
-              border: "1px solid rgba(255,255,255,0.08)",
-              color: "rgba(255,255,255,0.88)",
-            },
-          }}
-        />
+        {children}
       </body>
     </html>
   );

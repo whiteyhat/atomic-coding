@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useRef } from "react";
+import { useLocale } from "next-intl";
 import { ClerkProvider, useUser, useAuth, useClerk } from "@clerk/nextjs";
 import { dark } from "@clerk/themes";
 import { registerAuthTokenGetter } from "./api";
@@ -100,6 +101,7 @@ function ClerkAuthBridge({ children }: { children: React.ReactNode }) {
   const { isSignedIn, isLoaded, getToken } = useAuth();
   const { user } = useUser();
   const clerk = useClerk();
+  const locale = useLocale();
 
   const appUser: AppAuthUser | null =
     user
@@ -117,7 +119,7 @@ function ClerkAuthBridge({ children }: { children: React.ReactNode }) {
         authenticated: !!isSignedIn,
         ready: isLoaded,
         user: appUser,
-        login: () => clerk.openSignIn({ forceRedirectUrl: "/dashboard" }),
+        login: () => clerk.openSignIn({ forceRedirectUrl: `/${locale}/dashboard` }),
         logout: () => clerk.signOut(),
         getAccessToken: () => getToken(),
         isDevBypass: false,

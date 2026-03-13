@@ -1,6 +1,7 @@
 "use client";
 
-import Link from "next/link";
+import { useTranslations } from "next-intl";
+import { Link } from "@/i18n/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Play } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -18,20 +19,13 @@ function getTokenProgress(creation: DashboardGameSummary): number {
   return 0;
 }
 
-function getTokenLabel(status: DashboardTokenStatus): string {
-  switch (status) {
-    case "launched":
-      return "Launched";
-    case "pending":
-      return "Pending";
-    case "draft":
-      return "Draft";
-    case "failed":
-      return "Failed";
-    default:
-      return "Not Started";
-  }
-}
+const tokenLabelKeys: Record<string, string> = {
+  launched: "tokenLaunched",
+  pending: "tokenPending",
+  draft: "tokenDraft",
+  failed: "tokenFailed",
+};
+const defaultTokenLabelKey = "tokenNotStarted";
 
 function getTokenBarColor(status: DashboardTokenStatus): string {
   switch (status) {
@@ -61,6 +55,7 @@ function getGameFormatBadgeColor(gameFormat: DashboardGameSummary["gameFormat"])
 }
 
 function CreationCard({ creation }: { creation: DashboardGameSummary }) {
+  const t = useTranslations("dashboard");
   const progress = getTokenProgress(creation);
   const workspaceHref = `/games/${encodeURIComponent(creation.name)}`;
   const genreInfo = getGameGenre(creation.genre);
@@ -129,7 +124,7 @@ function CreationCard({ creation }: { creation: DashboardGameSummary }) {
         {/* Token launch progress */}
         <div className="mt-4">
           <div className="flex items-center justify-between text-xs">
-            <span className="text-white/45">Token Launch</span>
+            <span className="text-white/45">{t("tokenLaunch")}</span>
             <span className={cn(
               "font-medium",
               creation.tokenStatus === "launched" ? "text-emerald-400" :
@@ -137,7 +132,7 @@ function CreationCard({ creation }: { creation: DashboardGameSummary }) {
               creation.tokenStatus === "draft" ? "text-amber-400" :
               "text-white/40",
             )}>
-              {getTokenLabel(creation.tokenStatus)}
+              {t((tokenLabelKeys[creation.tokenStatus] ?? defaultTokenLabelKey) as Parameters<typeof t>[0])}
               {progress > 0 ? ` \u00B7 ${progress}%` : ""}
             </span>
           </div>

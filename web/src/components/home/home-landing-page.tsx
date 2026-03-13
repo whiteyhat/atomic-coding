@@ -2,8 +2,7 @@
 
 import { lazy, Suspense, useCallback, useRef, useState } from "react";
 import Image from "next/image";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { Link, useRouter } from "@/i18n/navigation";
 import { motion, useMotionValue, useSpring, useTransform } from "framer-motion";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -38,6 +37,7 @@ import {
   staggerContainer,
 } from "@/components/dashboard/dashboard-animations";
 import { useAppAuth } from "@/lib/auth-provider";
+import { useTranslations } from "next-intl";
 
 const LazyArchitectureView = lazy(
   () =>
@@ -49,60 +49,34 @@ const LazyArchitectureView = lazy(
 const VIDEO_URL =
   "https://www.youtube-nocookie.com/embed/YQxreN2E3yw?autoplay=1&mute=1&controls=0&playsinline=1&rel=0&modestbranding=1&loop=1&playlist=YQxreN2E3yw";
 
-const heroSignals = [
-  {
-    label: "Idea to playable",
-    value: "< 60 sec",
-    detail: "Your first game builds in under a minute",
-    tone: "text-emerald-200",
-  },
-  {
-    label: "AI crew",
-    value: "Always on",
-    detail: "Multiple AI agents working on your game at once",
-    tone: "text-cyan-200",
-  },
-  {
-    label: "Launch-ready",
-    value: "Built in",
-    detail: "Go from draft to shareable link instantly",
-    tone: "text-amber-200",
-  },
-];
 
-const engineCards: Array<{
-  eyebrow: string;
-  title: string;
-  description: string;
+const engineCardsMeta: Array<{
+  labelKey: "howStep1Label" | "howStep2Label" | "howStep3Label";
+  titleKey: "howStep1Title" | "howStep2Title" | "howStep3Title";
+  descriptionKey: "howStep1Description" | "howStep2Description" | "howStep3Description";
   icon: LucideIcon;
   accent: string;
 }> = [
   {
-    eyebrow: "Describe It",
-    title: "One sentence is all it takes. Atomic builds the rest.",
-    description:
-      "Tell Atomic what kind of game you want — the genre, the vibe, the mechanics. It handles the code, the assets, and the logic so you can focus on your vision.",
+    labelKey: "howStep1Label",
+    titleKey: "howStep1Title",
+    descriptionKey: "howStep1Description",
     icon: Sparkles,
-    accent:
-      "from-rose-500/28 via-orange-400/16 to-transparent",
+    accent: "from-rose-500/28 via-orange-400/16 to-transparent",
   },
   {
-    eyebrow: "Watch It Build",
-    title: "See your game come together in real time.",
-    description:
-      "Watch AI agents generate art, write code, and assemble your game live. Tweak anything on the fly — no waiting, no context switching.",
+    labelKey: "howStep2Label",
+    titleKey: "howStep2Title",
+    descriptionKey: "howStep2Description",
     icon: Zap,
-    accent:
-      "from-cyan-500/24 via-sky-400/14 to-transparent",
+    accent: "from-cyan-500/24 via-sky-400/14 to-transparent",
   },
   {
-    eyebrow: "Share It",
-    title: "One click to publish. Send the link. Let people play.",
-    description:
-      "Publishing is built right into the creation flow. When your game is ready, share it with the world — no extra tools, no export headaches.",
+    labelKey: "howStep3Label",
+    titleKey: "howStep3Title",
+    descriptionKey: "howStep3Description",
     icon: Rocket,
-    accent:
-      "from-violet-500/26 via-fuchsia-400/14 to-transparent",
+    accent: "from-violet-500/26 via-fuchsia-400/14 to-transparent",
   },
 ];
 
@@ -535,6 +509,8 @@ function GameUniverseOrbit() {
 }
 
 export function HomeLandingPage() {
+  const t = useTranslations("home");
+  const tCommon = useTranslations("common");
   const router = useRouter();
   const { authenticated, ready, login } = useAppAuth();
 
@@ -595,10 +571,10 @@ export function HomeLandingPage() {
             </div>
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-white/40">
-                Atomic Game Maker
+                {tCommon("appName")}
               </p>
               <p className="text-base font-semibold tracking-tight text-white md:text-lg">
-                Build fast. Launch louder.
+                {t("heroTagline")}
               </p>
             </div>
           </Link>
@@ -616,13 +592,13 @@ export function HomeLandingPage() {
 
           <nav className="hidden items-center gap-6 text-sm text-white/55 lg:flex">
             <a href="#engine" className="transition hover:text-white">
-              How It Works
+              {t("sectionHowItWorks")}
             </a>
             <a href="#swarm" className="transition hover:text-white">
-              AI Agents
+              {t("sectionAgentCrew")}
             </a>
             <a href="#launch-stack" className="transition hover:text-white">
-              Publish & Grow
+              {t("footerProduct")}
             </a>
           </nav>
 
@@ -656,13 +632,11 @@ export function HomeLandingPage() {
               </div>
 
               <h1 className="mt-6 max-w-3xl text-4xl font-semibold leading-[0.98] tracking-tight text-white sm:text-5xl lg:text-[4.8rem]">
-                Ship a playable game before the hype cools off.
+                {t("heroTitle")}
               </h1>
 
               <p className="mt-6 max-w-2xl text-sm leading-7 text-white/66 md:text-lg">
-                Describe the game you want to make. Atomic's AI agents build it
-                in real time — code, art, logic, everything. Play it instantly,
-                tweak it with words, and publish it for the world with one click.
+                {t("heroDescription")}
               </p>
 
               <a
@@ -697,27 +671,31 @@ export function HomeLandingPage() {
                   className="rounded-full border border-white/10 bg-white/[0.04] px-7 text-white hover:bg-white/[0.08] hover:text-white"
                 >
                   <a href="#engine">
-                    See How It Works
+                    {t("heroWatchDemo")}
                     <Play className="size-4" />
                   </a>
                 </Button>
               </div>
 
               <div className="mt-8 grid gap-3 sm:grid-cols-3">
-                {heroSignals.map((signal) => (
+                {([
+                  { labelKey: "heroSignalIdeaLabel" as const, valueKey: "heroSignalIdeaValue" as const, detailKey: "heroSignalIdeaDetail" as const, tone: "text-emerald-200" },
+                  { labelKey: "heroSignalCrewLabel" as const, valueKey: "heroSignalCrewValue" as const, detailKey: "heroSignalCrewDetail" as const, tone: "text-cyan-200" },
+                  { labelKey: "heroSignalLaunchLabel" as const, valueKey: "heroSignalLaunchValue" as const, detailKey: "heroSignalLaunchDetail" as const, tone: "text-amber-200" },
+                ] as const).map((signal) => (
                   <motion.div
-                    key={signal.label}
+                    key={signal.labelKey}
                     variants={scaleIn}
                     className="rounded-[1.5rem] border border-white/8 bg-black/22 p-4"
                   >
                     <p className="text-[11px] uppercase tracking-[0.26em] text-white/40">
-                      {signal.label}
+                      {t(signal.labelKey)}
                     </p>
                     <p className={`mt-2 text-xl font-semibold ${signal.tone}`}>
-                      {signal.value}
+                      {t(signal.valueKey)}
                     </p>
                     <p className="mt-2 text-xs leading-5 text-white/52">
-                      {signal.detail}
+                      {t(signal.detailKey)}
                     </p>
                   </motion.div>
                 ))}
@@ -727,28 +705,28 @@ export function HomeLandingPage() {
                 <div className="rounded-[1.5rem] border border-rose-400/18 bg-rose-500/8 p-4">
                   <div className="flex items-center gap-2 text-sm font-medium text-white">
                     <Swords className="size-4 text-rose-300" />
-                    Lightning fast
+                    {t("howStep1Label")}
                   </div>
                   <p className="mt-3 text-sm leading-6 text-white/60">
-                    Go from idea to playable game in under a minute.
+                    {t("howStep1Description")}
                   </p>
                 </div>
                 <div className="rounded-[1.5rem] border border-cyan-400/18 bg-cyan-500/8 p-4">
                   <div className="flex items-center gap-2 text-sm font-medium text-white">
                     <Orbit className="size-4 text-cyan-200" />
-                    All-in-one
+                    {t("howStep2Label")}
                   </div>
                   <p className="mt-3 text-sm leading-6 text-white/60">
-                    Create, build, test, and publish — all from one dashboard.
+                    {t("howStep2Description")}
                   </p>
                 </div>
                 <div className="rounded-[1.5rem] border border-violet-400/18 bg-violet-500/8 p-4">
                   <div className="flex items-center gap-2 text-sm font-medium text-white">
                     <Shield className="size-4 text-violet-200" />
-                    Studio quality
+                    {t("howStep3Label")}
                   </div>
                   <p className="mt-3 text-sm leading-6 text-white/60">
-                    Professional-grade games that look and feel polished.
+                    {t("howStep3Description")}
                   </p>
                 </div>
               </div>
@@ -873,15 +851,15 @@ export function HomeLandingPage() {
             className="mt-8 rounded-[2.4rem] border border-white/8 bg-[#2a0b12]/86 p-6 shadow-[0_28px_100px_rgba(14,3,6,0.28)] md:mt-10 md:p-8"
           >
             <SectionHeader
-              eyebrow="How It Works"
-              title="From your imagination to a playable game. Effortlessly."
-              description="Atomic Game Maker handles the entire game creation pipeline — you describe what you want, AI agents build it, and you publish it to the world. No coding required."
+              eyebrow={t("sectionHowItWorks")}
+              title={t("sectionHowItWorksTitle")}
+              description={t("sectionHowItWorksDescription")}
             />
 
             <div className="mt-8 grid gap-4 lg:grid-cols-3">
-              {engineCards.map(({ eyebrow, title, description, icon: Icon, accent }) => (
+              {engineCardsMeta.map(({ labelKey, titleKey, descriptionKey, icon: Icon, accent }) => (
                 <motion.div
-                  key={title}
+                  key={labelKey}
                   variants={fadeInUp}
                   className="relative overflow-hidden rounded-[1.9rem] border border-white/8 bg-black/22 p-5"
                 >
@@ -891,13 +869,13 @@ export function HomeLandingPage() {
                       <Icon className="size-5 text-white/80" />
                     </div>
                     <p className="mt-5 text-[11px] font-semibold uppercase tracking-[0.28em] text-white/40">
-                      {eyebrow}
+                      {t(labelKey)}
                     </p>
                     <h3 className="mt-2 text-xl font-semibold tracking-tight text-white">
-                      {title}
+                      {t(titleKey)}
                     </h3>
                     <p className="mt-3 text-sm leading-7 text-white/58">
-                      {description}
+                      {t(descriptionKey)}
                     </p>
                   </div>
                 </motion.div>
