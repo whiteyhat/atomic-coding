@@ -123,7 +123,6 @@ atomic-coding/
 ```
 
 ## How It Works
-
 1. The AI agent uses `get_code_structure` to see the map of all atoms
 2. Uses `read_atoms` or `semantic_search` to inspect specific code
 3. Uses `upsert_atom` to create/edit atoms with typed interfaces
