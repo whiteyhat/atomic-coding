@@ -17,7 +17,8 @@ for (const root of envSearchRoots) {
 }
 
 // Verify critical env vars are loaded at startup
-console.log(`[env] OPENROUTER_API_KEY: ${process.env.OPENROUTER_API_KEY ? "set" : "NOT SET"}`);
+console.log(`[env] GOOGLE_CLOUD_PROJECT: ${process.env.GOOGLE_CLOUD_PROJECT ? "set" : "NOT SET"}`);
+console.log(`[env] GOOGLE_CLOUD_LOCATION: ${process.env.GOOGLE_CLOUD_LOCATION ?? "us-central1 (default)"}`);
 console.log(`[env] cwd: ${process.cwd()}`);
 
 // Initialize Sentry before anything else

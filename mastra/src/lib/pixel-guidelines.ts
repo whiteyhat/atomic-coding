@@ -1,11 +1,10 @@
 /**
- * Default image generation model: Nano Banana 2 (google/gemini-3.1-flash-image-preview)
- * A deep, capable image model on OpenRouter optimized for complex sprite and UI generation.
- * Override via OPENROUTER_IMAGE_MODEL env var if needed.
+ * Default image generation model for Vertex AI.
+ * Uses Gemini's native image generation via the generateContent endpoint.
+ * Override via VERTEX_IMAGE_MODEL env var if needed.
  */
 export const DEFAULT_PIXEL_IMAGE_MODEL =
-  process.env.OPENROUTER_IMAGE_MODEL ??
-  "google/gemini-3.1-flash-image-preview";
+  process.env.VERTEX_IMAGE_MODEL ?? "gemini-2.0-flash-exp";
 
 export const PIXEL_UI_POLISH_RULES = [
   "Keep gameplay readability above decoration. Primary stats and primary actions must stay obvious at a glance.",

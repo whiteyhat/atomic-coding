@@ -84,18 +84,27 @@ export function clearPixelRegistryForRun(runId: string): void {
   pixelAssetRegistry.delete(runId);
 }
 
-const OPENROUTER_CHAT_COMPLETIONS_URL =
-  "https://openrouter.ai/api/v1/chat/completions";
+import { GoogleAuth } from "google-auth-library";
 
-type OpenRouterImageResponse = {
-  choices?: Array<{
-    message?: {
-      content?: string | Array<{ type?: string; text?: string }>;
-      images?: Array<{
-        type?: string;
-        image_url?: { url?: string };
-        imageUrl?: { url?: string };
-        url?: string;
+const _authClient = new GoogleAuth({
+  scopes: ["https://www.googleapis.com/auth/cloud-platform"],
+});
+
+async function getVertexAccessToken(): Promise<string> {
+  const client = await _authClient.getClient();
+  const tokenResponse = await client.getAccessToken();
+  if (!tokenResponse.token) {
+    throw new Error("Failed to obtain Google Cloud access token for Vertex AI");
+  }
+  return tokenResponse.token;
+}
+
+type VertexAIImageResponse = {
+  candidates?: Array<{
+    content?: {
+      parts?: Array<{
+        text?: string;
+        inlineData?: { mimeType?: string; data?: string };
       }>;
     };
   }>;
@@ -153,36 +162,6 @@ const pixelAssetRequestSchema = z.object({
     .describe("Style or reference notes to keep the pack cohesive"),
 });
 
-function getImageUrl(image: {
-  image_url?: { url?: string };
-  imageUrl?: { url?: string };
-  url?: string;
-}): string | null {
-  return (
-    image.image_url?.url ??
-    image.imageUrl?.url ??
-    image.url ??
-    null
-  );
-}
-
-function extractAssistantText(
-  content: string | Array<{ type?: string; text?: string }> | undefined
-): string | null {
-  if (!content) return null;
-  if (typeof content === "string") {
-    return content.trim() || null;
-  }
-
-  const text = content
-    .map((part) => (part.type === "text" ? part.text?.trim() ?? "" : ""))
-    .filter(Boolean)
-    .join("\n")
-    .trim();
-
-  return text || null;
-}
-
 async function generateSingleAsset(args: {
   model: string;
   genre?: string;
@@ -211,9 +190,10 @@ async function generateSingleAsset(args: {
   polish_notes: string[];
   source_model: string;
 }> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) {
-    throw new Error("OPENROUTER_API_KEY is not configured for Pixel image generation");
+  const projectId = process.env.GOOGLE_CLOUD_PROJECT;
+  const location = process.env.GOOGLE_CLOUD_LOCATION ?? "us-central1";
+  if (!projectId) {
+    throw new Error("GOOGLE_CLOUD_PROJECT is not configured for Vertex AI image generation");
   }
 
   const prompt = buildPixelAssetPrompt(
@@ -239,46 +219,48 @@ async function generateSingleAsset(args: {
     }
   );
 
-  const response = await fetch(OPENROUTER_CHAT_COMPLETIONS_URL, {
+  const accessToken = await getVertexAccessToken();
+  const endpoint = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${args.model}:generateContent`;
+
+  const response = await fetch(endpoint, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${apiKey}`,
+      Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
-      "HTTP-Referer":
-        process.env.OPENROUTER_SITE_URL ?? "https://atomic-coding.local",
-      "X-Title": process.env.OPENROUTER_APP_NAME ?? "Atomic Coding Pixel",
     },
     body: JSON.stringify({
-      model: args.model,
-      messages: [{ role: "user", content: prompt }],
-      modalities: ["image", "text"],
-      image_config: {
-        aspect_ratio: args.asset.aspect_ratio,
-        image_size: args.asset.image_size,
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig: {
+        responseModalities: ["TEXT", "IMAGE"],
       },
     }),
   });
 
-  const payload = (await response.json().catch(() => ({}))) as OpenRouterImageResponse;
+  const payload = (await response.json().catch(() => ({}))) as VertexAIImageResponse;
   if (!response.ok) {
     throw new Error(
       payload.error?.message ??
-        `OpenRouter image generation failed with status ${response.status}`
+        `Vertex AI image generation failed with status ${response.status}`
     );
   }
 
-  const message = payload.choices?.[0]?.message;
-  const imageUrl = message?.images?.[0] ? getImageUrl(message.images[0]) : null;
-  if (!imageUrl) {
-    throw new Error("OpenRouter did not return an image URL for the requested asset");
+  const parts = payload.candidates?.[0]?.content?.parts ?? [];
+  const imagePart = parts.find((p) => p.inlineData?.data);
+  const textPart = parts.find((p) => p.text);
+
+  if (!imagePart?.inlineData?.data) {
+    throw new Error("Vertex AI did not return an image for the requested asset");
   }
+
+  const mimeType = imagePart.inlineData.mimeType ?? "image/png";
+  const base64Url = `data:${mimeType};base64,${imagePart.inlineData.data}`;
 
   return {
     name: args.asset.name,
     type: args.asset.type,
-    url_or_base64: imageUrl,
+    url_or_base64: base64Url,
     prompt_used: prompt,
-    revised_prompt: extractAssistantText(message?.content),
+    revised_prompt: textPart?.text?.trim() ?? null,
     aspect_ratio: args.asset.aspect_ratio,
     image_size: args.asset.image_size,
     polish_notes:
@@ -310,7 +292,7 @@ async function generateSingleAssetWithRetry(
 export const generatePolishedVisualPackTool = createTool({
   id: "generate-polished-visual-pack",
   description:
-    "Generate polished game UI packs, HUD elements, button states, sprites, textures, and overlays via OpenRouter image generation.",
+    "Generate polished game UI packs, HUD elements, button states, sprites, textures, and overlays via Google Vertex AI image generation.",
   inputSchema: z.object({
     genre: z
       .string()
@@ -327,7 +309,7 @@ export const generatePolishedVisualPackTool = createTool({
     model: z
       .string()
       .default(DEFAULT_PIXEL_IMAGE_MODEL)
-      .describe("OpenRouter image model to use"),
+      .describe("Vertex AI image model to use"),
     assets: z
       .array(pixelAssetRequestSchema)
       .min(1)

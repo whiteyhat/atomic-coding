@@ -40,15 +40,15 @@ export interface ModelOption {
 
 export const MODELS: ModelOption[] = [
   {
-    id: "google/gemini-3-pro-preview",
-    name: "Gemini 3 Pro",
-    provider: "Google",
+    id: "google-vertex/gemini-2.5-pro",
+    name: "Gemini 2.5 Pro",
+    provider: "Google Cloud Vertex AI",
     icon: "https://registry.npmmirror.com/@lobehub/icons-static-png/1.75.0/files/dark/gemini-color.png",
   },
   {
-    id: "google/gemini-3.1-pro-preview",
-    name: "Gemini 3.1 Pro",
-    provider: "Google",
+    id: "google-vertex/gemini-2.5-flash",
+    name: "Gemini 2.5 Flash",
+    provider: "Google Cloud Vertex AI",
     icon: "https://registry.npmmirror.com/@lobehub/icons-static-png/1.75.0/files/dark/gemini-color.png",
   },
 ];

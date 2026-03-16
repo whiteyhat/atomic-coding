@@ -95,7 +95,8 @@ gcloud services enable \
   iam.googleapis.com \
   iamcredentials.googleapis.com \
   logging.googleapis.com \
-  monitoring.googleapis.com
+  monitoring.googleapis.com \
+  aiplatform.googleapis.com
 
 gcloud artifacts repositories create "$AR_REPO" \
   --repository-format=docker \
@@ -118,6 +119,10 @@ gcloud projects add-iam-policy-binding "$PROJECT_ID" \
 gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --member="serviceAccount:${MASTRA_SA}@${PROJECT_ID}.iam.gserviceaccount.com" \
   --role="roles/secretmanager.secretAccessor"
+
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:${MASTRA_SA}@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --role="roles/aiplatform.user"
 ```
 
 ## Step 2: Create Secret Manager Values For `mastra`
@@ -130,8 +135,8 @@ Start with the minimum working secret set:
 cat > /tmp/atomic-mastra.secrets.env <<'EOF'
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-OPENROUTER_API_KEY=sk-or-v1-your-openrouter-api-key
-OPENROUTER_IMAGE_MODEL=google/gemini-3.1-flash-image-preview
+GOOGLE_CLOUD_PROJECT=your-gcp-project-id
+GOOGLE_CLOUD_LOCATION=us-central1
 ALLOWED_ORIGINS=https://app.example.com,https://www.app.example.com
 EOF
 ```
@@ -152,15 +157,14 @@ done < /tmp/atomic-mastra.secrets.env
 Quick sanity check:
 
 ```bash
-gcloud secrets list --format="value(name)" | rg 'SUPABASE_URL|OPENROUTER_API_KEY|ALLOWED_ORIGINS'
+gcloud secrets list --format="value(name)" | rg 'SUPABASE_URL|GOOGLE_CLOUD_PROJECT|ALLOWED_ORIGINS'
 ```
 
 Optional follow-up secrets for `mastra`:
 
 ```bash
 cat > /tmp/atomic-mastra.optional.env <<'EOF'
-OPENROUTER_SITE_URL=https://app.example.com
-OPENROUTER_APP_NAME=Atomic Coding Pixel
+VERTEX_IMAGE_MODEL=gemini-2.0-flash-exp
 BUU_API_KEY=
 BUU_API_URL=https://dev.api.buu.fun
 SENTRY_DSN=
@@ -209,8 +213,8 @@ gcloud run deploy "$MASTRA_SERVICE" \
   --max-instances 10 \
   --set-secrets SUPABASE_URL=SUPABASE_URL:latest \
   --set-secrets SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest \
-  --set-secrets OPENROUTER_API_KEY=OPENROUTER_API_KEY:latest \
-  --set-secrets OPENROUTER_IMAGE_MODEL=OPENROUTER_IMAGE_MODEL:latest \
+  --set-secrets GOOGLE_CLOUD_PROJECT=GOOGLE_CLOUD_PROJECT:latest \
+  --set-secrets GOOGLE_CLOUD_LOCATION=GOOGLE_CLOUD_LOCATION:latest \
   --set-secrets ALLOWED_ORIGINS=ALLOWED_ORIGINS:latest
 ```
 
@@ -219,8 +223,7 @@ If you added optional secrets, update the service after the first successful dep
 ```bash
 gcloud run services update "$MASTRA_SERVICE" \
   --region "$REGION" \
-  --set-secrets OPENROUTER_SITE_URL=OPENROUTER_SITE_URL:latest \
-  --set-secrets OPENROUTER_APP_NAME=OPENROUTER_APP_NAME:latest \
+  --set-secrets VERTEX_IMAGE_MODEL=VERTEX_IMAGE_MODEL:latest \
   --set-secrets BUU_API_KEY=BUU_API_KEY:latest \
   --set-secrets BUU_API_URL=BUU_API_URL:latest \
   --set-secrets SENTRY_DSN=SENTRY_DSN:latest \
