@@ -46,6 +46,7 @@ export default async function PlayPage({ params }: PlayPageProps) {
       {/* Full-screen game */}
       <main className="flex-1 min-h-0">
         <GameFrame
+          gameId={game.id}
           gameName={game.name}
           gameFormat={game.game_format}
           showScoreLoginPrompt

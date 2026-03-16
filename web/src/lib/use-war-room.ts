@@ -182,7 +182,6 @@ export function useWarRoom(
           if (subscribeError) {
             console.error("[useWarRoom] subscription error:", subscribeError);
           }
-          console.log("[useWarRoom] subscription status:", status, warRoomId);
 
           // Reconnect on CLOSED or TIMED_OUT — guarded to prevent re-entrance
           // (removeChannel can synchronously fire this callback with CLOSED,
@@ -193,7 +192,7 @@ export function useWarRoom(
             (status === "TIMED_OUT" || status === "CLOSED" || status === "CHANNEL_ERROR")
           ) {
             reconnecting = true;
-            console.warn("[useWarRoom] reconnecting after", status);
+            console.warn("[useWarRoom] reconnecting after", status, warRoomId);
             // Defer removal to break out of synchronous callback stack
             retryTimer = setTimeout(() => {
               supabase.removeChannel(channel);

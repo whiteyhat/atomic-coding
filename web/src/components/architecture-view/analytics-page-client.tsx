@@ -14,6 +14,7 @@ import { getGameGenre } from "@/lib/game-genres";
 import { useAppAuth } from "@/lib/auth-provider";
 import {
   ARCHITECTURE_AGENT_COUNT,
+  ARCHITECTURE_GEMINI_MODEL_COUNT,
   ARCHITECTURE_SERVICE_COUNT,
 } from "./data/architectureData";
 
@@ -98,6 +99,12 @@ export function AnalyticsPageClient() {
       tone: "text-fuchsia-200",
     },
     {
+      label: "Gemini Models",
+      value: ARCHITECTURE_GEMINI_MODEL_COUNT,
+      icon: Sparkles,
+      tone: "text-blue-200",
+    },
+    {
       label: "Services",
       value: ARCHITECTURE_SERVICE_COUNT,
       icon: Network,
@@ -143,14 +150,18 @@ export function AnalyticsPageClient() {
                         Atomic Game Maker architecture
                       </h1>
                       <p className="mt-1 max-w-3xl text-[13px] leading-5.5 text-white/58">
-                        Static system map of the platform core, the four live Mastra agents,
-                        and the tool and runtime services they coordinate across the game
-                        development pipeline.
+                        Multi-agent game development platform powered by Google Gemini.
+                        Four specialized AI agents coordinate across the game development
+                        pipeline with Gemini 3.1 Pro, Flash Lite, and Flash Image models.
                       </p>
                     </div>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2">
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-[#4285F4]/25 bg-[#4285F4]/10 px-3 py-1 text-[11px] font-medium text-[#8AB4F8]">
+                      <span className="size-1.5 rounded-full bg-[#4285F4]" />
+                      Powered by Google Gemini
+                    </span>
                     {contextBadge}
                     {genre && (
                       <span
@@ -164,7 +175,7 @@ export function AnalyticsPageClient() {
                 </div>
               </div>
 
-              <div className="grid gap-2.5 sm:grid-cols-3 lg:grid-cols-1">
+              <div className="grid gap-2.5 sm:grid-cols-4 lg:grid-cols-1">
                 {stats.map(({ label, value, icon: Icon, tone }) => (
                   <div
                     key={label}

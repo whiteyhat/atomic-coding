@@ -69,6 +69,13 @@ function AgentNodeComponent({ data }: NodeProps) {
         </span>
       </div>
 
+      <div className="mt-2">
+        <span className="inline-flex items-center gap-1 rounded-full border border-[#4285F4]/20 bg-[#4285F4]/10 px-2 py-0.5 text-[9px] font-medium text-[#8AB4F8]/80">
+          <span className="size-1.5 rounded-full bg-[#4285F4]" />
+          Gemini {nodeData.model.includes("pro") ? "Pro" : nodeData.model.includes("flash-lite") ? "Flash Lite" : "Flash"}
+        </span>
+      </div>
+
       <DirectionalHandles
         sourceColor={nodeData.accentColor}
         targetColor={`${nodeData.accentColor}99`}

@@ -5,6 +5,10 @@
 
 Atomic Coding started as an atom-centric game development platform where code lived as **atoms** (individual functions) in Supabase and an AI agent manipulated them through a small MCP tool surface. The current production architecture is broader; use [docs/system-architecture.md](docs/system-architecture.md) for the up-to-date system.
 
+## Hackathon Proof
+
+For the automated cloud deployment bonus item, use [docs/hackathon-deployment-automation.md](docs/hackathon-deployment-automation.md). It is the judge-facing proof document with direct links to the CI workflow, deployment scripts, Docker build, and migration-based deployment flow.
+
 ## Original Minimal Architecture
 
 ```

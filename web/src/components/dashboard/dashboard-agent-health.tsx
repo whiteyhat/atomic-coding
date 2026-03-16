@@ -129,6 +129,7 @@ function AgentRow({ agent, index }: { agent: AgentState; index: number }) {
             className="pointer-events-none absolute -top-9 left-1/2 z-50 -translate-x-1/2 whitespace-nowrap rounded-lg border border-white/10 bg-black/90 px-3 py-1.5 text-[11px] font-medium text-white/80 shadow-lg backdrop-blur-sm"
           >
             POWERED BY {agent.model.toUpperCase()}
+            {agent.id === "pixel" && " + NANOBANANA 2"}
             <div className="absolute -bottom-1 left-1/2 size-2 -translate-x-1/2 rotate-45 border-b border-r border-white/10 bg-black/90" />
           </motion.div>
         )}

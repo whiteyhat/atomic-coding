@@ -132,6 +132,7 @@
     const SUPABASE_URL = params.get('supabaseUrl') || '';
     const SUPABASE_ANON_KEY = params.get('supabaseKey') || '';
     const GAME_NAME = params.get('game') || 'my-game';
+    const GAME_ID = params.get('gameId') || '';
     const REQUESTED_FORMAT = params.get('format') || '';
     const STORAGE_BASE = `${SUPABASE_URL}/storage/v1/object/public/bundles/${GAME_NAME}`;
     const MANIFEST_URL = `${STORAGE_BASE}/manifest.json`;
@@ -147,18 +148,75 @@
 
     const loadedExternals = new Set();
     const externalScripts = [];
+    const externalObjectUrls = [];
     let importMapInjected = false;
+    let currentExternalSignature = null;
 
-    function loadExternalScript(ext) {
-      if (loadedExternals.has(ext.cdn_url)) return Promise.resolve();
-      return new Promise((resolve, reject) => {
-        const script = document.createElement('script');
-        script.src = ext.cdn_url;
-        script.onload = () => { loadedExternals.add(ext.cdn_url); resolve(); };
-        script.onerror = () => reject(new Error(`Failed to load: ${ext.name}`));
-        document.head.appendChild(script);
-        externalScripts.push(script);
-      });
+    function uniqueValues(values) {
+      return Array.from(new Set(values.filter(Boolean)));
+    }
+
+    function normalizeExternal(ext) {
+      const normalized = {
+        ...ext,
+        load_type: ext.load_type === 'module' ? 'module' : 'script',
+        module_imports: ext.module_imports || null,
+        fallback_urls: [],
+      };
+
+      if (normalized.name === 'pathfinding_js') {
+        const preferredUrl = 'https://cdn.jsdelivr.net/npm/pathfinding@0.4.18/visual/lib/pathfinding-browser.min.js';
+        normalized.fallback_urls = uniqueValues([
+          normalized.cdn_url,
+          preferredUrl,
+          'https://unpkg.com/pathfinding@0.4.18/visual/lib/pathfinding-browser.min.js',
+        ]).filter((url) => url !== preferredUrl);
+        normalized.cdn_url = preferredUrl;
+      }
+
+      if (normalized.name === 'three_js') {
+        const preferredUrl = 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+        normalized.fallback_urls = uniqueValues([
+          normalized.cdn_url,
+          preferredUrl,
+          'https://unpkg.com/three@0.160.0/build/three.module.js',
+        ]).filter((url) => url !== preferredUrl);
+        normalized.cdn_url = preferredUrl;
+        normalized.load_type = 'module';
+      }
+
+      return normalized;
+    }
+
+    function normalizeManifestExternals(manifestExternals) {
+      if (!Array.isArray(manifestExternals)) return [];
+      return manifestExternals.map(normalizeExternal);
+    }
+
+    function getExternalSignature(manifestExternals) {
+      return JSON.stringify(
+        manifestExternals
+          .map((ext) => ({
+            name: ext.name,
+            cdn_url: ext.cdn_url,
+            global_name: ext.global_name,
+            load_type: ext.load_type,
+            module_imports: ext.module_imports || null,
+          }))
+          .sort((left, right) => left.name.localeCompare(right.name)),
+      );
+    }
+
+    function createExternalLookup(manifestExternals) {
+      const byName = new Map();
+      const byGlobalName = new Map();
+      for (const ext of manifestExternals) {
+        byName.set(ext.name, ext);
+        if (ext.global_name && !byGlobalName.has(ext.global_name)) {
+          byGlobalName.set(ext.global_name, ext);
+        }
+      }
+      return { byName, byGlobalName };
     }
 
     function createGlobalShimUrl(globalName) {
@@ -166,33 +224,97 @@
       if (!obj) return null;
       const keys = Object.keys(obj).filter(k => /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(k));
       const lines = [`const _G = window.${globalName};`, ...keys.map(k => `export const ${k} = _G.${k};`), `export default _G;`];
-      return URL.createObjectURL(new Blob([lines.join('\n')], { type: 'application/javascript' }));
+      const shimUrl = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'application/javascript' }));
+      externalObjectUrls.push(shimUrl);
+      return shimUrl;
+    }
+
+    function resolveImportTarget(specifier, globalName, lookup) {
+      if (specifier === 'three') {
+        const threeExternal = lookup.byName.get('three_js');
+        if (threeExternal && threeExternal.load_type === 'module') {
+          return threeExternal.cdn_url;
+        }
+      }
+
+      const sourceExternal = lookup.byGlobalName.get(globalName);
+      if (sourceExternal && sourceExternal.load_type === 'module') {
+        return sourceExternal.cdn_url;
+      }
+
+      return createGlobalShimUrl(globalName);
+    }
+
+    async function loadWithFallbacks(ext, loader) {
+      const candidates = uniqueValues([ext.cdn_url, ...(ext.fallback_urls || [])]);
+
+      for (const url of candidates) {
+        try {
+          return await loader(url);
+        } catch (error) {
+          console.warn(`Failed candidate for ${ext.name}:`, url, error);
+        }
+      }
+
+      throw new Error(`Failed to load: ${ext.name}`);
+    }
+
+    function loadExternalScript(ext) {
+      if (loadedExternals.has(ext.name)) return Promise.resolve();
+
+      return loadWithFallbacks(ext, (url) =>
+        new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = url;
+          script.onload = () => {
+            externalScripts.push(script);
+            resolve();
+          };
+          script.onerror = () => {
+            script.remove();
+            reject(new Error(`Failed to load script: ${url}`));
+          };
+          document.head.appendChild(script);
+        }),
+      ).then(() => {
+        loadedExternals.add(ext.name);
+      });
     }
 
     async function loadExternalModule(ext) {
-      if (loadedExternals.has(ext.cdn_url)) return;
-      const mod = await import(ext.cdn_url);
+      if (loadedExternals.has(ext.name)) return;
+
+      const mod = await loadWithFallbacks(ext, (url) => import(url));
       const target = window[ext.global_name] || {};
       for (const [key, value] of Object.entries(mod)) {
         if (key !== 'default') target[key] = value;
       }
       window[ext.global_name] = target;
-      loadedExternals.add(ext.cdn_url);
+      loadedExternals.add(ext.name);
     }
 
     async function loadExternals(manifestExternals) {
       if (!manifestExternals || manifestExternals.length === 0) return;
       const scriptExts = manifestExternals.filter(e => e.load_type !== 'module');
-      const moduleExts = manifestExternals.filter(e => e.load_type === 'module');
+      const moduleExts = manifestExternals
+        .filter(e => e.load_type === 'module')
+        .sort((left, right) => {
+          if (left.name === 'three_js') return -1;
+          if (right.name === 'three_js') return 1;
+          return left.name.localeCompare(right.name);
+        });
+
       await Promise.all(scriptExts.map(loadExternalScript));
+
       if (moduleExts.length > 0 && !importMapInjected) {
         const imports = {};
+        const lookup = createExternalLookup(manifestExternals);
         for (const ext of moduleExts) {
           if (ext.module_imports) {
             for (const [specifier, globalName] of Object.entries(ext.module_imports)) {
               if (!imports[specifier]) {
-                const shimUrl = createGlobalShimUrl(globalName);
-                if (shimUrl) imports[specifier] = shimUrl;
+                const importTarget = resolveImportTarget(specifier, globalName, lookup);
+                if (importTarget) imports[specifier] = importTarget;
               }
             }
           }
@@ -212,8 +334,11 @@
     function clearExternals() {
       for (const s of externalScripts) s.remove();
       externalScripts.length = 0;
+      for (const url of externalObjectUrls) URL.revokeObjectURL(url);
+      externalObjectUrls.length = 0;
       loadedExternals.clear();
       importMapInjected = false;
+      currentExternalSignature = null;
     }
 
     let currentScript = null;
@@ -258,13 +383,26 @@
         const manifestRes = await fetch(`${MANIFEST_URL}?t=${Date.now()}`);
         let manifest = null;
         if (manifestRes.ok) manifest = await manifestRes.json();
+        const manifestExternals = normalizeManifestExternals(manifest && manifest.externals);
+        const nextExternalSignature = getExternalSignature(manifestExternals);
         const runtime = resolveRuntime(manifest);
         const runtimeLabel = getRuntimeLabel(runtime);
         window.GAME.runtime = runtime;
         window.GAME.format = runtime === 'phaser' ? '2d' : '3d';
         setStatus('loading', `Loading ${runtimeLabel} bundle...`);
-        clearExternals();
-        if (manifest && manifest.externals) { await loadExternals(manifest.externals); }
+
+        if (currentExternalSignature && currentExternalSignature !== nextExternalSignature) {
+          setStatus('loading', `${runtimeLabel} runtime changed. Refreshing...`);
+          window.location.reload();
+          return;
+        }
+
+        if (currentExternalSignature == null) {
+          clearExternals();
+          await loadExternals(manifestExternals);
+          currentExternalSignature = nextExternalSignature;
+        }
+
         const response = await fetch(`${BUNDLE_URL}?t=${Date.now()}`);
         if (!response.ok) {
           if (response.status === 404 || response.status === 400) { setStatus('connected', `No ${runtimeLabel} build yet. Create some atoms!`); return; }
@@ -275,7 +413,7 @@
         currentScript = document.createElement('script');
         currentScript.textContent = code;
         document.body.appendChild(currentScript);
-        const extCount = manifest ? (manifest.externals || []).length : 0;
+        const extCount = manifestExternals.length;
         setStatus('connected', `${runtimeLabel} live (${extCount} ext, ${new Date().toLocaleTimeString()})`);
       } catch (err) {
         console.error('Failed to load bundle:', err);
@@ -286,9 +424,23 @@
     function setupRealtime() {
       if (!SUPABASE_URL) { setStatus('error', 'No Supabase URL'); return; }
       const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-      supabase.channel('builds')
-        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'builds', filter: 'status=eq.success' },
-          () => loadBundle())
+      const realtimeChannel = supabase.channel(`builds:${GAME_ID || GAME_NAME}`);
+      const realtimeFilter = {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'builds',
+        ...(GAME_ID ? { filter: `game_id=eq.${GAME_ID}` } : {}),
+      };
+
+      realtimeChannel
+        .on('postgres_changes', realtimeFilter, (payload) => {
+          const previousStatus = payload.old && payload.old.status;
+          const nextStatus = payload.new && payload.new.status;
+          if (GAME_ID && payload.new && payload.new.game_id !== GAME_ID) return;
+          if (nextStatus === 'success' && previousStatus !== 'success') {
+            loadBundle();
+          }
+        })
         .subscribe((status) => {
           if (status === 'SUBSCRIBED') setStatus('connected', 'Watching for builds...');
         });

@@ -375,6 +375,7 @@ export function GameWorkspace({
 
           <ErrorBoundary label="Game Preview">
             <WorkspaceGamePanel
+              gameId={gameId}
               gameName={gameName}
               gameFormat={gameFormat}
               pipelineWarRoom={pipelineWarRoom}

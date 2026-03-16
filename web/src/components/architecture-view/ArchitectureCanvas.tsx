@@ -27,6 +27,7 @@ import {
   useArchitectureState,
 } from "./hooks/useArchitectureState";
 import { AgentNode } from "./nodes/AgentNode";
+import { InfrastructureNode } from "./nodes/InfrastructureNode";
 import { PlatformNode } from "./nodes/PlatformNode";
 import { ServiceNode } from "./nodes/ServiceNode";
 import { NodeDetailPanel } from "./panels/NodeDetailPanel";
@@ -35,6 +36,7 @@ const nodeTypes: NodeTypes = {
   platformNode: PlatformNode,
   agentNode: AgentNode,
   serviceNode: ServiceNode,
+  infrastructureNode: InfrastructureNode,
 };
 
 const edgeTypes: EdgeTypes = {
@@ -153,6 +155,7 @@ export function ArchitectureCanvas({
             if (!data) return "rgba(255,255,255,0.2)";
             if (data.type === "platform") return "#fb7185";
             if (data.type === "agent") return data.accentColor;
+            if (data.type === "infrastructure") return "#4285F4";
             return "rgba(255,255,255,0.28)";
           }}
         />
@@ -169,7 +172,7 @@ export function ArchitectureCanvas({
           Static system map
         </span>
         <span className="text-xs text-white/40">
-          Atomic core, 4 agents, curated service fan-out
+          Atomic core, Gemini AI backbone, 4 agents, curated service fan-out
         </span>
       </div>
     </div>

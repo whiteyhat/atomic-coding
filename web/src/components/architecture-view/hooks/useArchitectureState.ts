@@ -8,6 +8,7 @@ import {
   ARCHITECTURE_SERVICE_COUNT,
   buildArchitectureGraph,
   type AgentNodeDefinition,
+  type InfrastructureNodeDefinition,
   type PlatformNodeDefinition,
   type ServiceNodeDefinition,
 } from "../data/architectureData";
@@ -44,10 +45,18 @@ export interface ServiceNodeData
   [key: string]: unknown;
 }
 
+export interface InfrastructureNodeData
+  extends Omit<InfrastructureNodeDefinition, "kind" | "position" | "connectedNodeIds"> {
+  type: "infrastructure";
+  connectedNodes: RelatedNodeLink[];
+  [key: string]: unknown;
+}
+
 export type ArchitectureNodeData =
   | PlatformNodeData
   | AgentNodeData
-  | ServiceNodeData;
+  | ServiceNodeData
+  | InfrastructureNodeData;
 
 export interface ArchitectureEdgeData {
   intensity: "high" | "medium" | "low";
@@ -110,6 +119,27 @@ export function useArchitectureState(lastEditedGame: LastEditedGame | null): {
         return {
           id: node.id,
           type: "agentNode",
+          position: node.position,
+          data,
+          draggable: true,
+        };
+      }
+
+      if (node.kind === "infrastructure") {
+        const data: InfrastructureNodeData = {
+          ...node,
+          type: "infrastructure",
+          connectedNodes: node.connectedNodeIds
+            .map((id) => nodeMap.get(id))
+            .filter((value): value is AgentNodeDefinition | InfrastructureNodeDefinition =>
+              value?.kind === "agent" || value?.kind === "infrastructure",
+            )
+            .map((n) => ({ id: n.id, label: n.label })),
+        };
+
+        return {
+          id: node.id,
+          type: "infrastructureNode",
           position: node.position,
           data,
           draggable: true,

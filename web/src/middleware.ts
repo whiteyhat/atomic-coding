@@ -9,6 +9,7 @@ const isPublicRoute = createRouteMatcher([
   "/play/(.*)",
   "/game-player.html",
   "/games/:name/board",
+  "/architecture",
 ]);
 
 export default clerkMiddleware(async (auth, request) => {

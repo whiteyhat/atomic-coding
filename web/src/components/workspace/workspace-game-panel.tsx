@@ -225,6 +225,7 @@ function TaskTimelineRail({
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 interface WorkspaceGamePanelProps {
+  gameId: string;
   gameName: string;
   gameFormat: "2d" | "3d" | null;
   // Pipeline state lifted from GameWorkspace — single subscription, no duplicate channels
@@ -235,6 +236,7 @@ interface WorkspaceGamePanelProps {
 }
 
 export function WorkspaceGamePanel({
+  gameId,
   gameName,
   gameFormat,
   pipelineWarRoom = null,
@@ -641,6 +643,7 @@ export function WorkspaceGamePanel({
       {shouldLoadIframe && (
         <GameFrame
           key={refreshKey}
+          gameId={gameId}
           gameName={gameName}
           gameFormat={gameFormat}
           onLoad={handleIframeLoad}

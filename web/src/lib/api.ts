@@ -128,6 +128,44 @@ async function apiFetch<T>(
   return res.json();
 }
 
+async function publicApiFetch<T>(
+  path: string,
+  init?: RequestInit,
+): Promise<T> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(init?.headers as Record<string, string>),
+  };
+
+  if (getAuthTokenFn) {
+    try {
+      const token = await getAuthTokenFn();
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+    } catch {
+      // token retrieval failed
+    }
+  }
+
+  if (!headers.Authorization && DEV_AUTH_BYPASS) {
+    headers.Authorization = `Bearer ${DEV_AUTH_BYPASS_TOKEN}`;
+    if (typeof window === "undefined" && !headers.Origin) {
+      headers.Origin = DEV_AUTH_BYPASS_ORIGIN;
+    }
+  }
+
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new ApiError(body.error ?? `API error ${res.status}`, res.status);
+  }
+  return res.json();
+}
+
 async function appFetch<T>(
   path: string,
   init?: RequestInit,
@@ -387,7 +425,7 @@ export async function listChatSessions(
   gameName: string,
   limit = 20
 ): Promise<ChatSession[]> {
-  return apiFetch(
+  return publicApiFetch(
     `/games/${encodeURIComponent(gameName)}/chat/sessions?limit=${limit}`
   );
 }
@@ -417,7 +455,7 @@ export async function getChatMessages(
   gameName: string,
   sessionId: string
 ): Promise<ChatMessage[]> {
-  return apiFetch(
+  return publicApiFetch(
     `/games/${encodeURIComponent(gameName)}/chat/sessions/${sessionId}/messages`
   );
 }

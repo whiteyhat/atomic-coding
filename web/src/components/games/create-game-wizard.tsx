@@ -29,6 +29,11 @@ import {
   getGameGenre,
   isGenreSupportedInFormat,
 } from "@/lib/game-genres";
+import {
+  getBoilerplateExternals,
+  getInstallableOptionalAddons,
+  pruneOptionalAddons,
+} from "@/lib/game-addon-selection";
 import { useAppAuth } from "@/lib/auth-provider";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -106,7 +111,7 @@ export function CreateGameWizard({
   const previousNextDisabledRef = useRef(true);
   const pulseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [shouldPulseNext, setShouldPulseNext] = useState(false);
-  const [selectedAddons, setSelectedAddons] = useState<Set<string>>(new Set());
+  const [selectedOptionalAddons, setSelectedOptionalAddons] = useState<Set<string>>(new Set());
   const [boilerplateExternals, setBoilerplateExternals] = useState<string[]>([]);
   const { data: registry } = useRegistry();
 
@@ -122,7 +127,7 @@ export function CreateGameWizard({
       setNameError(null);
       setSubmitError(null);
       setLoading(false);
-      setSelectedAddons(new Set());
+      setSelectedOptionalAddons(new Set());
     }
 
     wasOpenRef.current = open;
@@ -130,25 +135,29 @@ export function CreateGameWizard({
 
   // Fetch boilerplate externals when genre+format change
   useEffect(() => {
+    setSelectedOptionalAddons((current) => pruneOptionalAddons(current, gameFormat));
+
     if (!genre || !gameFormat) {
       setBoilerplateExternals([]);
       return;
     }
+
+    let cancelled = false;
+
     listBoilerplates()
       .then((bps) => {
-        const bp = bps.find((b) => b.slug === genre && b.game_format === gameFormat);
-        const externals = bp?.externals ?? [];
-        setBoilerplateExternals(externals);
-        // Pre-select boilerplate addons so they appear already selected
-        if (externals.length > 0) {
-          setSelectedAddons((prev) => {
-            const next = new Set(prev);
-            for (const ext of externals) next.add(ext);
-            return next;
-          });
-        }
+        if (cancelled) return;
+        setBoilerplateExternals(getBoilerplateExternals(bps, genre, gameFormat));
       })
-      .catch(() => setBoilerplateExternals([]));
+      .catch(() => {
+        if (!cancelled) {
+          setBoilerplateExternals([]);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [genre, gameFormat]);
 
   useEffect(() => {
@@ -472,10 +481,8 @@ export function CreateGameWizard({
         selectedGameFormat.value,
       );
 
-      // Install extra add-ons selected by the user (skip boilerplate ones — already installed)
-      const userAddons = Array.from(selectedAddons).filter(
-        (ext) => !boilerplateExternals.includes(ext),
-      );
+      // Install only explicit optional add-ons selected in the wizard.
+      const userAddons = getInstallableOptionalAddons(selectedOptionalAddons);
       if (userAddons.length > 0) {
         Promise.all(
           userAddons.map((extName) =>
@@ -877,7 +884,7 @@ export function CreateGameWizard({
                                   .map((extName) => {
                                     const isIncluded =
                                       boilerplateExternals.includes(extName);
-                                    const isSelected = selectedAddons.has(extName);
+                                    const isSelected = selectedOptionalAddons.has(extName);
                                     const registryEntry = registry?.find(
                                       (r) => r.name === extName,
                                     );
@@ -892,7 +899,7 @@ export function CreateGameWizard({
                                         type="button"
                                         disabled={isIncluded || loading}
                                         onClick={() => {
-                                          setSelectedAddons((prev) => {
+                                          setSelectedOptionalAddons((prev) => {
                                             const next = new Set(prev);
                                             if (next.has(extName))
                                               next.delete(extName);
@@ -998,8 +1005,8 @@ export function CreateGameWizard({
                               Add-ons
                             </p>
                             <p className="mt-3 text-lg font-semibold text-white">
-                              {selectedAddons.size > 0
-                                ? Array.from(selectedAddons)
+                              {selectedOptionalAddons.size > 0
+                                ? Array.from(selectedOptionalAddons)
                                     .map((n) => registry?.find((r) => r.name === n)?.display_name ?? n)
                                     .join(", ")
                                 : "None selected"}
@@ -1113,9 +1120,9 @@ export function CreateGameWizard({
                       <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/65">
                         Genre atoms
                       </div>
-                      {selectedAddons.size > 0 && (
+                      {selectedOptionalAddons.size > 0 && (
                         <div className="rounded-full border border-rose-300/20 bg-rose-500/10 px-3 py-1 text-xs text-rose-200/80">
-                          +{selectedAddons.size} add-on{selectedAddons.size > 1 ? "s" : ""}
+                          +{selectedOptionalAddons.size} add-on{selectedOptionalAddons.size > 1 ? "s" : ""}
                         </div>
                       )}
                       <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/65">

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useAppAuth } from "@/lib/auth-provider";
 
 interface GameFrameProps {
+  gameId?: string | null;
   gameName: string;
   gameFormat?: "2d" | "3d" | null;
   showScoreLoginPrompt?: boolean;
@@ -13,13 +14,25 @@ interface GameFrameProps {
 }
 
 export function GameFrame({
+  gameId = null,
   gameName,
   gameFormat = null,
   showScoreLoginPrompt = false,
   onLoad,
 }: GameFrameProps) {
   const { authenticated, ready, login, isDevBypass } = useAppAuth();
-  const iframeSrc = `/game-player.html?game=${encodeURIComponent(gameName)}&supabaseUrl=${encodeURIComponent(SUPABASE_URL)}&supabaseKey=${encodeURIComponent(SUPABASE_ANON_KEY)}&format=${encodeURIComponent(gameFormat ?? "")}`;
+  const iframeParams = new URLSearchParams({
+    game: gameName,
+    supabaseUrl: SUPABASE_URL,
+    supabaseKey: SUPABASE_ANON_KEY,
+    format: gameFormat ?? "",
+  });
+
+  if (gameId) {
+    iframeParams.set("gameId", gameId);
+  }
+
+  const iframeSrc = `/game-player.html?${iframeParams.toString()}`;
 
   return (
     <div className="relative h-full w-full bg-black">

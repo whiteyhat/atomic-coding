@@ -14,7 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { formatRelativeTime } from "@/lib/dashboard";
-import type { ArchitectureNodeData } from "../hooks/useArchitectureState";
+import type { ArchitectureNodeData, InfrastructureNodeData } from "../hooks/useArchitectureState";
 
 const AGENT_ICONS = {
   jarvis: Bot,
@@ -301,6 +301,79 @@ function ServiceDetails({
   );
 }
 
+function InfrastructureDetails({
+  data,
+  onNavigateToNode,
+}: {
+  data: Extract<ArchitectureNodeData, { type: "infrastructure" }>;
+  onNavigateToNode?: (nodeId: string) => void;
+}) {
+  return (
+    <>
+      <div className="rounded-[1.65rem] border border-[#4285F4]/20 bg-[linear-gradient(180deg,rgba(66,133,244,0.12),rgba(66,133,244,0.04))] p-4">
+        <div className="flex items-start gap-3">
+          <div className="flex h-14 w-14 items-center justify-center rounded-[1.2rem] border border-[#4285F4]/25 bg-[#4285F4]/10 text-xl">
+            {data.icon}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-semibold text-white">{data.label}</h2>
+              <span className="rounded-full border border-[#4285F4]/20 bg-[#4285F4]/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-[#8AB4F8]">
+                {data.variant}
+              </span>
+            </div>
+            <p className="mt-3 text-sm leading-6 text-white/58">{data.description}</p>
+          </div>
+        </div>
+      </div>
+
+      {data.capabilities && data.capabilities.length > 0 && (
+        <Section label="Capabilities">
+          <div className="flex flex-wrap gap-2">
+            {data.capabilities.map((cap) => (
+              <span
+                key={cap}
+                className="inline-flex rounded-full border border-[#4285F4]/20 bg-[#4285F4]/10 px-3 py-1.5 text-[11px] font-medium text-[#8AB4F8]"
+              >
+                {cap}
+              </span>
+            ))}
+          </div>
+        </Section>
+      )}
+
+      <Section label="Connected nodes">
+        <div className="flex flex-wrap gap-2">
+          {data.connectedNodes.map((node) => (
+            <LinkPill
+              key={node.id}
+              label={node.label}
+              onClick={
+                onNavigateToNode ? () => onNavigateToNode(node.id) : undefined
+              }
+            />
+          ))}
+        </div>
+      </Section>
+
+      {data.notes.length > 0 && (
+        <Section label="Notes">
+          <div className="space-y-2">
+            {data.notes.map((note) => (
+              <div
+                key={note}
+                className="rounded-2xl border border-white/8 bg-black/20 px-3 py-2.5 text-sm leading-6 text-white/62"
+              >
+                {note}
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
+    </>
+  );
+}
+
 interface NodeDetailPanelProps {
   node: Node<ArchitectureNodeData> | null;
   onClose: () => void;
@@ -372,6 +445,13 @@ export function NodeDetailPanel({
 
               {node.data.type === "service" ? (
                 <ServiceDetails
+                  data={node.data}
+                  onNavigateToNode={onNavigateToNode}
+                />
+              ) : null}
+
+              {node.data.type === "infrastructure" ? (
+                <InfrastructureDetails
                   data={node.data}
                   onNavigateToNode={onNavigateToNode}
                 />

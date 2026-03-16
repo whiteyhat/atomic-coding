@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getMyProfile, updateMyProfile } from "./api";
+import { getMyProfile, registerAuthTokenGetter, updateMyProfile } from "./api";
 
 const sampleProfile = {
   id: "did:privy:test-user",
@@ -17,9 +17,11 @@ describe("profile API fallback", () => {
   beforeEach(() => {
     fetchMock.mockReset();
     vi.stubGlobal("fetch", fetchMock);
+    registerAuthTokenGetter(async () => "test-token");
   });
 
   afterEach(() => {
+    registerAuthTokenGetter(async () => null);
     vi.unstubAllGlobals();
   });
 

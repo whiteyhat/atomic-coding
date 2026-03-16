@@ -1,5 +1,5 @@
 export type ArchitectureHandle = "top" | "right" | "bottom" | "left";
-export type ArchitectureNodeKind = "platform" | "agent" | "service";
+export type ArchitectureNodeKind = "platform" | "agent" | "service" | "infrastructure";
 export type ArchitectureAgentId = "jarvis" | "forge" | "pixel" | "checker";
 export type ArchitectureServiceCategory =
   | "tool"
@@ -57,10 +57,28 @@ export interface ServiceNodeDefinition {
   edgeIntensity?: "medium" | "low";
 }
 
+export type InfrastructureVariant = "hub" | "model";
+
+export interface InfrastructureNodeDefinition {
+  id: string;
+  kind: "infrastructure";
+  position: ArchitecturePosition;
+  label: string;
+  description: string;
+  icon: string;
+  accentColor: string;
+  variant: InfrastructureVariant;
+  capabilities?: string[];
+  connectedNodeIds: string[];
+  notes: string[];
+  edgeIntensity?: "medium" | "low";
+}
+
 export type ArchitectureNodeDefinition =
   | PlatformNodeDefinition
   | AgentNodeDefinition
-  | ServiceNodeDefinition;
+  | ServiceNodeDefinition
+  | InfrastructureNodeDefinition;
 
 export interface ArchitectureEdgeDefinition {
   id: string;
@@ -88,9 +106,68 @@ interface ServiceTemplate {
   edgeIntensity?: "medium" | "low";
 }
 
-const CENTER = { x: 760, y: 520 };
-const AGENT_RADIUS = 360;
-const SERVICE_RADIUS = 250;
+const CENTER = { x: 800, y: 650 };
+const AGENT_RADIUS = 460;
+const SERVICE_RADIUS = 260;
+const GEMINI_HUB_RADIUS = 290;
+const GEMINI_MODEL_RADIUS = 260;
+
+const GEMINI_BLUE = "#4285F4";
+const GEMINI_BLUE_LIGHT = "#8AB4F8";
+
+interface GeminiModelTemplate {
+  id: string;
+  label: string;
+  icon: string;
+  description: string;
+  connectedAgentIds: ArchitectureAgentId[];
+  notes: string[];
+  angle: number;
+}
+
+const GEMINI_HUB_ANGLE = -90;
+
+const GEMINI_MODELS: GeminiModelTemplate[] = [
+  {
+    id: "gemini-pro",
+    label: "Gemini 3.1 Pro",
+    icon: "PRO",
+    description:
+      "High-capability reasoning model powering orchestration, code generation, and delivery synthesis with 1M token context.",
+    connectedAgentIds: ["jarvis", "forge"],
+    notes: [
+      "Used for planning, scope analysis, atom implementation, and repair.",
+      "1M token context window with 600K usable budget.",
+    ],
+    angle: -155,
+  },
+  {
+    id: "gemini-flash-lite",
+    label: "Gemini 3.1 Flash Lite",
+    icon: "FLT",
+    description:
+      "Fast, efficient model for validation, QA gating, visual design direction, and lightweight reasoning tasks.",
+    connectedAgentIds: ["pixel", "checker"],
+    notes: [
+      "Optimized for speed in read-only validation and asset orchestration.",
+      "Powers both the visual design system and the QA pipeline.",
+    ],
+    angle: -25,
+  },
+  {
+    id: "gemini-flash-image",
+    label: "Gemini Flash Image",
+    icon: "IMG",
+    description:
+      "Native image generation model producing sprites, textures, UI packs, and game assets with multimodal output.",
+    connectedAgentIds: ["pixel"],
+    notes: [
+      "Generates polished visual packs via OpenRouter image modality.",
+      "Supports aspect ratio control and 1K/2K/4K output sizes.",
+    ],
+    angle: 15,
+  },
+];
 
 const AGENT_ANGLES: Record<ArchitectureAgentId, number> = {
   jarvis: -90,
@@ -491,6 +568,7 @@ export const ARCHITECTURE_SERVICE_COUNT = Object.values(AGENT_SERVICES).reduce(
   (count, services) => count + services.length,
   0,
 );
+export const ARCHITECTURE_GEMINI_MODEL_COUNT = GEMINI_MODELS.length;
 
 export function buildArchitectureGraph(): ArchitectureGraphDefinition {
   const platformNode: PlatformNodeDefinition = {
@@ -508,6 +586,58 @@ export function buildArchitectureGraph(): ArchitectureGraphDefinition {
   const nodes: ArchitectureNodeDefinition[] = [platformNode];
   const edges: ArchitectureEdgeDefinition[] = [];
   const agentNodes = new Map<ArchitectureAgentId, AgentNodeDefinition>();
+
+  // --- Gemini infrastructure layer ---
+  const geminiHubPosition = polarToXY(CENTER.x, CENTER.y, GEMINI_HUB_ANGLE, GEMINI_HUB_RADIUS);
+  const geminiHubNode: InfrastructureNodeDefinition = {
+    id: "gemini-hub",
+    kind: "infrastructure",
+    position: { x: geminiHubPosition.x - 100, y: geminiHubPosition.y - 60 },
+    label: "Google Gemini",
+    description:
+      "AI backbone powering all four agents through OpenRouter. Provides 1M token context, multimodal reasoning, code generation, and native image synthesis.",
+    icon: "✦",
+    accentColor: GEMINI_BLUE,
+    variant: "hub",
+    capabilities: [
+      "1M token context",
+      "Multimodal (text + image)",
+      "Code generation",
+      "Native image synthesis",
+    ],
+    connectedNodeIds: GEMINI_MODELS.map((m) => m.id),
+    notes: [
+      "All models accessed via OpenRouter API with a single API key.",
+      "Three model variants serve different agent specializations.",
+    ],
+  };
+  nodes.push(geminiHubNode);
+  edges.push(buildEdge(platformNode, geminiHubNode, "high", GEMINI_BLUE));
+
+  const geminiModelNodes = new Map<string, InfrastructureNodeDefinition>();
+  for (const model of GEMINI_MODELS) {
+    const modelPosition = polarToXY(
+      geminiHubPosition.x,
+      geminiHubPosition.y,
+      model.angle,
+      GEMINI_MODEL_RADIUS,
+    );
+    const modelNode: InfrastructureNodeDefinition = {
+      id: model.id,
+      kind: "infrastructure",
+      position: { x: modelPosition.x - 80, y: modelPosition.y - 35 },
+      label: model.label,
+      description: model.description,
+      icon: model.icon,
+      accentColor: GEMINI_BLUE_LIGHT,
+      variant: "model",
+      connectedNodeIds: model.connectedAgentIds,
+      notes: model.notes,
+    };
+    nodes.push(modelNode);
+    geminiModelNodes.set(model.id, modelNode);
+    edges.push(buildEdge(geminiHubNode, modelNode, "medium", GEMINI_BLUE_LIGHT));
+  }
 
   for (const agentId of ARCHITECTURE_AGENT_IDS) {
     const meta = AGENT_META[agentId];
@@ -557,6 +687,17 @@ export function buildArchitectureGraph(): ArchitectureGraphDefinition {
         ),
       );
     });
+  }
+
+  // --- Gemini model → agent edges ---
+  for (const model of GEMINI_MODELS) {
+    const modelNode = geminiModelNodes.get(model.id);
+    if (!modelNode) continue;
+    for (const agentId of model.connectedAgentIds) {
+      const agentNode = agentNodes.get(agentId);
+      if (!agentNode) continue;
+      edges.push(buildEdge(modelNode, agentNode, "medium", GEMINI_BLUE_LIGHT));
+    }
   }
 
   return { nodes, edges };
