@@ -1,6 +1,6 @@
 import { ToolLoopAgent, stepCountIs } from "ai";
 import { createMCPClient, type MCPClient } from "@ai-sdk/mcp";
-import { openrouter } from "@openrouter/ai-sdk-provider";
+import { createVertex } from "@ai-sdk/google-vertex";
 import { SYSTEM_PROMPT, getGenreContext } from "./system-prompt";
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
@@ -60,7 +60,10 @@ export async function createAtomicAgent(
   });
 
   const agent = new ToolLoopAgent({
-    model: openrouter(modelId),
+    model: createVertex({
+      project: process.env.GOOGLE_CLOUD_PROJECT!,
+      location: process.env.GOOGLE_CLOUD_LOCATION ?? "us-central1",
+    })(modelId),
     instructions: SYSTEM_PROMPT + getGenreContext(genre ?? null, gameFormat ?? null),
     tools: {
       ...atomicTools,

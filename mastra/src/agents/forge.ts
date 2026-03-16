@@ -17,6 +17,6 @@ export const forge = new Agent({
     "Every game must preserve a compliant score system via score_tracker and SCORE_UPDATE postMessage emission.",
     "Return your results as JSON with: { status, atoms_created, atoms_modified, notes }",
   ].join("\n"),
-  model: "google-vertex/gemini-2.5-pro",
+  model: "google-vertex/gemini-3.1-pro",
   tools: { ...supabaseTools, ...buuTools },
 });

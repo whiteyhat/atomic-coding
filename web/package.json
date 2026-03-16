@@ -11,6 +11,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@ai-sdk/google-vertex": "^4.0.80",
     "@ai-sdk/mcp": "^1.0.19",
     "@ai-sdk/react": "^3.0.79",
     "@clerk/nextjs": "^7.0.2",

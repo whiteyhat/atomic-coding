@@ -40,14 +40,14 @@ export interface ModelOption {
 
 export const MODELS: ModelOption[] = [
   {
-    id: "google-vertex/gemini-2.5-pro",
-    name: "Gemini 2.5 Pro",
+    id: "google-vertex/gemini-3.1-pro",
+    name: "Gemini 3.1 Pro",
     provider: "Google Cloud Vertex AI",
     icon: "https://registry.npmmirror.com/@lobehub/icons-static-png/1.75.0/files/dark/gemini-color.png",
   },
   {
-    id: "google-vertex/gemini-2.5-flash",
-    name: "Gemini 2.5 Flash",
+    id: "google-vertex/gemini-3.1-flash",
+    name: "Gemini 3.1 Flash",
     provider: "Google Cloud Vertex AI",
     icon: "https://registry.npmmirror.com/@lobehub/icons-static-png/1.75.0/files/dark/gemini-color.png",
   },
