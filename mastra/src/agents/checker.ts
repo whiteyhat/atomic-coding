@@ -15,7 +15,7 @@ export const checker = new Agent({
     "Always use the Game ID (UUID) from context when calling tools. If you only have a game name, the tools will resolve it automatically.",
     "Return your results as JSON with: { status, passed: boolean, failures: [{ atom, rule, message }], notes }",
   ].join("\n"),
-  model: "openrouter/google/gemini-2.5-pro-preview-06-05",
+  model: "openrouter/google/gemini-3.1-flash-lite-preview",
   tools: {
     "get-code-structure": getCodeStructureTool,
     "read-atoms": readAtomsTool,

@@ -70,7 +70,7 @@ function estimateTokens(text: string): number {
 
 /**
  * Token budget for a single agent dispatch (initial prompt + system prompt).
- * Claude Sonnet 4.6 has a 1M token context window. We leave 40% headroom for
+ * Gemini 3.1 Pro has a 1M token context window. We leave 40% headroom for
  * the accumulated tool calls and assistant messages during the agentic loop.
  */
 const PROMPT_TOKEN_BUDGET = 400_000;

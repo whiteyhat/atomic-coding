@@ -16,6 +16,6 @@ export const jarvis = new Agent({
     "Every pipeline outcome must keep score_tracker-based score reporting intact for leaderboards.",
     "Return your results as JSON with the relevant output for the task.",
   ].join("\n"),
-  model: "openrouter/anthropic/claude-sonnet-4.6",
+  model: "openrouter/google/gemini-3.1-pro-preview",
   tools: { ...supabaseTools, ...buuTools },
 });

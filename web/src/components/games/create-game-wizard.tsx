@@ -137,7 +137,16 @@ export function CreateGameWizard({
     listBoilerplates()
       .then((bps) => {
         const bp = bps.find((b) => b.slug === genre && b.game_format === gameFormat);
-        setBoilerplateExternals(bp?.externals ?? []);
+        const externals = bp?.externals ?? [];
+        setBoilerplateExternals(externals);
+        // Pre-select boilerplate addons so they appear already selected
+        if (externals.length > 0) {
+          setSelectedAddons((prev) => {
+            const next = new Set(prev);
+            for (const ext of externals) next.add(ext);
+            return next;
+          });
+        }
       })
       .catch(() => setBoilerplateExternals([]));
   }, [genre, gameFormat]);
@@ -190,7 +199,7 @@ export function CreateGameWizard({
     }
 
     const shouldTriggerPulse =
-      (step === 0 || step === 1 || step === 2) &&
+      (step === 0 || step === 1 || step === 2 || step === 3) &&
       previousNextDisabledRef.current &&
       !isNextDisabled;
 
@@ -463,10 +472,13 @@ export function CreateGameWizard({
         selectedGameFormat.value,
       );
 
-      // Install extra add-ons selected by the user (fire-and-forget)
-      if (selectedAddons.size > 0) {
+      // Install extra add-ons selected by the user (skip boilerplate ones — already installed)
+      const userAddons = Array.from(selectedAddons).filter(
+        (ext) => !boilerplateExternals.includes(ext),
+      );
+      if (userAddons.length > 0) {
         Promise.all(
-          Array.from(selectedAddons).map((extName) =>
+          userAddons.map((extName) =>
             installExternal(game.name, extName).catch((err) =>
               console.warn(`Failed to install addon ${extName}:`, err),
             ),
@@ -641,8 +653,8 @@ export function CreateGameWizard({
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:overflow-hidden">
-            <div className="flex min-h-0 flex-col px-5 py-5 sm:px-7 sm:py-6">
+          <div className="min-h-0 flex-1 overflow-y-auto lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden">
+            <div className="flex min-h-0 flex-col overflow-hidden px-5 py-5 sm:px-7 sm:py-6">
               <div className="min-h-0 lg:flex-1 lg:overflow-y-auto">
                 <AnimatePresence mode="wait" initial={false}>
                   <motion.div
@@ -891,7 +903,7 @@ export function CreateGameWizard({
                                         className={cn(
                                           "group relative w-full text-left rounded-[1.4rem] border p-4 transition-all",
                                           isIncluded
-                                            ? "border-emerald-300/20 bg-emerald-500/5 opacity-60 cursor-default"
+                                            ? "border-rose-300/30 bg-rose-500/10 cursor-default"
                                             : isSelected
                                               ? "border-rose-300/30 bg-rose-500/10"
                                               : "border-white/8 bg-white/[0.03] hover:border-white/15 hover:bg-white/[0.05]",
@@ -912,7 +924,7 @@ export function CreateGameWizard({
                                                 {registryEntry.display_name}
                                               </span>
                                               {isIncluded && (
-                                                <span className="text-[10px] uppercase tracking-wider text-emerald-300/70">
+                                                <span className="text-[10px] uppercase tracking-wider text-rose-300/70">
                                                   Included
                                                 </span>
                                               )}
@@ -923,7 +935,9 @@ export function CreateGameWizard({
                                           </div>
                                           <div className="shrink-0">
                                             {isIncluded ? (
-                                              <Check className="size-4 text-emerald-400" />
+                                              <div className="flex size-5 items-center justify-center rounded-full bg-rose-500/20 ring-1 ring-rose-500/40">
+                                                <Check className="size-3 text-rose-400" />
+                                              </div>
                                             ) : isSelected ? (
                                               <div className="flex size-5 items-center justify-center rounded-full bg-rose-500/20 ring-1 ring-rose-500/40">
                                                 <Check className="size-3 text-rose-400" />

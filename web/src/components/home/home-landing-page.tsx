@@ -604,13 +604,13 @@ export function HomeLandingPage() {
           </Link>
 
           <a
-            href="https://build.avax.network/build-games"
+            href="https://geminiliveagentchallenge.devpost.com/"
             target="_blank"
             rel="noopener noreferrer"
             className="hidden items-center gap-2 rounded-full border border-red-500/25 bg-red-500/10 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-red-200 transition hover:bg-red-500/20 sm:inline-flex"
           >
             <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            Avalanche Build Games Submission
+            Gemini Live Agent Challenge
             <ArrowRight className="size-3" />
           </a>
 
@@ -666,13 +666,13 @@ export function HomeLandingPage() {
               </p>
 
               <a
-                href="https://build.avax.network/build-games"
+                href="https://geminiliveagentchallenge.devpost.com/"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="mt-4 inline-flex items-center gap-2.5 rounded-full border border-red-500/20 bg-red-500/8 px-4 py-2 text-xs font-medium text-red-200/90 transition hover:bg-red-500/16"
               >
                 <span className="size-2 rounded-full bg-emerald-400 animate-pulse" />
-                Built for the Avalanche Build Games Hackathon
+                Built for the Gemini Live Agent Challenge
                 <span className="text-white/40">|</span>
                 <span className="font-semibold text-red-100 underline underline-offset-2">
                   Learn more

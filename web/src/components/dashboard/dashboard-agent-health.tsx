@@ -12,6 +12,7 @@ interface AgentInfo {
   id: string;
   name: string;
   role: string;
+  model: string;
   icon: typeof Bot;
   color: string;
   glowColor: string;
@@ -29,6 +30,7 @@ const AGENTS: AgentInfo[] = [
     id: "jarvis",
     name: "Jarvis",
     role: "Orchestrator",
+    model: "Gemini 3.1 Pro",
     icon: Bot,
     color: "text-purple-400",
     glowColor: "shadow-purple-500/40",
@@ -38,6 +40,7 @@ const AGENTS: AgentInfo[] = [
     id: "forge",
     name: "Forge",
     role: "Builder",
+    model: "Gemini 3.1 Pro",
     icon: Hammer,
     color: "text-blue-400",
     glowColor: "shadow-blue-500/40",
@@ -47,6 +50,7 @@ const AGENTS: AgentInfo[] = [
     id: "pixel",
     name: "Pixel",
     role: "Designer",
+    model: "Gemini 3.1 Flash Lite",
     icon: Paintbrush,
     color: "text-green-400",
     glowColor: "shadow-green-500/40",
@@ -56,6 +60,7 @@ const AGENTS: AgentInfo[] = [
     id: "checker",
     name: "Checker",
     role: "QA",
+    model: "Gemini 3.1 Flash Lite",
     icon: ShieldCheck,
     color: "text-amber-400",
     glowColor: "shadow-amber-500/40",
@@ -96,6 +101,7 @@ function AgentRow({ agent, index }: { agent: AgentState; index: number }) {
   const Icon = agent.icon;
   const statusCfg = STATUS_CONFIG[agent.status];
   const [latency, setLatency] = useState(agent.latency);
+  const [isHovered, setIsHovered] = useState(false);
 
   // Simulate latency jitter
   useEffect(() => {
@@ -108,8 +114,25 @@ function AgentRow({ agent, index }: { agent: AgentState; index: number }) {
   return (
     <motion.div
       variants={fadeInUp}
-      className="group flex items-center gap-3 rounded-2xl border border-white/[0.05] bg-white/[0.025] p-3 transition-all hover:border-white/12 hover:bg-white/[0.045]"
+      className="group relative flex items-center gap-3 rounded-2xl border border-white/[0.05] bg-white/[0.025] p-3 transition-all hover:border-white/12 hover:bg-white/[0.045]"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
     >
+      {/* Powered by tooltip */}
+      <AnimatePresence>
+        {isHovered && (
+          <motion.div
+            initial={{ opacity: 0, y: 6, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 4, scale: 0.97 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            className="pointer-events-none absolute -top-9 left-1/2 z-50 -translate-x-1/2 whitespace-nowrap rounded-lg border border-white/10 bg-black/90 px-3 py-1.5 text-[11px] font-medium text-white/80 shadow-lg backdrop-blur-sm"
+          >
+            POWERED BY {agent.model.toUpperCase()}
+            <div className="absolute -bottom-1 left-1/2 size-2 -translate-x-1/2 rotate-45 border-b border-r border-white/10 bg-black/90" />
+          </motion.div>
+        )}
+      </AnimatePresence>
       {/* Agent icon */}
       <motion.div
         className={cn(

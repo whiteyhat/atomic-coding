@@ -120,7 +120,7 @@ export function DashboardShell({
                 isLoading={isLoading}
                 errorMessage={creationsErrorMessage}
               />
-              <DashboardTokenFeed items={MOCK_TOKEN_ACTIVITY} />
+              {/* <DashboardTokenFeed items={MOCK_TOKEN_ACTIVITY} /> */}
             </div>
 
             <div className="space-y-5">

@@ -137,7 +137,7 @@ const AGENT_META: Record<
     role: "Orchestrator, scope parser, delivery aggregator",
     description:
       "Jarvis owns intake and closeout. It plans the work, coordinates the task graph, and turns pipeline output into next actions.",
-    model: "openrouter/anthropic/claude-sonnet-4.6",
+    model: "openrouter/google/gemini-3.1-pro-preview",
     toolAccess: [
       "get-code-structure",
       "read-atoms",
@@ -161,7 +161,7 @@ const AGENT_META: Record<
     role: "Primary implementation agent for atom creation and repair",
     description:
       "Forge handles the heavy code-writing path: boilerplate loading, bottom-up atom composition, and repair after validation failures.",
-    model: "openrouter/anthropic/claude-sonnet-4.6",
+    model: "openrouter/google/gemini-3.1-pro-preview",
     toolAccess: [
       "get-code-structure",
       "read-atoms",
@@ -188,7 +188,7 @@ const AGENT_META: Record<
     role: "Visual design system and asset generation specialist",
     description:
       "Pixel translates scope into a cohesive design system, then generates polished UI packs, sprites, textures, and overlays.",
-    model: "openrouter/anthropic/claude-sonnet-4.6",
+    model: "openrouter/google/gemini-3.1-flash-lite-preview",
     toolAccess: [
       "get-code-structure",
       "read-atoms",
@@ -212,7 +212,7 @@ const AGENT_META: Record<
     role: "Validation author, QA gate, and regression auditor",
     description:
       "Checker stays read-only and enforces structure, score-system compliance, and final regression confidence before delivery.",
-    model: "openrouter/google/gemini-2.5-pro-preview-06-05",
+    model: "openrouter/google/gemini-3.1-flash-lite-preview",
     toolAccess: [
       "get-code-structure",
       "read-atoms",
@@ -262,13 +262,13 @@ const AGENT_SERVICES: Record<ArchitectureAgentId, ServiceTemplate[]> = {
       edgeIntensity: "medium",
     },
     {
-      id: "jarvis-claude-model",
-      label: "Claude Sonnet 4.6",
+      id: "jarvis-gemini-model",
+      label: "Gemini 3.1 Pro",
       icon: "AI",
       category: "model",
-      runtimeType: "openrouter/anthropic/claude-sonnet-4.6",
+      runtimeType: "openrouter/google/gemini-3.1-pro-preview",
       description:
-        "Jarvis runs on Claude Sonnet 4.6 for planning, scope analysis, and high-level delivery output.",
+        "Jarvis runs on Gemini 3.1 Pro for planning, scope analysis, and high-level delivery output.",
       notes: [
         "Configured directly in mastra/src/agents/jarvis.ts.",
       ],
@@ -316,13 +316,13 @@ const AGENT_SERVICES: Record<ArchitectureAgentId, ServiceTemplate[]> = {
       edgeIntensity: "low",
     },
     {
-      id: "forge-claude-model",
-      label: "Claude Sonnet 4.6",
+      id: "forge-gemini-model",
+      label: "Gemini 3.1 Pro",
       icon: "AI",
       category: "model",
-      runtimeType: "openrouter/anthropic/claude-sonnet-4.6",
+      runtimeType: "openrouter/google/gemini-3.1-pro-preview",
       description:
-        "Forge uses Claude Sonnet 4.6 as the reasoning model behind the write-heavy implementation path.",
+        "Forge uses Gemini 3.1 Pro as the reasoning model behind the write-heavy implementation path.",
       notes: [
         "Configured directly in mastra/src/agents/forge.ts.",
       ],
@@ -426,12 +426,12 @@ const AGENT_SERVICES: Record<ArchitectureAgentId, ServiceTemplate[]> = {
     },
     {
       id: "checker-gemini-model",
-      label: "Gemini 2.5 Pro Preview",
+      label: "Gemini 3.1 Flash Lite",
       icon: "AI",
       category: "model",
-      runtimeType: "openrouter/google/gemini-2.5-pro-preview-06-05",
+      runtimeType: "openrouter/google/gemini-3.1-flash-lite-preview",
       description:
-        "Checker runs on Gemini 2.5 Pro Preview for read-only QA and validation reporting.",
+        "Checker runs on Gemini 3.1 Flash Lite for read-only QA and validation reporting.",
       notes: [
         "Configured directly in mastra/src/agents/checker.ts.",
       ],
