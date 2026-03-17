@@ -109,6 +109,48 @@ export const createWarRoomSchema = z.object({
   user_id: z.string().optional(),
   genre: z.string().max(50).optional(),
   game_format: z.enum(["2d", "3d"]).optional(),
+  visual_references: z
+    .array(
+      z.object({
+        id: z.string().min(1).max(200),
+        prompt: z.string().min(1).max(500),
+        style: z.string().max(200).nullable().optional(),
+        image_url: z.string().url().max(1000),
+        created_at: z.string().max(100).optional(),
+        is_public: z.boolean().optional(),
+      }),
+    )
+    .max(12)
+    .optional(),
+});
+
+export const patchGeneratedAssetLayoutSchema = z.object({
+  animation: z.string().min(1).max(50),
+  cols: z.number().int().min(1).max(8),
+  rows: z.number().int().min(1).max(8),
+  vertical_dividers: z.array(z.number().min(0).max(100)).max(7),
+  horizontal_dividers: z.array(z.number().min(0).max(100)).max(7),
+  frames: z
+    .array(
+      z.object({
+        index: z.number().int().min(0).max(63),
+        x: z.number().int().min(0),
+        y: z.number().int().min(0),
+        width: z.number().int().min(1),
+        height: z.number().int().min(1),
+        bounds: z
+          .object({
+            x: z.number().int().min(0),
+            y: z.number().int().min(0),
+            width: z.number().int().min(1),
+            height: z.number().int().min(1),
+          })
+          .nullable()
+          .optional(),
+      }),
+    )
+    .min(1)
+    .max(64),
 });
 
 // =============================================================================

@@ -38,6 +38,7 @@ import { LiveEventFeed } from "./live-event-feed";
 import { SuggestedPrompts } from "./suggested-prompts";
 import { StatusBadge } from "./status-badge";
 import { TaskCard } from "./task-card";
+import { PixelAssetStudio } from "./pixel-asset-studio";
 import { cn } from "@/lib/utils";
 import type { AgentName } from "@/lib/types";
 import type { WarRoomTaskState } from "@/lib/war-room-state";
@@ -354,6 +355,10 @@ export function WarRoomPanel({
   const progress = tasks.length > 0 ? Math.round((completedCount / tasks.length) * 100) : 0;
   const pipelineElapsedSeconds = computeElapsedSeconds(warRoom.created_at, warRoom.completed_at, now);
   const isPipelineLive = !warRoom.completed_at;
+  const pixelRefreshToken = tasks
+    .filter((task) => task.task_number === 7 || task.task_number === 8)
+    .map((task) => `${task.task_number}:${task.status}:${task.completed_at ?? ""}`)
+    .join("|");
 
   return (
     <div className="@container min-w-0 w-full flex h-full flex-col bg-[radial-gradient(circle_at_top,#45131d_0%,#1a090d_52%,#0d0406_100%)]">
@@ -706,6 +711,12 @@ export function WarRoomPanel({
             </Accordion>
             )}
           </div>
+
+          <PixelAssetStudio
+            gameName={gameName}
+            warRoomId={warRoomId}
+            refreshToken={pixelRefreshToken}
+          />
 
           <LiveEventFeed events={events} />
 

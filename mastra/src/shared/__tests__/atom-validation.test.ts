@@ -226,6 +226,41 @@ describe("validateStructuralRules", () => {
       expect.objectContaining({ rule: "max_atom_count", severity: "warning" })
     );
   });
+
+  it("fails when Phaser atoms load direct asset paths without PIXEL_ASSETS", () => {
+    const atoms = [
+      ...minimalAtoms,
+      makeAtom({
+        name: "player_loader",
+        code: `
+          function player_loader() {
+            this.load.image('player', 'assets/player.png');
+          }
+        `,
+      }),
+    ];
+    const report = validateCodeQuality(atoms);
+    expect(report.passed).toBe(false);
+    expect(report.failures).toContainEqual(
+      expect.objectContaining({ rule: "phaser_pixel_assets_required", severity: "error" }),
+    );
+  });
+
+  it("allows PIXEL_ASSETS-based Phaser loading", () => {
+    const atoms = [
+      ...minimalAtoms,
+      makeAtom({
+        name: "player_loader",
+        code: `
+          function player_loader(scene) {
+            PIXEL_ASSETS.preloadPhaser(scene, [{ type: 'animation', stableAssetId: 'player', animation: 'idle', key: 'player_idle' }]);
+          }
+        `,
+      }),
+    ];
+    const report = validateCodeQuality(atoms);
+    expect(report.failures.some((failure) => failure.rule === "phaser_pixel_assets_required")).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -483,6 +518,45 @@ describe("validateCodeQuality", () => {
     ];
     const report = validateCodeQuality(atoms);
     expect(report.failures.filter((f) => f.rule === "unused_input")).toHaveLength(0);
+  });
+
+  it("errors when Phaser.AUTO is used", () => {
+    const atoms = [
+      makeAtom({
+        name: "create_scene",
+        code: "function create_scene() { return new Phaser.Game({ type: Phaser.AUTO, canvas: window.GAME.canvas }); }",
+      }),
+    ];
+    const report = validateCodeQuality(atoms);
+    expect(report.failures).toContainEqual(
+      expect.objectContaining({ atom: "create_scene", rule: "phaser_explicit_render_type", severity: "error" })
+    );
+  });
+
+  it("errors when atoms inject scripts at runtime", () => {
+    const atoms = [
+      makeAtom({
+        name: "bad_loader",
+        code: "function bad_loader() { const s = document.createElement('script'); s.src = 'https://example.com/x.js'; document.head.appendChild(s); }",
+      }),
+    ];
+    const report = validateCodeQuality(atoms);
+    expect(report.failures).toContainEqual(
+      expect.objectContaining({ atom: "bad_loader", rule: "runtime_script_injection", severity: "error" })
+    );
+  });
+
+  it("errors when atoms reference lockdown bootstraps", () => {
+    const atoms = [
+      makeAtom({
+        name: "secure_runtime",
+        code: "function secure_runtime() { lockdown(); return typeof Compartment; }",
+      }),
+    ];
+    const report = validateCodeQuality(atoms);
+    expect(report.failures).toContainEqual(
+      expect.objectContaining({ atom: "secure_runtime", rule: "runtime_lockdown_forbidden", severity: "error" })
+    );
   });
 });
 

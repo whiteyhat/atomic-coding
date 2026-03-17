@@ -6,6 +6,35 @@ import { snapshotCurrentAtoms } from "../_shared/services/builds.ts";
 import { getInstalledExternals } from "../_shared/services/externals.ts";
 import { validateScoreSystemRules } from "../../../mastra/src/shared/atom-validation.ts";
 
+const PHASER_AUTO_RE = /\bPhaser\s*\.\s*AUTO\b/g;
+const SCRIPT_INJECTION_RE = /document\s*\.\s*createElement\s*\(\s*["']script["']\s*\)/;
+const LOCKDOWN_RE = /lockdown-install\.js|lockdown\s*\(|\bCompartment\b|\bharden\s*\(/;
+
+async function loadPixelRuntimeIndex(
+  pixelManifestUrl: string | null | undefined,
+): Promise<Record<string, unknown>> {
+  if (!pixelManifestUrl) {
+    return { animations: [], backgrounds: [], ui: [] };
+  }
+
+  try {
+    const response = await fetch(pixelManifestUrl, { headers: { Accept: "application/json" } });
+    if (!response.ok) {
+      return { animations: [], backgrounds: [], ui: [] };
+    }
+    const payload = await response.json().catch(() => null) as Record<string, unknown> | null;
+    const task8 = payload?.task_8 as Record<string, unknown> | undefined;
+    const runtimeIndex = task8?.runtime_index;
+    if (runtimeIndex && typeof runtimeIndex === "object") {
+      return runtimeIndex as Record<string, unknown>;
+    }
+  } catch {
+    // Best-effort only; runtime falls back to placeholders if missing.
+  }
+
+  return { animations: [], backgrounds: [], ui: [] };
+}
+
 /**
  * Rebuild Bundle Edge Function
  *
@@ -51,7 +80,7 @@ Deno.serve(async (req: Request) => {
     // Resolve game name for storage paths
     const { data: game, error: gameError } = await supabase
       .from("games")
-      .select("id, name, game_format, user_id")
+      .select("id, name, game_format, user_id, pixel_assets_revision, pixel_manifest_url")
       .eq("id", gameId)
       .single();
 
@@ -123,8 +152,21 @@ Deno.serve(async (req: Request) => {
 
     // 6. Build the bundle
     type AtomRow = { name: string; type: string; code: string };
+    const runtime = game.game_format === "2d" ? "phaser" : "three";
+    const normalizedAtoms = (atoms as AtomRow[]).map((atom) => ({
+      ...atom,
+      code: normalizeAtomCode(atom.code, runtime),
+    }));
+    const blockedAtoms = normalizedAtoms.filter((atom) => hasBlockedRuntimePattern(atom.code));
+    if (blockedAtoms.length > 0) {
+      throw new Error(
+        `Blocked unsafe runtime code in atom(s): ${blockedAtoms.map((atom) => atom.name).join(", ")}. ` +
+          "Atoms may not inject scripts or load SES/lockdown bootstraps.",
+      );
+    }
+
     const atomMap = new Map<string, AtomRow>();
-    for (const a of atoms as AtomRow[]) {
+    for (const a of normalizedAtoms) {
       atomMap.set(a.name, a);
     }
     const timestamp = new Date().toISOString();
@@ -161,7 +203,7 @@ Deno.serve(async (req: Request) => {
 
     // 7. Fetch installed externals and generate manifest
     const installed = await getInstalledExternals(gameId);
-    const runtime = game.game_format === "2d" ? "phaser" : "three";
+    const pixelIndex = await loadPixelRuntimeIndex(game.pixel_manifest_url);
     const manifest = {
       runtime,
       externals: installed.map((ext) => ({
@@ -173,6 +215,12 @@ Deno.serve(async (req: Request) => {
       })),
       bundle_url: "latest.js",
       built_at: timestamp,
+      asset_contract_version: 2,
+      pixel_manifest_url: game.pixel_manifest_url || null,
+      pixel_assets_revision: Number(game.pixel_assets_revision ?? 0),
+      runtime_asset_mode:
+        runtime === "phaser" && !game.pixel_manifest_url ? "progressive" : "final",
+      pixel_index: pixelIndex,
     };
 
     // 8. Upload bundle + manifest to Supabase Storage (game-scoped paths)
@@ -318,4 +366,13 @@ function indent(code: string, spaces: number): string {
     .split("\n")
     .map((line) => (line.trim() ? pad + line : line))
     .join("\n");
+}
+
+function normalizeAtomCode(code: string, runtime: "phaser" | "three"): string {
+  if (runtime !== "phaser" || !code) return code;
+  return code.replace(PHASER_AUTO_RE, "Phaser.CANVAS");
+}
+
+function hasBlockedRuntimePattern(code: string): boolean {
+  return SCRIPT_INJECTION_RE.test(code) || LOCKDOWN_RE.test(code);
 }

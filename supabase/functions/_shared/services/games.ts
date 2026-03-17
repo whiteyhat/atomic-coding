@@ -14,6 +14,8 @@ export interface Game {
   name: string;
   description: string | null;
   active_build_id: string | null;
+  pixel_assets_revision: number;
+  pixel_manifest_url: string | null;
   user_id: string | null;
   genre: string | null;
   game_format: "2d" | "3d" | null;
@@ -46,6 +48,9 @@ function mapGame(g: any): Game {
     name: g.name,
     description: g.description,
     active_build_id: g.active_build_id,
+    pixel_assets_revision:
+      typeof g.pixel_assets_revision === "number" ? g.pixel_assets_revision : 0,
+    pixel_manifest_url: g.pixel_manifest_url || null,
     user_id: g.user_id,
     genre: g.genre || null,
     game_format: g.game_format || null,

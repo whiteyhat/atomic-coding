@@ -9,6 +9,8 @@ import type {
   TaskStatus,
   AgentName,
   HeartbeatStatus,
+  WarRoomGeneratedAsset,
+  WarRoomVisualReference,
 } from "./types.js";
 
 // =============================================================================
@@ -25,10 +27,24 @@ function mapWarRoom(row: any): WarRoom {
     game_format: row.game_format || null,
     status: row.status,
     scope: row.scope || null,
+    visual_references: Array.isArray(row.visual_references)
+      ? row.visual_references.map(mapVisualReference)
+      : [],
     suggested_prompts: row.suggested_prompts || null,
     final_build_id: row.final_build_id || null,
     created_at: row.created_at,
     completed_at: row.completed_at || null,
+  };
+}
+
+function mapVisualReference(value: any): WarRoomVisualReference {
+  return {
+    id: String(value?.id ?? ""),
+    prompt: String(value?.prompt ?? ""),
+    style: value?.style ? String(value.style) : null,
+    image_url: String(value?.image_url ?? ""),
+    created_at: value?.created_at ? String(value.created_at) : null,
+    is_public: Boolean(value?.is_public),
   };
 }
 
@@ -68,6 +84,28 @@ function mapHeartbeat(row: any): AgentHeartbeat {
     status: row.status,
     last_ping: row.last_ping,
     metadata: row.metadata || {},
+  };
+}
+
+function mapGeneratedAsset(row: any): WarRoomGeneratedAsset {
+  return {
+    id: row.id,
+    war_room_id: row.war_room_id,
+    task_number: row.task_number,
+    stable_asset_id: row.stable_asset_id,
+    asset_kind: row.asset_kind,
+    variant: row.variant || "",
+    storage_path: row.storage_path || null,
+    public_url: row.public_url || null,
+    width: typeof row.width === "number" ? row.width : null,
+    height: typeof row.height === "number" ? row.height : null,
+    layout_version: typeof row.layout_version === "number" ? row.layout_version : 1,
+    runtime_ready: Boolean(row.runtime_ready),
+    editor_only: Boolean(row.editor_only),
+    source_service: row.source_service,
+    metadata: row.metadata || {},
+    created_at: row.created_at,
+    updated_at: row.updated_at,
   };
 }
 
@@ -330,4 +368,72 @@ export async function upsertHeartbeat(
 
   if (error) throw new Error(`Failed to upsert heartbeat: ${error.message}`);
   return mapHeartbeat(data);
+}
+
+export async function listGeneratedAssets(
+  warRoomId: string,
+): Promise<WarRoomGeneratedAsset[]> {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from("war_room_generated_assets")
+    .select("*")
+    .eq("war_room_id", warRoomId)
+    .order("task_number", { ascending: true })
+    .order("stable_asset_id", { ascending: true })
+    .order("asset_kind", { ascending: true })
+    .order("variant", { ascending: true });
+
+  if (error) {
+    throw new Error(`Failed to list generated assets: ${error.message}`);
+  }
+
+  return (data || []).map(mapGeneratedAsset);
+}
+
+export async function upsertGeneratedAsset(input: {
+  war_room_id: string;
+  task_number: 7 | 8;
+  stable_asset_id: string;
+  asset_kind: WarRoomGeneratedAsset["asset_kind"];
+  variant?: string | null;
+  storage_path?: string | null;
+  public_url?: string | null;
+  width?: number | null;
+  height?: number | null;
+  layout_version?: number | null;
+  runtime_ready?: boolean;
+  editor_only?: boolean;
+  source_service?: string;
+  metadata?: Record<string, unknown>;
+}): Promise<WarRoomGeneratedAsset> {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from("war_room_generated_assets")
+    .upsert(
+      {
+        war_room_id: input.war_room_id,
+        task_number: input.task_number,
+        stable_asset_id: input.stable_asset_id,
+        asset_kind: input.asset_kind,
+        variant: input.variant ?? "",
+        storage_path: input.storage_path ?? null,
+        public_url: input.public_url ?? null,
+        width: input.width ?? null,
+        height: input.height ?? null,
+        layout_version: input.layout_version ?? 1,
+        runtime_ready: input.runtime_ready ?? false,
+        editor_only: input.editor_only ?? false,
+        source_service: input.source_service ?? "unknown",
+        metadata: input.metadata ?? {},
+      },
+      { onConflict: "war_room_id,task_number,stable_asset_id,asset_kind,variant" },
+    )
+    .select("*")
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to upsert generated asset: ${error.message}`);
+  }
+
+  return mapGeneratedAsset(data);
 }

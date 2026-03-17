@@ -1,7 +1,12 @@
 import type { NextConfig } from "next";
 import { withSentryConfig } from "@sentry/nextjs";
+import { dirname } from "path";
+import { fileURLToPath } from "url";
 
 const nextConfig: NextConfig = {
+  turbopack: {
+    root: dirname(fileURLToPath(import.meta.url)),
+  },
   async headers() {
     return [
       {

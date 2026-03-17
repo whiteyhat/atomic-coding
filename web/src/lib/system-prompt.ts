@@ -52,8 +52,13 @@ function getRuntimeContext(gameFormat: "2d" | "3d" | null | undefined): string {
 ## Runtime Target: Phaser 3.90.0
 - This game runs on Phaser, not Three.js.
 - Read the \`phaser_js\` external before writing Phaser-specific code.
-- 2D \`create_scene\` atoms should initialize a Phaser game with \`canvas: window.GAME.canvas\`.
+- 2D \`create_scene\` atoms should initialize a Phaser game with \`canvas: window.GAME.canvas\` and an explicit render type.
+- In Atomic's custom iframe runtime, do not use \`Phaser.AUTO\`. Prefer \`type: Phaser.CANVAS\` unless you intentionally need another explicit Phaser renderer.
 - Prefer scenes, sprites, cameras, tweens, tilemaps, and Arcade-style gameplay structure.
+- All 2D runtime asset loading must go through \`window.PIXEL_ASSETS\`.
+- Use \`PIXEL_ASSETS.preloadPhaser(scene, requests)\` and \`PIXEL_ASSETS.createPhaserAnimations(scene, stableAssetId, animations?)\`.
+- Resolve art by stable asset ID only. Never hardcode Supabase URLs or \`assets/*.png\` paths.
+- Do not inject script tags, dynamic imports, SES, or lockdown bootstraps from atom code. Externals are loaded by the platform.
 - Do not plan Three.js render loops, meshes, or 3D camera math for 2D games unless the user explicitly asks for hybrid rendering.
 
 ## Optional 2D Externals (available on request)

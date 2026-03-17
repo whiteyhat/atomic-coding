@@ -1,6 +1,16 @@
-import { Suspense } from "react";
+import dynamic from "next/dynamic";
 import { Loader2 } from "lucide-react";
-import { LibraryShell } from "@/components/library/library-shell";
+
+const LibraryShell = dynamic(
+  () =>
+    import("@/components/library/library-shell").then((module) => ({
+      default: module.LibraryShell,
+    })),
+  {
+    ssr: process.env.NODE_ENV === "production",
+    loading: () => <LibraryPageFallback />,
+  },
+);
 
 function LibraryPageFallback() {
   return (
@@ -16,9 +26,5 @@ function LibraryPageFallback() {
 }
 
 export default function LibraryPage() {
-  return (
-    <Suspense fallback={<LibraryPageFallback />}>
-      <LibraryShell />
-    </Suspense>
-  );
+  return <LibraryShell />;
 }

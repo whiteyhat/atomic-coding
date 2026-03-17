@@ -185,6 +185,14 @@ function WarRoomDraftPanel({
         undefined,
         genre ?? undefined,
         gameFormat,
+        selectedAssets.map((asset) => ({
+          id: asset._id,
+          prompt: asset.prompt,
+          style: asset.style,
+          image_url: asset.image.url,
+          created_at: asset.createdAt,
+          is_public: asset.isPublic,
+        })),
       );
       // Fire cache invalidation in background — don't block navigation on it
       void mutate(getWarRoomsKey(gameName));

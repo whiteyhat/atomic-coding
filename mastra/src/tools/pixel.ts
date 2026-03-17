@@ -8,6 +8,10 @@ import {
   type PixelAspectRatio,
   type PixelImageSize,
 } from "../lib/pixel-guidelines.js";
+import {
+  generateSpriteServicePack,
+  type SpriteAnimationName,
+} from "../lib/pixel-sprite-service.js";
 import { getCodeStructureTool, readAtomsTool } from "./supabase.js";
 
 /**
@@ -408,8 +412,97 @@ export const generatePolishedVisualPackTool = createTool({
   },
 });
 
+export const generateSpriteAnimationPackTool = createTool({
+  id: "generate-sprite-animation-pack",
+  description:
+    "Generate a 2D character seed image, animation sprite sheets, default 2x2 frame layouts, and optional parallax background layers via the external sprite-sheet-creator service.",
+  inputSchema: z.object({
+    stable_asset_id: z.string().min(1).max(100),
+    brief: z.string().min(12),
+    style_direction: z.string().optional(),
+    reference_image_url: z.string().url().optional(),
+    reference_notes: z.array(z.string()).max(8).default([]),
+    required_animations: z
+      .array(z.enum(["walk", "jump", "attack", "idle"]))
+      .min(1)
+      .max(4)
+      .default(["idle", "walk", "jump", "attack"]),
+    generate_background_layers: z.boolean().default(false),
+  }),
+  outputSchema: z.object({
+    stable_asset_id: z.string(),
+    source_service: z.literal("sprite-sheet-creator"),
+    character_prompt: z.string(),
+    reference_mode: z.enum(["prompt_only", "image_to_image"]),
+    reference_image_url: z.string().nullable(),
+    character_seed: z.object({
+      url: z.string(),
+      width: z.number().int(),
+      height: z.number().int(),
+    }),
+    animations: z.array(
+      z.object({
+        animation: z.enum(["walk", "jump", "attack", "idle"]),
+        raw_sheet_url: z.string(),
+        processed_sheet_url: z.string(),
+        width: z.number().int(),
+        height: z.number().int(),
+        cols: z.number().int(),
+        rows: z.number().int(),
+        vertical_dividers: z.array(z.number()),
+        horizontal_dividers: z.array(z.number()),
+        frames: z.array(
+          z.object({
+            index: z.number().int(),
+            x: z.number().int(),
+            y: z.number().int(),
+            width: z.number().int(),
+            height: z.number().int(),
+            bounds: z
+              .object({
+                x: z.number().int(),
+                y: z.number().int(),
+                width: z.number().int(),
+                height: z.number().int(),
+              })
+              .nullable(),
+          }),
+        ),
+      }),
+    ),
+    background_layers: z.array(
+      z.object({
+        variant: z.enum(["layer_1", "layer_2", "layer_3"]),
+        url: z.string(),
+        width: z.number().int(),
+        height: z.number().int(),
+      }),
+    ),
+    notes: z.array(z.string()),
+  }),
+  execute: async ({
+    stable_asset_id,
+    brief,
+    style_direction,
+    reference_image_url,
+    reference_notes,
+    required_animations,
+    generate_background_layers,
+  }) =>
+    generateSpriteServicePack({
+      stableAssetId: stable_asset_id,
+      brief,
+      styleDirection: style_direction,
+      referenceImageUrl: reference_image_url,
+      referenceNotes: reference_notes,
+      requiredAnimations: required_animations as SpriteAnimationName[],
+      generateBackgroundLayers: generate_background_layers,
+    }),
+});
+
 export const pixelTools = {
   "get-code-structure": getCodeStructureTool,
   "read-atoms": readAtomsTool,
   "generate-polished-visual-pack": generatePolishedVisualPackTool,
+  "generate-sprite-animation-pack": generateSpriteAnimationPackTool,
 };

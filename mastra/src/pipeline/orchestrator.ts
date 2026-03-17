@@ -1,4 +1,4 @@
-import { inflateSync } from "node:zlib";
+import { deflateSync, inflateSync } from "node:zlib";
 import { APICallError } from "ai";
 import { mastra } from "../mastra.js";
 import { getSupabaseClient } from "../lib/supabase.js";
@@ -15,7 +15,7 @@ import {
 } from "../shared/atom-validation.js";
 import * as warrooms from "./warrooms.js";
 import { buildTaskPrompt, getAgentSystemPrompt } from "./prompts.js";
-import { Task1OutputSchema, Task2OutputSchema, Task3OutputSchema, Task4OutputSchema, Task5OutputSchema, Task6OutputSchema, Task7OutputSchema, Task8OutputSchema, CheckerValidationOutputSchema, Task10OutputSchema, type Task1Scope, type Task8Asset, type ValidationSpecs } from "./types.js";
+import { Task1OutputSchema, Task2OutputSchema, Task3OutputSchema, Task4OutputSchema, Task5OutputSchema, Task6OutputSchema, Task7OutputSchema, Task8OutputSchema, CheckerValidationOutputSchema, Task10OutputSchema, type CheckerValidationOutput, type Task1Scope, type Task7Asset, type Task8Asset, type Task8AnimationSet, type Task8BackgroundSet, type ValidationSpecs, type WarRoomGeneratedAsset } from "./types.js";
 import type { WarRoomTask, DispatchResult, TaskStatus } from "./types.js";
 import { ensureBoilerplateSeeded } from "./boilerplate-seeder.js";
 import { resolvePixelAssetKeys, clearPixelRegistryForRun, runWithPixelContext } from "../tools/pixel.js";
@@ -50,6 +50,38 @@ interface PngAlphaAnalysis {
   nonTransparentPixels: number;
   touchesEdgeCount: number;
   coverageRatio: number;
+}
+
+interface ImageDimensions {
+  width: number;
+  height: number;
+}
+
+interface UploadedBundleAsset {
+  path: string;
+  publicUrl: string;
+  width: number | null;
+  height: number | null;
+}
+
+interface DecodedPng {
+  width: number;
+  height: number;
+  rgba: Uint8Array;
+}
+
+interface PixelValidationFailure {
+  atom: string;
+  rule: string;
+  message: string;
+  severity: "error" | "warning";
+  fix_hint?: string;
+}
+
+interface PixelValidationReport {
+  passed: boolean;
+  failures: PixelValidationFailure[];
+  checkedUrls: number;
 }
 
 function getRuntimeName(gameFormat: "2d" | "3d" | null | undefined): "phaser" | "three" {
@@ -123,6 +155,112 @@ function getExtensionForContentType(contentType: string | null): string {
   if (contentType.includes("jpeg") || contentType.includes("jpg")) return ".jpg";
   if (contentType.includes("webp")) return ".webp";
   return ".png";
+}
+
+function readPngDimensions(bytes: Uint8Array): ImageDimensions | null {
+  if (bytes.length < 24) return null;
+  for (let i = 0; i < PNG_SIGNATURE.length; i++) {
+    if (bytes[i] !== PNG_SIGNATURE[i]) {
+      return null;
+    }
+  }
+
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  return {
+    width: view.getUint32(16),
+    height: view.getUint32(20),
+  };
+}
+
+function readJpegDimensions(bytes: Uint8Array): ImageDimensions | null {
+  if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) {
+    return null;
+  }
+
+  let offset = 2;
+  while (offset + 9 < bytes.length) {
+    if (bytes[offset] !== 0xff) {
+      offset += 1;
+      continue;
+    }
+
+    const marker = bytes[offset + 1];
+    const length = (bytes[offset + 2] << 8) | bytes[offset + 3];
+    if (length < 2 || offset + 2 + length > bytes.length) {
+      return null;
+    }
+
+    const isSofMarker =
+      (marker >= 0xc0 && marker <= 0xc3) ||
+      (marker >= 0xc5 && marker <= 0xc7) ||
+      (marker >= 0xc9 && marker <= 0xcb) ||
+      (marker >= 0xcd && marker <= 0xcf);
+
+    if (isSofMarker) {
+      return {
+        height: (bytes[offset + 5] << 8) | bytes[offset + 6],
+        width: (bytes[offset + 7] << 8) | bytes[offset + 8],
+      };
+    }
+
+    offset += 2 + length;
+  }
+
+  return null;
+}
+
+function readWebpDimensions(bytes: Uint8Array): ImageDimensions | null {
+  if (bytes.length < 30) return null;
+  const riff = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]);
+  const webp = String.fromCharCode(bytes[8], bytes[9], bytes[10], bytes[11]);
+  if (riff !== "RIFF" || webp !== "WEBP") {
+    return null;
+  }
+
+  const chunkType = String.fromCharCode(bytes[12], bytes[13], bytes[14], bytes[15]);
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+
+  if (chunkType === "VP8X") {
+    return {
+      width: 1 + bytes[24] + (bytes[25] << 8) + (bytes[26] << 16),
+      height: 1 + bytes[27] + (bytes[28] << 8) + (bytes[29] << 16),
+    };
+  }
+
+  if (chunkType === "VP8 ") {
+    return {
+      width: view.getUint16(26, true) & 0x3fff,
+      height: view.getUint16(28, true) & 0x3fff,
+    };
+  }
+
+  if (chunkType === "VP8L") {
+    const bits = view.getUint32(21, true);
+    return {
+      width: (bits & 0x3fff) + 1,
+      height: ((bits >> 14) & 0x3fff) + 1,
+    };
+  }
+
+  return null;
+}
+
+function inferImageDimensions(
+  bytes: Uint8Array,
+  contentType: string | null,
+): ImageDimensions | null {
+  const normalized = contentType?.toLowerCase() ?? "";
+  if (normalized.includes("png")) {
+    return readPngDimensions(bytes);
+  }
+  if (normalized.includes("jpeg") || normalized.includes("jpg")) {
+    return readJpegDimensions(bytes);
+  }
+  if (normalized.includes("webp")) {
+    return readWebpDimensions(bytes);
+  }
+
+  return readPngDimensions(bytes) ?? readJpegDimensions(bytes) ?? readWebpDimensions(bytes);
 }
 
 function paethPredictor(a: number, b: number, c: number): number {
@@ -284,6 +422,227 @@ function analyzePngAlpha(bytes: Uint8Array): PngAlphaAnalysis {
   };
 }
 
+function decodePngRgba(bytes: Uint8Array): DecodedPng {
+  for (let i = 0; i < PNG_SIGNATURE.length; i++) {
+    if (bytes[i] !== PNG_SIGNATURE[i]) {
+      throw new Error("Expected PNG bytes");
+    }
+  }
+
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let offset = 8;
+  let width = 0;
+  let height = 0;
+  let colorType = 0;
+  let bitDepth = 0;
+  const idatChunks: Uint8Array[] = [];
+
+  while (offset + 8 <= bytes.length) {
+    const length = view.getUint32(offset);
+    const chunkType = String.fromCharCode(
+      bytes[offset + 4],
+      bytes[offset + 5],
+      bytes[offset + 6],
+      bytes[offset + 7],
+    );
+    const dataStart = offset + 8;
+    const dataEnd = dataStart + length;
+
+    if (chunkType === "IHDR") {
+      width = view.getUint32(dataStart);
+      height = view.getUint32(dataStart + 4);
+      bitDepth = bytes[dataStart + 8];
+      colorType = bytes[dataStart + 9];
+    } else if (chunkType === "IDAT") {
+      idatChunks.push(bytes.slice(dataStart, dataEnd));
+    } else if (chunkType === "IEND") {
+      break;
+    }
+
+    offset = dataEnd + 4;
+  }
+
+  if (!width || !height || idatChunks.length === 0) {
+    throw new Error("PNG metadata is incomplete");
+  }
+  if (bitDepth !== 8) {
+    throw new Error(`Unsupported PNG bit depth: ${bitDepth}`);
+  }
+
+  const bytesPerPixel = colorType === 6 ? 4 : colorType === 2 ? 3 : colorType === 4 ? 2 : 0;
+  if (!bytesPerPixel) {
+    throw new Error(`Unsupported PNG color type: ${colorType}`);
+  }
+
+  const stride = width * bytesPerPixel;
+  const compressed = new Uint8Array(idatChunks.reduce((sum, chunk) => sum + chunk.length, 0));
+  let writeOffset = 0;
+  for (const chunk of idatChunks) {
+    compressed.set(chunk, writeOffset);
+    writeOffset += chunk.length;
+  }
+
+  const inflated = inflateSync(compressed);
+  const rgba = new Uint8Array(width * height * 4);
+  let readOffset = 0;
+  let previousRow = new Uint8Array(stride);
+
+  for (let rowIndex = 0; rowIndex < height; rowIndex++) {
+    const filterType = inflated[readOffset];
+    readOffset += 1;
+    const row = inflated.slice(readOffset, readOffset + stride);
+    readOffset += stride;
+    const reconstructed = new Uint8Array(stride);
+
+    for (let i = 0; i < stride; i++) {
+      const left = i >= bytesPerPixel ? reconstructed[i - bytesPerPixel] : 0;
+      const up = previousRow[i] ?? 0;
+      const upLeft = i >= bytesPerPixel ? previousRow[i - bytesPerPixel] ?? 0 : 0;
+
+      switch (filterType) {
+        case 0:
+          reconstructed[i] = row[i];
+          break;
+        case 1:
+          reconstructed[i] = (row[i] + left) & 0xff;
+          break;
+        case 2:
+          reconstructed[i] = (row[i] + up) & 0xff;
+          break;
+        case 3:
+          reconstructed[i] = (row[i] + Math.floor((left + up) / 2)) & 0xff;
+          break;
+        case 4:
+          reconstructed[i] = (row[i] + paethPredictor(left, up, upLeft)) & 0xff;
+          break;
+        default:
+          throw new Error(`Unsupported PNG filter type: ${filterType}`);
+      }
+    }
+
+    for (let x = 0; x < width; x++) {
+      const pixelOffset = rowIndex * width * 4 + x * 4;
+      const sourceOffset = x * bytesPerPixel;
+
+      if (colorType === 6) {
+        rgba[pixelOffset] = reconstructed[sourceOffset];
+        rgba[pixelOffset + 1] = reconstructed[sourceOffset + 1];
+        rgba[pixelOffset + 2] = reconstructed[sourceOffset + 2];
+        rgba[pixelOffset + 3] = reconstructed[sourceOffset + 3];
+      } else if (colorType === 2) {
+        rgba[pixelOffset] = reconstructed[sourceOffset];
+        rgba[pixelOffset + 1] = reconstructed[sourceOffset + 1];
+        rgba[pixelOffset + 2] = reconstructed[sourceOffset + 2];
+        rgba[pixelOffset + 3] = 255;
+      } else {
+        const gray = reconstructed[sourceOffset];
+        rgba[pixelOffset] = gray;
+        rgba[pixelOffset + 1] = gray;
+        rgba[pixelOffset + 2] = gray;
+        rgba[pixelOffset + 3] = reconstructed[sourceOffset + 1];
+      }
+    }
+
+    previousRow = reconstructed;
+  }
+
+  return { width, height, rgba };
+}
+
+const CRC32_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let i = 0; i < 256; i++) {
+    let current = i;
+    for (let bit = 0; bit < 8; bit++) {
+      current = (current & 1) ? (0xedb88320 ^ (current >>> 1)) : (current >>> 1);
+    }
+    table[i] = current >>> 0;
+  }
+  return table;
+})();
+
+function crc32(bytes: Uint8Array): number {
+  let value = 0xffffffff;
+  for (const byte of bytes) {
+    value = CRC32_TABLE[(value ^ byte) & 0xff] ^ (value >>> 8);
+  }
+  return (value ^ 0xffffffff) >>> 0;
+}
+
+function writeUint32(value: number): Uint8Array {
+  const bytes = new Uint8Array(4);
+  const view = new DataView(bytes.buffer);
+  view.setUint32(0, value >>> 0);
+  return bytes;
+}
+
+function concatBytes(parts: Uint8Array[]): Uint8Array {
+  const total = parts.reduce((sum, part) => sum + part.length, 0);
+  const output = new Uint8Array(total);
+  let offset = 0;
+  for (const part of parts) {
+    output.set(part, offset);
+    offset += part.length;
+  }
+  return output;
+}
+
+function makePngChunk(type: string, data: Uint8Array): Uint8Array {
+  const typeBytes = new TextEncoder().encode(type);
+  const checksum = crc32(concatBytes([typeBytes, data]));
+  return concatBytes([
+    writeUint32(data.length),
+    typeBytes,
+    data,
+    writeUint32(checksum),
+  ]);
+}
+
+function encodePngRgba(width: number, height: number, rgba: Uint8Array): Uint8Array {
+  const stride = width * 4;
+  const raw = new Uint8Array((stride + 1) * height);
+  let readOffset = 0;
+  let writeOffset = 0;
+
+  for (let y = 0; y < height; y++) {
+    raw[writeOffset] = 0;
+    writeOffset += 1;
+    raw.set(rgba.slice(readOffset, readOffset + stride), writeOffset);
+    readOffset += stride;
+    writeOffset += stride;
+  }
+
+  const ihdr = new Uint8Array(13);
+  const ihdrView = new DataView(ihdr.buffer);
+  ihdrView.setUint32(0, width);
+  ihdrView.setUint32(4, height);
+  ihdr[8] = 8;
+  ihdr[9] = 6;
+  ihdr[10] = 0;
+  ihdr[11] = 0;
+  ihdr[12] = 0;
+
+  return concatBytes([
+    PNG_SIGNATURE,
+    makePngChunk("IHDR", ihdr),
+    makePngChunk("IDAT", deflateSync(raw)),
+    makePngChunk("IEND", new Uint8Array(0)),
+  ]);
+}
+
+function cropPngFrame(
+  decoded: DecodedPng,
+  frame: { x: number; y: number; width: number; height: number },
+): Uint8Array {
+  const output = new Uint8Array(frame.width * frame.height * 4);
+  for (let y = 0; y < frame.height; y++) {
+    const sourceStart = ((frame.y + y) * decoded.width + frame.x) * 4;
+    const sourceEnd = sourceStart + frame.width * 4;
+    output.set(decoded.rgba.slice(sourceStart, sourceEnd), y * frame.width * 4);
+  }
+  return encodePngRgba(frame.width, frame.height, output);
+}
+
 async function fetchAssetBytes(urlOrBase64: string): Promise<{
   bytes: Uint8Array;
   contentType: string | null;
@@ -345,15 +704,13 @@ async function removeBackground(
   return new Uint8Array(await imageResponse.arrayBuffer());
 }
 
-async function uploadCanonicalTask8Asset(args: {
+async function uploadBundleAsset(args: {
   bytes: Uint8Array;
   contentType: string;
   gameName: string;
-  warRoomId: string;
-  assetName: string;
-  index: number;
-}): Promise<string> {
-  const path = `${args.gameName}/assets/${args.warRoomId}/${String(args.index + 1).padStart(2, "0")}_${sanitizeAssetSegment(args.assetName)}${getExtensionForContentType(args.contentType)}`;
+  storagePath: string;
+}): Promise<UploadedBundleAsset> {
+  const path = `${args.gameName}/${args.storagePath.replace(/^\/+/, "")}`;
   const supabase = getSupabaseClient();
 
   const { error } = await supabase.storage
@@ -365,56 +722,543 @@ async function uploadCanonicalTask8Asset(args: {
     });
 
   if (error) {
-    throw new Error(`Failed to upload processed asset: ${error.message}`);
+    throw new Error(`Failed to upload bundle asset: ${error.message}`);
   }
 
-  const { data } = supabase.storage
-    .from("bundles")
-    .getPublicUrl(path);
-
+  const { data } = supabase.storage.from("bundles").getPublicUrl(path);
   if (!data?.publicUrl) {
-    throw new Error("Failed to resolve public URL for processed asset");
+    throw new Error("Failed to resolve public URL for uploaded bundle asset");
   }
 
-  return data.publicUrl;
+  const dimensions = inferImageDimensions(args.bytes, args.contentType);
+  return {
+    path,
+    publicUrl: data.publicUrl,
+    width: dimensions?.width ?? null,
+    height: dimensions?.height ?? null,
+  };
 }
 
-/**
- * Upload a Task 7 UI asset to Supabase bundle storage and return the public URL.
- * Mirrors uploadCanonicalTask8Asset but uses a "ui" subfolder.
- */
-async function uploadCanonicalTask7Asset(args: {
-  bytes: Uint8Array;
-  contentType: string;
+async function uploadBundleJson(args: {
   gameName: string;
-  warRoomId: string;
-  assetName: string;
-  index: number;
-}): Promise<string> {
-  const path = `${args.gameName}/ui/${args.warRoomId}/${String(args.index + 1).padStart(2, "0")}_${sanitizeAssetSegment(args.assetName)}${getExtensionForContentType(args.contentType)}`;
-  const supabase = getSupabaseClient();
+  storagePath: string;
+  payload: Record<string, unknown>;
+}): Promise<UploadedBundleAsset> {
+  const bytes = new TextEncoder().encode(`${JSON.stringify(args.payload, null, 2)}\n`);
+  return uploadBundleAsset({
+    bytes,
+    contentType: "application/json",
+    gameName: args.gameName,
+    storagePath: args.storagePath,
+  });
+}
 
-  const { error } = await supabase.storage
-    .from("bundles")
-    .upload(path, new Blob([args.bytes], { type: args.contentType }), {
-      cacheControl: "3600",
-      upsert: true,
-      contentType: args.contentType,
-    });
+function buildPhaserAtlasDescriptor(args: {
+  stableAssetId: string;
+  animation: string;
+  sheetUrl: string;
+  sheetWidth: number;
+  sheetHeight: number;
+  frames: Array<{
+    index: number;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    bounds: {
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    } | null;
+  }>;
+}): Record<string, unknown> {
+  return {
+    frames: Object.fromEntries(
+      args.frames.map((frame) => {
+        const bounds = frame.bounds ?? {
+          x: 0,
+          y: 0,
+          width: frame.width,
+          height: frame.height,
+        };
+
+        return [
+          `${args.stableAssetId}_${args.animation}_${String(frame.index).padStart(2, "0")}`,
+          {
+            frame: {
+              x: frame.x,
+              y: frame.y,
+              w: frame.width,
+              h: frame.height,
+            },
+            rotated: false,
+            trimmed: Boolean(frame.bounds),
+            spriteSourceSize: {
+              x: bounds.x,
+              y: bounds.y,
+              w: bounds.width,
+              h: bounds.height,
+            },
+            sourceSize: {
+              w: frame.width,
+              h: frame.height,
+            },
+          },
+        ];
+      }),
+    ),
+    meta: {
+      app: "atomic-pixel",
+      version: 2,
+      image: args.sheetUrl,
+      size: {
+        w: args.sheetWidth,
+        h: args.sheetHeight,
+      },
+      scale: "1",
+    },
+  };
+}
+
+function inferTask7StableAssetId(asset: Task7Asset, index: number): string {
+  return sanitizeAssetSegment(asset.name || `ui_asset_${index + 1}`);
+}
+
+function inferTask8GeneratedAssetKind(
+  asset: Task8Asset,
+): WarRoomGeneratedAsset["asset_kind"] {
+  switch (asset.type) {
+    case "background":
+      return "background_plate";
+    case "texture":
+      return "texture_asset";
+    case "effect":
+      return "effect_asset";
+    case "icon":
+      return "ui_asset";
+    default:
+      return "effect_asset";
+  }
+}
+
+export function buildPixelManifestDocument(args: {
+  warRoomId: string;
+  gameId: string;
+  gameFormat: "2d" | "3d" | null;
+  runtime: "phaser" | "three";
+  task7Output: Record<string, unknown> | null;
+  task8Output: Record<string, unknown>;
+  generatedAssets: WarRoomGeneratedAsset[];
+}): Record<string, unknown> {
+  const rows = args.generatedAssets.filter((row) => row.asset_kind !== "pixel_manifest");
+  const uiAssets = rows
+    .filter((row) => row.task_number === 7 && row.asset_kind === "ui_asset")
+    .map((row) => ({
+      stable_asset_id: row.stable_asset_id,
+      variant: row.variant,
+      url: row.public_url,
+      width: row.width,
+      height: row.height,
+      metadata: row.metadata,
+    }));
+
+  const animationPackRows = rows.filter((row) => row.asset_kind === "animation_pack");
+  const backgroundLayerRows = rows.filter((row) => row.asset_kind === "background_layer");
+  const textureRows = rows.filter((row) => row.asset_kind === "texture_asset");
+  const effectRows = rows.filter((row) => row.asset_kind === "effect_asset");
+  const auxiliaryRows = rows.filter((row) =>
+    row.task_number === 8 &&
+    ["ui_asset", "background_plate"].includes(row.asset_kind),
+  );
+
+  const animationSets = animationPackRows.map((row) => ({
+    stable_asset_id: row.stable_asset_id,
+    ...(row.metadata as Record<string, unknown>),
+  }));
+
+  const backgroundSets = Array.from(
+    backgroundLayerRows.reduce((map, row) => {
+      const existing = map.get(row.stable_asset_id) ?? [];
+      existing.push({
+        variant: row.variant,
+        url: row.public_url,
+        width: row.width,
+        height: row.height,
+        metadata: row.metadata,
+      });
+      map.set(row.stable_asset_id, existing);
+      return map;
+    }, new Map<string, Array<Record<string, unknown>>>()),
+  ).map(([stableAssetId, layers]) => ({
+    stable_asset_id: stableAssetId,
+    layers: layers.sort((a, b) => String(a.variant).localeCompare(String(b.variant))),
+  }));
+
+  const runtimeIndex = buildPixelRuntimeIndex(args.generatedAssets);
+
+  return {
+    version: 2,
+    asset_contract_version: 2,
+    war_room_id: args.warRoomId,
+    game_id: args.gameId,
+    game_format: args.gameFormat,
+    runtime: args.runtime,
+    generated_at: new Date().toISOString(),
+    task_7: args.task7Output
+      ? {
+          design_system: args.task7Output.design_system ?? null,
+          art_direction: args.task7Output.art_direction ?? null,
+          generation_model: args.task7Output.generation_model ?? null,
+          ui_assets: uiAssets,
+        }
+      : null,
+    task_8: {
+      art_direction: args.task8Output.art_direction ?? null,
+      generation_model: args.task8Output.generation_model ?? null,
+      sprite_manifest: args.task8Output.sprite_manifest ?? [],
+      animation_sets: animationSets,
+      background_sets: backgroundSets,
+      auxiliary_assets: [...textureRows, ...effectRows, ...auxiliaryRows].map((row) => ({
+        stable_asset_id: row.stable_asset_id,
+        asset_kind: row.asset_kind,
+        variant: row.variant,
+        url: row.public_url,
+        width: row.width,
+        height: row.height,
+        metadata: row.metadata,
+      })),
+      runtime_index: runtimeIndex,
+      notes: args.task8Output.notes ?? [],
+    },
+  };
+}
+
+export function buildPixelRuntimeIndex(
+  generatedAssets: WarRoomGeneratedAsset[],
+): Record<string, unknown> {
+  const runtimeRows = generatedAssets.filter(
+    (row) => row.asset_kind !== "pixel_manifest" && row.runtime_ready && !row.editor_only,
+  );
+
+  const animations = runtimeRows
+    .filter((row) => row.asset_kind === "animation_pack")
+    .map((row) => {
+      const metadata = (row.metadata ?? {}) as Record<string, unknown>;
+      return {
+        stable_asset_id: row.stable_asset_id,
+        character_seed_url:
+          typeof metadata.character_seed_url === "string" ? metadata.character_seed_url : row.public_url,
+        animations: Array.isArray(metadata.animations)
+          ? (metadata.animations as Array<Record<string, unknown>>).map((entry) => ({
+              animation: entry.animation,
+              processed_sheet_url: entry.processed_sheet_url,
+              raw_sheet_url: entry.raw_sheet_url,
+              frame_manifest_url: entry.frame_manifest_url,
+              phaser_descriptor_url: entry.phaser_descriptor_url,
+              cols: entry.cols,
+              rows: entry.rows,
+              width: entry.width,
+              height: entry.height,
+            }))
+          : [],
+      };
+    })
+    .sort((a, b) => String(a.stable_asset_id).localeCompare(String(b.stable_asset_id)));
+
+  const backgrounds = Array.from(
+    runtimeRows
+      .filter((row) => row.asset_kind === "background_layer")
+      .reduce((map, row) => {
+        const existing = map.get(row.stable_asset_id) ?? [];
+        existing.push({
+          variant: row.variant,
+          url: row.public_url,
+          width: row.width,
+          height: row.height,
+        });
+        map.set(row.stable_asset_id, existing);
+        return map;
+      }, new Map<string, Array<Record<string, unknown>>>()),
+  )
+    .map(([stableAssetId, layers]) => ({
+      stable_asset_id: stableAssetId,
+      layers: layers.sort((a, b) => String(a.variant).localeCompare(String(b.variant))),
+    }))
+    .sort((a, b) => String(a.stable_asset_id).localeCompare(String(b.stable_asset_id)));
+
+  const ui = runtimeRows
+    .filter((row) => row.asset_kind === "ui_asset")
+    .map((row) => ({
+      stable_asset_id: row.stable_asset_id,
+      variant: row.variant,
+      url: row.public_url,
+      width: row.width,
+      height: row.height,
+    }))
+    .sort((a, b) => String(a.stable_asset_id).localeCompare(String(b.stable_asset_id)));
+
+  return {
+    animations,
+    backgrounds,
+    ui,
+  };
+}
+
+async function publishRuntimeManifestDocument(args: {
+  gameId: string;
+  gameName: string;
+  gameFormat: "2d" | "3d" | null;
+  pixelManifestUrl: string | null;
+  pixelAssetsRevision: number;
+  pixelIndex: Record<string, unknown>;
+}): Promise<UploadedBundleAsset> {
+  const { data: extRows, error } = await getSupabaseClient()
+    .from("game_externals")
+    .select(
+      "external_registry(name, cdn_url, global_name, load_type, module_imports)",
+    )
+    .eq("game_id", args.gameId);
 
   if (error) {
-    throw new Error(`Failed to upload Task 7 UI asset: ${error.message}`);
+    throw new Error(`Failed to load externals for runtime manifest: ${error.message}`);
   }
 
-  const { data } = supabase.storage
-    .from("bundles")
-    .getPublicUrl(path);
+  const manifest = {
+    runtime: getRuntimeName(args.gameFormat),
+    externals: (extRows || [])
+      .map((row: any) => row.external_registry)
+      .filter(Boolean)
+      .map((ext: Record<string, unknown>) => ({
+        name: ext.name,
+        cdn_url: ext.cdn_url,
+        global_name: ext.global_name,
+        load_type: ext.load_type || "script",
+        ...(ext.module_imports ? { module_imports: ext.module_imports } : {}),
+      })),
+    bundle_url: "latest.js",
+    built_at: new Date().toISOString(),
+    asset_contract_version: 2,
+    pixel_manifest_url: args.pixelManifestUrl,
+    pixel_assets_revision: args.pixelAssetsRevision,
+    runtime_asset_mode:
+      args.gameFormat === "2d" && !args.pixelManifestUrl ? "progressive" : "final",
+    pixel_index: args.pixelIndex,
+  };
 
-  if (!data?.publicUrl) {
-    throw new Error("Failed to resolve public URL for Task 7 UI asset");
+  return uploadBundleJson({
+    gameName: args.gameName,
+    storagePath: "manifest.json",
+    payload: manifest,
+  });
+}
+
+async function headUrl(url: string): Promise<boolean> {
+  try {
+    const response = await fetch(url, { method: "HEAD" });
+    if (response.ok) return true;
+    if (response.status === 405 || response.status === 501) {
+      const fallback = await fetch(url, { method: "GET" });
+      return fallback.ok;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+export async function runPixelAssetValidation(args: {
+  warRoomId: string;
+  gameFormat: "2d" | "3d" | null;
+  scope: Record<string, unknown> | null;
+  task8Output: Record<string, unknown> | null;
+  generatedAssets: WarRoomGeneratedAsset[];
+}): Promise<PixelValidationReport> {
+  if (args.gameFormat !== "2d" || !args.task8Output) {
+    return { passed: true, failures: [], checkedUrls: 0 };
   }
 
-  return data.publicUrl;
+  const failures: PixelValidationFailure[] = [];
+  const generatedAssets = args.generatedAssets;
+  const pixelManifest = generatedAssets.find((row) => row.asset_kind === "pixel_manifest");
+  if (!pixelManifest?.public_url) {
+    failures.push({
+      atom: "pixel_manifest",
+      rule: "pixel_manifest_exists",
+      message: "Task 8 did not publish pixel-manifest.json to generated assets storage.",
+      severity: "error",
+      fix_hint: "Persist a pixel_manifest generated asset row and upload pixel-manifest.json.",
+    });
+  }
+
+  const task8AnimationSets = ((args.task8Output.animation_sets as Task8AnimationSet[] | undefined) ?? []).slice();
+  const descriptorUrls = task8AnimationSets.flatMap((animationSet) =>
+    animationSet.animations.flatMap((animation) =>
+      [animation.frame_manifest_url, animation.phaser_descriptor_url].filter(
+        (value): value is string => typeof value === "string" && value.length > 0,
+      ),
+    ),
+  );
+
+  const urlsToCheck = generatedAssets
+    .map((row) => row.public_url)
+    .concat(descriptorUrls)
+    .filter((value): value is string => Boolean(value));
+  let checkedUrls = 0;
+  const urlResults = await Promise.all(
+    Array.from(new Set(urlsToCheck)).map(async (url) => ({
+      url,
+      ok: await headUrl(url),
+    })),
+  );
+
+  for (const entry of urlResults) {
+    checkedUrls += 1;
+    if (!entry.ok) {
+      failures.push({
+        atom: "pixel_assets",
+        rule: "pixel_asset_url_reachable",
+        message: `Generated asset URL is not reachable: ${entry.url}`,
+        severity: "error",
+        fix_hint: "Re-upload the asset to canonical storage and verify the public URL resolves.",
+      });
+    }
+  }
+
+  const task8BackgroundSets = ((args.task8Output.background_sets as Task8BackgroundSet[] | undefined) ?? []).slice();
+  const spriteRequirements = (args.scope?.sprite_requirements as Record<string, unknown> | undefined) ?? {};
+  const characterRequirements =
+    ((spriteRequirements.characters as Array<Record<string, unknown>> | undefined) ?? []).slice();
+  const environmentRequirements =
+    ((spriteRequirements.environment as Array<Record<string, unknown>> | undefined) ?? []).slice();
+
+  for (const requirement of characterRequirements) {
+    const stableAssetId = String(requirement.stable_id ?? "");
+    const requiredAnimations = new Set<string>(
+      ((requirement.required_animations as string[] | undefined) ?? []).map(String),
+    );
+    const animationSet = task8AnimationSets.find((entry) => entry.stable_asset_id === stableAssetId);
+
+    if (!animationSet) {
+      failures.push({
+        atom: stableAssetId || "unknown_character",
+        rule: "pixel_animation_set_missing",
+        message: `Missing animation set for required character asset "${stableAssetId}".`,
+        severity: "error",
+        fix_hint: "Generate and persist an animation_pack row for every character in scope.sprite_requirements.characters.",
+      });
+      continue;
+    }
+
+    const availableAnimations = new Map<string, (typeof animationSet.animations)[number]>(
+      animationSet.animations.map((entry) => [entry.animation, entry]),
+    );
+
+    for (const animation of requiredAnimations) {
+      if (!availableAnimations.has(animation)) {
+        failures.push({
+          atom: stableAssetId,
+          rule: "pixel_required_animation_missing",
+          message: `Animation "${animation}" is missing for "${stableAssetId}".`,
+          severity: "error",
+          fix_hint: "Ensure required_animations from Task 1 all appear in Task 8 animation_sets.",
+        });
+        continue;
+      }
+
+      const sheet = availableAnimations.get(animation)!;
+      if (!sheet.phaser_descriptor_url) {
+        failures.push({
+          atom: `${stableAssetId}:${animation}`,
+          rule: "pixel_phaser_descriptor_missing",
+          message: `Animation "${animation}" for "${stableAssetId}" is missing its Phaser runtime descriptor.`,
+          severity: "error",
+          fix_hint: "Publish a phaser_descriptor_url for every runtime animation sheet.",
+        });
+      }
+      const expectedFrames = Math.max(1, sheet.cols * sheet.rows);
+      if (sheet.frames.length !== expectedFrames) {
+        failures.push({
+          atom: `${stableAssetId}:${animation}`,
+          rule: "pixel_frame_count_mismatch",
+          message: `Animation "${animation}" for "${stableAssetId}" expected ${expectedFrames} frames but found ${sheet.frames.length}.`,
+          severity: "error",
+          fix_hint: "Recompute the frame layout so cols * rows matches the frame manifest length.",
+        });
+      }
+    }
+  }
+
+  for (const requirement of environmentRequirements) {
+    const stableAssetId = String(requirement.stable_id ?? "");
+    const needsParallax = Boolean(requirement.generate_parallax_layers);
+    if (!needsParallax) continue;
+
+    const backgroundSet = task8BackgroundSets.find((entry) => entry.stable_asset_id === stableAssetId);
+    if (!backgroundSet) {
+      failures.push({
+        atom: stableAssetId || "unknown_background",
+        rule: "pixel_background_set_missing",
+        message: `Missing parallax background set for "${stableAssetId}".`,
+        severity: "error",
+        fix_hint: "Generate and persist 3 background layers for any environment asset with generate_parallax_layers=true.",
+      });
+      continue;
+    }
+
+    const variants = new Set(backgroundSet.layers.map((layer) => layer.variant));
+    for (const variant of ["layer_1", "layer_2", "layer_3"]) {
+      if (!variants.has(variant as Task8BackgroundSet["layers"][number]["variant"])) {
+        failures.push({
+          atom: stableAssetId,
+          rule: "pixel_parallax_layer_missing",
+          message: `Background set "${stableAssetId}" is missing ${variant}.`,
+          severity: "error",
+          fix_hint: "Persist all three parallax background layers when requested.",
+        });
+      }
+    }
+  }
+
+  return {
+    passed: failures.every((failure) => failure.severity !== "error"),
+    failures,
+    checkedUrls,
+  };
+}
+
+export function mergeCheckerOutputWithPixelValidation(
+  output: CheckerValidationOutput,
+  pixelValidation: PixelValidationReport | null,
+): CheckerValidationOutput {
+  if (!pixelValidation || pixelValidation.failures.length === 0) {
+    return output;
+  }
+
+  const mergedFailures = [...output.failures];
+  for (const failure of pixelValidation.failures) {
+    const exists = mergedFailures.some((entry) =>
+      entry.atom === failure.atom &&
+      entry.rule === failure.rule &&
+      entry.message === failure.message,
+    );
+    if (!exists) {
+      mergedFailures.push(failure);
+    }
+  }
+
+  const passed = mergedFailures.every((entry) => (entry.severity ?? "error") !== "error");
+  const notes = [output.notes, `Pixel asset validation checked ${pixelValidation.checkedUrls} URL${pixelValidation.checkedUrls === 1 ? "" : "s"}.`]
+    .filter(Boolean)
+    .join(" ");
+
+  return {
+    ...output,
+    status: passed ? "completed" : "failed",
+    passed,
+    failures: mergedFailures,
+    notes,
+  };
 }
 
 /**
@@ -434,7 +1278,7 @@ async function processTask7Output(args: {
   warRoomId: string;
 }): Promise<Record<string, unknown>> {
   const supabase = getSupabaseClient();
-  const assets = ((args.output.assets_created as Array<Record<string, unknown>> | undefined) ?? []).slice();
+  const assets = ((args.output.assets_created as Task7Asset[] | undefined) ?? []).slice();
   if (assets.length === 0) {
     return args.output;
   }
@@ -452,23 +1296,61 @@ async function processTask7Output(args: {
   const processedAssets = await Promise.all(
     assets.map(async (asset, index) => {
       const urlOrBase64 = String(asset.url_or_base64 ?? "");
+      const stableAssetId = inferTask7StableAssetId(asset, index);
+      let canonicalUrl = urlOrBase64;
+      let storagePath: string | null = null;
+      let width: number | null = null;
+      let height: number | null = null;
 
       // Only upload if this is a data URI — already-hosted URLs are fine as-is.
-      if (!urlOrBase64.startsWith("data:")) {
-        return asset;
-      }
-
       try {
-        const source = await fetchAssetBytes(urlOrBase64);
-        const canonicalUrl = await uploadCanonicalTask7Asset({
-          bytes: source.bytes,
-          contentType: source.contentType ?? "image/png",
-          gameName: game.name,
-          warRoomId: args.warRoomId,
-          assetName: String(asset.name ?? `ui_asset_${index + 1}`),
-          index,
+        if (urlOrBase64.startsWith("data:")) {
+          const source = await fetchAssetBytes(urlOrBase64);
+          const uploaded = await uploadBundleAsset({
+            bytes: source.bytes,
+            contentType: source.contentType ?? "image/png",
+            gameName: game.name,
+            storagePath: `ui/${args.warRoomId}/${String(index + 1).padStart(2, "0")}_${stableAssetId}${getExtensionForContentType(source.contentType ?? "image/png")}`,
+          });
+          canonicalUrl = uploaded.publicUrl;
+          storagePath = uploaded.path;
+          width = uploaded.width;
+          height = uploaded.height;
+        }
+
+        await warrooms.upsertGeneratedAsset({
+          war_room_id: args.warRoomId,
+          task_number: 7,
+          stable_asset_id: stableAssetId,
+          asset_kind: "ui_asset",
+          variant: asset.type,
+          storage_path: storagePath,
+          public_url: canonicalUrl,
+          width,
+          height,
+          layout_version: 1,
+          runtime_ready: true,
+          editor_only: false,
+          source_service: asset.source_model ?? "google-vertex",
+          metadata: {
+            name: asset.name,
+            type: asset.type,
+            prompt_used: asset.prompt_used,
+            revised_prompt: asset.revised_prompt,
+            aspect_ratio: asset.aspect_ratio,
+            image_size: asset.image_size,
+            polish_notes: asset.polish_notes,
+            interaction_states: asset.interaction_states ?? [],
+            source_model: asset.source_model,
+            art_direction: args.output.art_direction ?? null,
+            generation_model: args.output.generation_model ?? null,
+          },
         });
-        return { ...asset, url_or_base64: canonicalUrl };
+
+        return {
+          ...asset,
+          url_or_base64: canonicalUrl,
+        } satisfies Task7Asset;
       } catch (uploadErr) {
         // Non-fatal: log and preserve original to avoid breaking the pipeline.
         console.warn("[orchestrator] Task 7 asset upload failed — keeping original", {
@@ -476,6 +1358,43 @@ async function processTask7Output(args: {
           warRoomId: args.warRoomId,
           error: (uploadErr as Error).message,
         });
+
+        try {
+          await warrooms.upsertGeneratedAsset({
+            war_room_id: args.warRoomId,
+            task_number: 7,
+            stable_asset_id: stableAssetId,
+            asset_kind: "ui_asset",
+            variant: asset.type,
+            storage_path: null,
+            public_url: urlOrBase64.startsWith("http") ? urlOrBase64 : null,
+            layout_version: 1,
+            runtime_ready: true,
+            editor_only: false,
+            source_service: asset.source_model ?? "google-vertex",
+            metadata: {
+              name: asset.name,
+              type: asset.type,
+              prompt_used: asset.prompt_used,
+              revised_prompt: asset.revised_prompt,
+              aspect_ratio: asset.aspect_ratio,
+              image_size: asset.image_size,
+              polish_notes: asset.polish_notes,
+              interaction_states: asset.interaction_states ?? [],
+              source_model: asset.source_model,
+              art_direction: args.output.art_direction ?? null,
+              generation_model: args.output.generation_model ?? null,
+              upload_error: (uploadErr as Error).message,
+            },
+          });
+        } catch (rowErr) {
+          console.warn("[orchestrator] Task 7 generated asset row upsert failed", {
+            assetName: asset.name,
+            warRoomId: args.warRoomId,
+            error: (rowErr as Error).message,
+          });
+        }
+
         return asset;
       }
     }),
@@ -502,11 +1421,17 @@ async function processTask8Output(args: {
   gameFormat: "2d" | "3d" | null;
   gameId: string;
   output: Record<string, unknown>;
+  scope: Record<string, unknown> | null;
+  task7Output: Record<string, unknown> | null;
   warRoomId: string;
 }): Promise<Record<string, unknown>> {
   const supabase = getSupabaseClient();
   const assets = ((args.output.assets_created as Task8Asset[] | undefined) ?? []).slice();
-  if (assets.length === 0) {
+  const animationSets = ((args.output.animation_sets as Task8AnimationSet[] | undefined) ?? []).slice();
+  const backgroundSets = ((args.output.background_sets as Task8BackgroundSet[] | undefined) ?? []).slice();
+  const spriteManifest = ((args.output.sprite_manifest as unknown[] | undefined) ?? []).slice();
+
+  if (assets.length === 0 && animationSets.length === 0 && backgroundSets.length === 0) {
     return args.output;
   }
 
@@ -520,11 +1445,21 @@ async function processTask8Output(args: {
     throw new Error(`Failed to resolve game name for Task 8 uploads: ${gameError?.message ?? "missing game"}`);
   }
 
+  const assetBytesCache = new Map<string, Promise<{ bytes: Uint8Array; contentType: string | null }>>();
+  const fetchAssetBytesCached = (urlOrBase64: string) => {
+    let cached = assetBytesCache.get(urlOrBase64);
+    if (!cached) {
+      cached = fetchAssetBytes(urlOrBase64);
+      assetBytesCache.set(urlOrBase64, cached);
+    }
+    return cached;
+  };
+
   const processedAssets = await Promise.all(
     assets.map(async (asset, index) => {
       const deliveryKind = inferTask8DeliveryKind(asset);
       const processingSteps = dedupeStrings([...(asset.processing_steps ?? ["generated"])]);
-      const source = await fetchAssetBytes(asset.url_or_base64);
+      const source = await fetchAssetBytesCached(asset.url_or_base64);
       let canonicalBytes = source.bytes;
       let canonicalContentType = source.contentType ?? "image/png";
       let backgroundRemoved = false;
@@ -569,13 +1504,42 @@ async function processTask8Output(args: {
       }
 
       processingSteps.push("uploaded_canonical");
-      const canonicalUrl = await uploadCanonicalTask8Asset({
+      const stableAssetId = sanitizeAssetSegment(asset.name || `task8_asset_${index + 1}`);
+      const uploaded = await uploadBundleAsset({
         bytes: canonicalBytes,
         contentType: canonicalContentType,
         gameName: game.name,
-        warRoomId: args.warRoomId,
-        assetName: asset.name,
-        index,
+        storagePath: `pixel/${args.warRoomId}/task8/assets/${String(index + 1).padStart(2, "0")}_${stableAssetId}${getExtensionForContentType(canonicalContentType)}`,
+      });
+      const canonicalUrl = uploaded.publicUrl;
+
+      await warrooms.upsertGeneratedAsset({
+        war_room_id: args.warRoomId,
+        task_number: 8,
+        stable_asset_id: stableAssetId,
+        asset_kind: inferTask8GeneratedAssetKind(asset),
+        variant: deliveryKind,
+        storage_path: uploaded.path,
+        public_url: canonicalUrl,
+        width: uploaded.width,
+        height: uploaded.height,
+        layout_version: 1,
+        runtime_ready: true,
+        editor_only: false,
+        source_service: asset.source_model ?? "google-vertex",
+        metadata: {
+          name: asset.name,
+          type: asset.type,
+          prompt_used: asset.prompt_used,
+          revised_prompt: asset.revised_prompt,
+          aspect_ratio: asset.aspect_ratio,
+          image_size: asset.image_size,
+          polish_notes: asset.polish_notes,
+          source_model: asset.source_model,
+          delivery_kind: deliveryKind,
+          processing_steps: dedupeStrings(processingSteps),
+          background_removed: backgroundRemoved,
+        },
       });
 
       return {
@@ -586,6 +1550,248 @@ async function processTask8Output(args: {
         delivery_kind: deliveryKind,
         processing_steps: dedupeStrings(processingSteps),
       } satisfies Task8Asset;
+    }),
+  );
+
+  const canonicalAnimationSets = await Promise.all(
+    animationSets.map(async (animationSet) => {
+      const stableAssetId = sanitizeAssetSegment(animationSet.stable_asset_id || "character");
+      const characterSeedSource = await fetchAssetBytesCached(animationSet.character_seed_url);
+      const uploadedSeed = await uploadBundleAsset({
+        bytes: characterSeedSource.bytes,
+        contentType: characterSeedSource.contentType ?? "image/png",
+        gameName: game.name,
+        storagePath: `pixel/${args.warRoomId}/task8/${stableAssetId}/character_seed${getExtensionForContentType(characterSeedSource.contentType ?? "image/png")}`,
+      });
+
+      await warrooms.upsertGeneratedAsset({
+        war_room_id: args.warRoomId,
+        task_number: 8,
+        stable_asset_id: stableAssetId,
+        asset_kind: "character_seed",
+        variant: "",
+        storage_path: uploadedSeed.path,
+        public_url: uploadedSeed.publicUrl,
+        width: uploadedSeed.width,
+        height: uploadedSeed.height,
+        layout_version: 1,
+        runtime_ready: false,
+        editor_only: true,
+        source_service: "sprite-sheet-creator",
+        metadata: {
+          character_prompt: animationSet.character_prompt,
+          reference_mode: animationSet.reference_mode,
+          reference_image_url: animationSet.reference_image_url,
+        },
+      });
+
+      const canonicalAnimations = await Promise.all(
+        animationSet.animations.map(async (animation) => {
+          const rawSource = await fetchAssetBytesCached(animation.raw_sheet_url);
+          const processedSource = await fetchAssetBytesCached(animation.processed_sheet_url);
+
+          const uploadedRaw = await uploadBundleAsset({
+            bytes: rawSource.bytes,
+            contentType: rawSource.contentType ?? "image/png",
+            gameName: game.name,
+            storagePath: `pixel/${args.warRoomId}/task8/${stableAssetId}/sprite_sheets/${animation.animation}_raw${getExtensionForContentType(rawSource.contentType ?? "image/png")}`,
+          });
+          const uploadedProcessed = await uploadBundleAsset({
+            bytes: processedSource.bytes,
+            contentType: processedSource.contentType ?? "image/png",
+            gameName: game.name,
+            storagePath: `pixel/${args.warRoomId}/task8/${stableAssetId}/sprite_sheets/${animation.animation}${getExtensionForContentType(processedSource.contentType ?? "image/png")}`,
+          });
+
+          const frameManifest = {
+            stable_asset_id: stableAssetId,
+            animation: animation.animation,
+            cols: animation.cols,
+            rows: animation.rows,
+            vertical_dividers: animation.vertical_dividers,
+            horizontal_dividers: animation.horizontal_dividers,
+            width: uploadedProcessed.width ?? animation.width ?? null,
+            height: uploadedProcessed.height ?? animation.height ?? null,
+            frames: animation.frames.map((frame) => ({
+              ...frame,
+              bounds: frame.bounds ?? null,
+            })),
+          };
+          const uploadedFrameManifest = await uploadBundleJson({
+            gameName: game.name,
+            storagePath: `pixel/${args.warRoomId}/task8/${stableAssetId}/frames/${animation.animation}_manifest.json`,
+            payload: frameManifest,
+          });
+          const phaserDescriptor = buildPhaserAtlasDescriptor({
+            stableAssetId,
+            animation: animation.animation,
+            sheetUrl: uploadedProcessed.publicUrl,
+            sheetWidth: uploadedProcessed.width ?? animation.width ?? 1,
+            sheetHeight: uploadedProcessed.height ?? animation.height ?? 1,
+            frames: animation.frames.map((frame) => ({
+              ...frame,
+              bounds: frame.bounds ?? null,
+            })),
+          });
+          const uploadedPhaserDescriptor = await uploadBundleJson({
+            gameName: game.name,
+            storagePath: `pixel/${args.warRoomId}/task8/${stableAssetId}/descriptors/${animation.animation}_phaser_atlas.json`,
+            payload: phaserDescriptor,
+          });
+
+          await warrooms.upsertGeneratedAsset({
+            war_room_id: args.warRoomId,
+            task_number: 8,
+            stable_asset_id: stableAssetId,
+            asset_kind: "sprite_sheet",
+            variant: `${animation.animation}_raw`,
+            storage_path: uploadedRaw.path,
+            public_url: uploadedRaw.publicUrl,
+            width: uploadedRaw.width,
+            height: uploadedRaw.height,
+            layout_version: 1,
+            runtime_ready: false,
+            editor_only: true,
+            source_service: "sprite-sheet-creator",
+            metadata: {
+              animation: animation.animation,
+              sheet_type: "raw",
+            },
+          });
+
+          await warrooms.upsertGeneratedAsset({
+            war_room_id: args.warRoomId,
+            task_number: 8,
+            stable_asset_id: stableAssetId,
+            asset_kind: "sprite_sheet",
+            variant: animation.animation,
+            storage_path: uploadedProcessed.path,
+            public_url: uploadedProcessed.publicUrl,
+            width: uploadedProcessed.width,
+            height: uploadedProcessed.height,
+            layout_version: 1,
+            runtime_ready: true,
+            editor_only: false,
+            source_service: "sprite-sheet-creator",
+            metadata: {
+              animation: animation.animation,
+              sheet_type: "processed",
+              cols: animation.cols,
+              rows: animation.rows,
+              vertical_dividers: animation.vertical_dividers,
+              horizontal_dividers: animation.horizontal_dividers,
+              raw_sheet_url: uploadedRaw.publicUrl,
+              raw_sheet_storage_path: uploadedRaw.path,
+              frame_manifest_url: uploadedFrameManifest.publicUrl,
+              frame_manifest_storage_path: uploadedFrameManifest.path,
+              phaser_descriptor_url: uploadedPhaserDescriptor.publicUrl,
+              phaser_descriptor_storage_path: uploadedPhaserDescriptor.path,
+              frames: animation.frames.map((frame) => ({
+                ...frame,
+                bounds: frame.bounds ?? null,
+              })),
+            },
+          });
+
+          return {
+            ...animation,
+            width: uploadedProcessed.width ?? animation.width,
+            height: uploadedProcessed.height ?? animation.height,
+            raw_sheet_url: uploadedRaw.publicUrl,
+            processed_sheet_url: uploadedProcessed.publicUrl,
+            frames: animation.frames.map((frame) => ({
+              ...frame,
+              bounds: frame.bounds ?? null,
+            })),
+            frame_manifest_url: uploadedFrameManifest.publicUrl,
+            phaser_descriptor_url: uploadedPhaserDescriptor.publicUrl,
+          };
+        }),
+      );
+
+      const animationPackMetadata = {
+        stable_asset_id: stableAssetId,
+        character_prompt: animationSet.character_prompt,
+        reference_mode: animationSet.reference_mode,
+        reference_image_url: animationSet.reference_image_url,
+        character_seed_url: uploadedSeed.publicUrl,
+        character_seed_storage_path: uploadedSeed.path,
+        animations: canonicalAnimations,
+      };
+
+      await warrooms.upsertGeneratedAsset({
+        war_room_id: args.warRoomId,
+        task_number: 8,
+        stable_asset_id: stableAssetId,
+        asset_kind: "animation_pack",
+        variant: "",
+        storage_path: uploadedSeed.path,
+        public_url: uploadedSeed.publicUrl,
+        width: uploadedSeed.width,
+        height: uploadedSeed.height,
+        layout_version: 1,
+        runtime_ready: true,
+        editor_only: false,
+        source_service: "sprite-sheet-creator",
+        metadata: animationPackMetadata,
+      });
+
+      return {
+        ...animationSet,
+        stable_asset_id: stableAssetId,
+        character_seed_url: uploadedSeed.publicUrl,
+        animations: canonicalAnimations,
+      };
+    }),
+  );
+
+  const canonicalBackgroundSets = await Promise.all(
+    backgroundSets.map(async (backgroundSet) => {
+      const stableAssetId = sanitizeAssetSegment(backgroundSet.stable_asset_id || "background");
+      const layers = await Promise.all(
+        backgroundSet.layers.map(async (layer) => {
+          const source = await fetchAssetBytesCached(layer.url);
+          const uploadedLayer = await uploadBundleAsset({
+            bytes: source.bytes,
+            contentType: source.contentType ?? "image/png",
+            gameName: game.name,
+            storagePath: `pixel/${args.warRoomId}/task8/${stableAssetId}/backgrounds/${layer.variant}${getExtensionForContentType(source.contentType ?? "image/png")}`,
+          });
+
+          await warrooms.upsertGeneratedAsset({
+            war_room_id: args.warRoomId,
+            task_number: 8,
+            stable_asset_id: stableAssetId,
+            asset_kind: "background_layer",
+            variant: layer.variant,
+            storage_path: uploadedLayer.path,
+            public_url: uploadedLayer.publicUrl,
+            width: uploadedLayer.width ?? layer.width,
+            height: uploadedLayer.height ?? layer.height,
+            layout_version: 1,
+            runtime_ready: true,
+            editor_only: false,
+            source_service: "sprite-sheet-creator",
+            metadata: {
+              requested_width: layer.width,
+              requested_height: layer.height,
+            },
+          });
+
+          return {
+            ...layer,
+            url: uploadedLayer.publicUrl,
+            width: uploadedLayer.width ?? layer.width,
+            height: uploadedLayer.height ?? layer.height,
+          };
+        }),
+      );
+
+      return {
+        ...backgroundSet,
+        stable_asset_id: stableAssetId,
+        layers,
+      };
     }),
   );
 
@@ -604,12 +1810,102 @@ async function processTask8Output(args: {
   notes.push(
     `${processedAssets.length} Task 8 asset${processedAssets.length === 1 ? "" : "s"} uploaded to canonical bundle storage for ${getRuntimeName(args.gameFormat)} runtime delivery.`,
   );
+  if (canonicalAnimationSets.length > 0) {
+    notes.push(
+      `${canonicalAnimationSets.length} sprite animation pack${canonicalAnimationSets.length === 1 ? "" : "s"} persisted with Phaser descriptors.`,
+    );
+  }
+  if (canonicalBackgroundSets.length > 0) {
+    notes.push(
+      `${canonicalBackgroundSets.length} parallax background set${canonicalBackgroundSets.length === 1 ? "" : "s"} published with 3-layer support.`,
+    );
+  }
 
-  return {
+  const task8Output: Record<string, unknown> = {
     ...args.output,
     assets_created: processedAssets,
+    sprite_manifest: spriteManifest,
+    animation_sets: canonicalAnimationSets,
+    background_sets: canonicalBackgroundSets,
     iteration_phases_completed: [...phases],
     notes: dedupeStrings(notes),
+  };
+
+  const generatedAssets = await warrooms.listGeneratedAssets(args.warRoomId);
+  const manifestPayload = buildPixelManifestDocument({
+    warRoomId: args.warRoomId,
+    gameId: args.gameId,
+    gameFormat: args.gameFormat,
+    runtime: getRuntimeName(args.gameFormat),
+    task7Output: args.task7Output,
+    task8Output,
+    generatedAssets,
+  });
+  const uploadedManifest = await uploadBundleJson({
+    gameName: game.name,
+    storagePath: `pixel/${args.warRoomId}/pixel-manifest.json`,
+    payload: manifestPayload,
+  });
+
+  await warrooms.upsertGeneratedAsset({
+    war_room_id: args.warRoomId,
+    task_number: 8,
+    stable_asset_id: "pixel_manifest",
+    asset_kind: "pixel_manifest",
+    variant: "",
+    storage_path: uploadedManifest.path,
+    public_url: uploadedManifest.publicUrl,
+    width: null,
+    height: null,
+    layout_version: 1,
+    runtime_ready: true,
+    editor_only: false,
+    source_service: "atomic-pixel-manifest",
+    metadata: {
+      version: 2,
+      animation_set_count: canonicalAnimationSets.length,
+      background_set_count: canonicalBackgroundSets.length,
+      sprite_manifest_count: spriteManifest.length,
+      task7_ui_asset_count: generatedAssets.filter((row) => row.task_number === 7 && row.asset_kind === "ui_asset").length,
+    },
+  });
+
+  const { data: gameRuntimeState, error: runtimeStateError } = await supabase
+    .from("games")
+    .select("pixel_assets_revision")
+    .eq("id", args.gameId)
+    .single();
+  if (runtimeStateError || !gameRuntimeState) {
+    throw new Error(
+      `Failed to load game pixel runtime state: ${runtimeStateError?.message ?? "missing game"}`,
+    );
+  }
+
+  const nextPixelAssetsRevision = Number(gameRuntimeState.pixel_assets_revision ?? 0) + 1;
+  const { error: updateGameError } = await supabase
+    .from("games")
+    .update({
+      pixel_assets_revision: nextPixelAssetsRevision,
+      pixel_manifest_url: uploadedManifest.publicUrl,
+    })
+    .eq("id", args.gameId);
+  if (updateGameError) {
+    throw new Error(`Failed to update game pixel runtime state: ${updateGameError.message}`);
+  }
+
+  await publishRuntimeManifestDocument({
+    gameId: args.gameId,
+    gameName: game.name,
+    gameFormat: args.gameFormat,
+    pixelManifestUrl: uploadedManifest.publicUrl,
+    pixelAssetsRevision: nextPixelAssetsRevision,
+    pixelIndex: buildPixelRuntimeIndex(await warrooms.listGeneratedAssets(args.warRoomId)),
+  });
+
+  return {
+    ...task8Output,
+    pixel_manifest_url: uploadedManifest.publicUrl,
+    pixel_assets_revision: nextPixelAssetsRevision,
   };
 }
 
@@ -947,7 +2243,7 @@ async function dispatchToAgent(
   const maxSteps = task.task_number === 2 ? 10
     : task.task_number === 10 ? 40
     : agentName === "forge" ? 25
-    : agentName === "pixel" ? 5   // get-code-structure + 1-3 generate-polished-visual-pack calls + output
+    : agentName === "pixel" ? 12
     : agentName === "jarvis" ? 15
     : 10;
 
@@ -1222,6 +2518,20 @@ export async function runPipeline(warRoomId: string): Promise<void> {
   let iteration = 0;
 
   try {
+    if (room.game_format === "2d") {
+      const { error: clearPixelStateError } = await getSupabaseClient()
+        .from("games")
+        .update({ pixel_manifest_url: null })
+        .eq("id", room.game_id);
+      if (clearPixelStateError) {
+        console.warn("[orchestrator] failed to clear stale pixel manifest state", {
+          warRoomId,
+          gameId: room.game_id,
+          error: clearPixelStateError.message,
+        });
+      }
+    }
+
     while (true) {
       iteration++;
       // Refresh war room + task state in a single query
@@ -1330,6 +2640,8 @@ export async function runPipeline(warRoomId: string): Promise<void> {
             assets_created: [],
             generation_model: "none",
             sprite_manifest: [],
+            animation_sets: [],
+            background_sets: [],
             iteration_phases_completed: [],
             notes: ["Task 8 skipped: 3D games use 3D models and assets instead of 2D sprites."],
           };
@@ -1381,6 +2693,7 @@ export async function runPipeline(warRoomId: string): Promise<void> {
           runtime: getRuntimeName(currentRoom.game_format),
           prompt: currentRoom.prompt,
           scope: currentRoom.scope,
+          visual_references: currentRoom.visual_references,
           dependency_outputs: depOutputs,
         };
 
@@ -1472,18 +2785,40 @@ export async function runPipeline(warRoomId: string): Promise<void> {
             })
           );
 
+          const pixelAssetValidation = task.task_number === 11
+            ? await runPixelAssetValidation({
+                warRoomId,
+                gameFormat: currentRoom.game_format,
+                scope: currentRoom.scope,
+                task8Output: tasks.find((candidate) => candidate.task_number === 8)?.output ?? null,
+                generatedAssets: await warrooms.listGeneratedAssets(warRoomId),
+              })
+            : null;
+          if (pixelAssetValidation) {
+            context.pixel_asset_validation = pixelAssetValidation;
+            void safeRecord("pixel_asset_validation_report event", () =>
+              warrooms.recordEvent(warRoomId, "pixel_asset_validation_report", agent, task.task_number, {
+                passed: pixelAssetValidation.passed,
+                failure_count: pixelAssetValidation.failures.length,
+                checked_urls: pixelAssetValidation.checkedUrls,
+                failures: pixelAssetValidation.failures.slice(0, 15),
+              })
+            );
+          }
+
           // Short-circuit Task 11 (final pass) when all deterministic checks pass
-          if (task.task_number === 11 && deterministicReport.passed) {
+          if (task.task_number === 11 && deterministicReport.passed && (pixelAssetValidation?.passed ?? true)) {
             const warningIssues = deterministicReport.failures.filter((f) => f.severity === "warning");
             await warrooms.updateTaskStatus(warRoomId, task.task_number, "completed", {
               status: "completed",
               passed: true,
               failures: [],
               deterministic_report: deterministicReport,
+              pixel_asset_validation: pixelAssetValidation,
               warning_issues: warningIssues,
               notes: warningIssues.length > 0
                 ? `Passed with ${warningIssues.length} warning(s) — skipped LLM validation`
-                : "All deterministic checks passed — skipped LLM validation",
+                : "All deterministic and pixel asset checks passed — skipped LLM validation",
             });
             void safeRecord(`${agent} idle heartbeat`, () =>
               warrooms.upsertHeartbeat(warRoomId, agent, "idle")
@@ -1633,6 +2968,8 @@ export async function runPipeline(warRoomId: string): Promise<void> {
               gameFormat: currentRoom.game_format,
               gameId: currentRoom.game_id,
               output: result.output,
+              scope: currentRoom.scope,
+              task7Output: tasks.find((candidate) => candidate.task_number === 7)?.output ?? null,
               warRoomId,
             });
 
@@ -1646,6 +2983,31 @@ export async function runPipeline(warRoomId: string): Promise<void> {
           } catch (error) {
             result.success = false;
             result.error = `Task 8 asset post-processing failed: ${(error as Error).message}`;
+          }
+        }
+
+        if (result.success && task.task_number === 11 && result.output) {
+          result.output = mergeCheckerOutputWithPixelValidation(
+            result.output as CheckerValidationOutput,
+            (context.pixel_asset_validation as PixelValidationReport | null | undefined) ?? null,
+          );
+        }
+
+        if (result.success && (task.task_number === 9 || task.task_number === 11) && result.output) {
+          const validationOutput = result.output as CheckerValidationOutput;
+          if (!validationOutput.passed) {
+            await warrooms.updateTaskStatus(
+              warRoomId,
+              task.task_number,
+              "failed",
+              { ...validationOutput, _duration_ms: taskDurationMs },
+            );
+            void safeRecord(`${agent} error heartbeat`, () =>
+              warrooms.upsertHeartbeat(warRoomId, agent, "error", {
+                error: validationOutput.notes ?? `Validation failed with ${validationOutput.failures.length} issue(s)`,
+              })
+            );
+            return;
           }
         }
 
@@ -1798,6 +3160,15 @@ export async function runPipeline(warRoomId: string): Promise<void> {
                 warRoomId, taskNumber: task.task_number, error: (valErr as Error).message,
               });
             }
+          }
+
+          if (result.success && task.task_number === 6 && currentRoom.game_format === "2d") {
+            void safeRecord("preview_build_requested event", () =>
+              warrooms.recordEvent(warRoomId, "preview_build_requested", "forge", 6, {
+                reason: "task_6_completed",
+              })
+            );
+            void triggerBundleRebuild(currentRoom.game_id, "preview");
           }
 
           // Post-fix deterministic validation gate for Task 10
@@ -2085,7 +3456,7 @@ export async function runPipeline(warRoomId: string): Promise<void> {
     if (allPassed) {
       // Trigger a final rebuild to ensure the game bundle is up-to-date
       const rebuildStart = Date.now();
-      await triggerFinalRebuild(room.game_id);
+      await triggerBundleRebuild(room.game_id, "final");
       console.log("[orchestrator] final rebuild done", { durationMs: Date.now() - rebuildStart });
 
       const task12 = finalTasks.find((t) => t.task_number === 12);
@@ -2159,11 +3530,11 @@ export async function runPipeline(warRoomId: string): Promise<void> {
  * Awaited (not fire-and-forget) so the bundle exists before the pipeline
  * is marked as completed.
  */
-async function triggerFinalRebuild(gameId: string): Promise<void> {
+async function triggerBundleRebuild(gameId: string, reason: "preview" | "final"): Promise<void> {
   const supabaseUrl = process.env.SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!supabaseUrl || !serviceKey) {
-    console.warn("[orchestrator] triggerFinalRebuild: missing env vars, skipping");
+    console.warn("[orchestrator] triggerBundleRebuild: missing env vars, skipping");
     return;
   }
 
@@ -2177,13 +3548,14 @@ async function triggerFinalRebuild(gameId: string): Promise<void> {
       body: JSON.stringify({ game_id: gameId }),
     });
     const body = await res.json().catch(() => ({}));
-    console.log("[orchestrator] final rebuild:", {
+    console.log("[orchestrator] bundle rebuild:", {
       gameId,
+      reason,
       status: res.status,
       buildId: (body as any).build_id,
     });
   } catch (err) {
-    console.error("[orchestrator] triggerFinalRebuild failed:", err);
+    console.error("[orchestrator] triggerBundleRebuild failed:", err);
   }
 }
 

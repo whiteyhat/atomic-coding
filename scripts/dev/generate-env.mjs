@@ -37,6 +37,7 @@ const defaults = {
   DEV_AUTH_BYPASS_TOKEN: base.DEV_AUTH_BYPASS_TOKEN || LOCAL_BYPASS_TOKEN,
   PORT: base.PORT || "4500",
   BUU_API_URL: base.BUU_API_URL || "https://dev.api.buu.fun",
+  PIXEL_SPRITE_SERVICE_TIMEOUT_MS: base.PIXEL_SPRITE_SERVICE_TIMEOUT_MS || "120000",
 };
 
 requireValues(base, ["OPENROUTER_API_KEY"]);
@@ -132,6 +133,9 @@ function buildMastraEnv(base, defaults, supabase) {
     SUPABASE_SERVICE_ROLE_KEY: supabase.serviceRoleKey,
     OPENROUTER_API_KEY: base.OPENROUTER_API_KEY,
     FAL_API_KEY: base.FAL_API_KEY,
+    PIXEL_SPRITE_SERVICE_URL: base.PIXEL_SPRITE_SERVICE_URL,
+    PIXEL_SPRITE_SERVICE_KEY: base.PIXEL_SPRITE_SERVICE_KEY,
+    PIXEL_SPRITE_SERVICE_TIMEOUT_MS: defaults.PIXEL_SPRITE_SERVICE_TIMEOUT_MS,
     BUU_API_KEY: base.BUU_API_KEY,
     BUU_API_URL: defaults.BUU_API_URL,
     PORT: defaults.PORT,

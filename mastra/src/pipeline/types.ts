@@ -15,6 +15,40 @@ export const AtomSpecSchema = z.object({
   notes: z.string().optional(),
 });
 
+export const SpriteAnimationRequirementSchema = z.enum([
+  "idle",
+  "walk",
+  "jump",
+  "attack",
+]);
+
+export const Task1CharacterSpriteRequirementSchema = z.object({
+  stable_id: z.string().regex(/^[a-z][a-z0-9]*(_[a-z0-9]+)*$/, "Must be snake_case"),
+  label: z.string().min(1),
+  prompt_brief: z.string().min(10),
+  required_animations: z.array(SpriteAnimationRequirementSchema).min(1),
+  uses_visual_reference: z.boolean().default(false),
+  dimensions_hint: z.string().optional(),
+});
+
+export const Task1EnvironmentSpriteRequirementSchema = z.object({
+  stable_id: z.string().regex(/^[a-z][a-z0-9]*(_[a-z0-9]+)*$/, "Must be snake_case"),
+  label: z.string().min(1),
+  prompt_brief: z.string().min(10),
+  delivery_kind: z.enum(["tile_texture", "background_plate", "environment_sprite"]),
+  generate_parallax_layers: z.boolean().default(false),
+  dimensions_hint: z.string().optional(),
+});
+
+export const Task1EffectSpriteRequirementSchema = z.object({
+  stable_id: z.string().regex(/^[a-z][a-z0-9]*(_[a-z0-9]+)*$/, "Must be snake_case"),
+  label: z.string().min(1),
+  prompt_brief: z.string().min(10),
+  delivery_kind: z.enum(["isolated_sprite", "effect_sheet"]),
+  required_animations: z.array(SpriteAnimationRequirementSchema).default([]),
+  dimensions_hint: z.string().optional(),
+});
+
 export const Task1ScopeSchema = z.object({
   genre: z.string(),
   genre_rationale: z.string(),
@@ -57,9 +91,9 @@ export const Task1ScopeSchema = z.object({
     })).default([]),
   }),
   sprite_requirements: z.object({
-    characters: z.array(z.string()).default([]),
-    environment: z.array(z.string()).default([]),
-    effects: z.array(z.string()).default([]),
+    characters: z.array(Task1CharacterSpriteRequirementSchema).default([]),
+    environment: z.array(Task1EnvironmentSpriteRequirementSchema).default([]),
+    effects: z.array(Task1EffectSpriteRequirementSchema).default([]),
   }).optional().describe("Sprite requirements for 2D games. Omit for 3D games (no 2D sprites)."),
 });
 
@@ -69,6 +103,9 @@ export const Task1OutputSchema = z.object({
 });
 
 export type AtomSpec = z.infer<typeof AtomSpecSchema>;
+export type Task1CharacterSpriteRequirement = z.infer<typeof Task1CharacterSpriteRequirementSchema>;
+export type Task1EnvironmentSpriteRequirement = z.infer<typeof Task1EnvironmentSpriteRequirementSchema>;
+export type Task1EffectSpriteRequirement = z.infer<typeof Task1EffectSpriteRequirementSchema>;
 export type Task1Scope = z.infer<typeof Task1ScopeSchema>;
 export type Task1Output = z.infer<typeof Task1OutputSchema>;
 
@@ -374,17 +411,74 @@ export const Task8SpriteManifestEntrySchema = z.object({
   animation_ready: z.boolean().default(false).describe("Whether the pose is suitable as a base animation frame"),
 });
 
+export const Task8FrameManifestEntrySchema = z.object({
+  index: z.number().int().min(0),
+  x: z.number().int().min(0),
+  y: z.number().int().min(0),
+  width: z.number().int().min(1),
+  height: z.number().int().min(1),
+  bounds: z
+    .object({
+      x: z.number().int().min(0),
+      y: z.number().int().min(0),
+      width: z.number().int().min(1),
+      height: z.number().int().min(1),
+    })
+    .nullable()
+    .default(null),
+});
+
+export const Task8AnimationSetSchema = z.object({
+  stable_asset_id: z.string(),
+  character_prompt: z.string(),
+  reference_mode: z.enum(["prompt_only", "image_to_image"]),
+  reference_image_url: z.string().nullable(),
+  character_seed_url: z.string(),
+  animations: z.array(
+    z.object({
+      animation: SpriteAnimationRequirementSchema,
+      raw_sheet_url: z.string(),
+      processed_sheet_url: z.string(),
+      width: z.number().int().min(1).optional(),
+      height: z.number().int().min(1).optional(),
+      frame_manifest_url: z.string().optional(),
+      phaser_descriptor_url: z.string().optional(),
+      cols: z.number().int().min(1),
+      rows: z.number().int().min(1),
+      vertical_dividers: z.array(z.number()),
+      horizontal_dividers: z.array(z.number()),
+      frames: z.array(Task8FrameManifestEntrySchema).min(1),
+    }),
+  ).min(1),
+});
+
+export const Task8BackgroundSetSchema = z.object({
+  stable_asset_id: z.string(),
+  layers: z.array(
+    z.object({
+      variant: z.enum(["layer_1", "layer_2", "layer_3"]),
+      url: z.string(),
+      width: z.number().int().min(1),
+      height: z.number().int().min(1),
+    }),
+  ).min(1),
+});
+
 export const Task8OutputSchema = z.object({
   status: z.literal("completed"),
   art_direction: z.string(),
   assets_created: z.array(Task8AssetSchema).min(1),
   generation_model: z.string().describe("OpenRouter model ID used for image generation"),
   sprite_manifest: z.array(Task8SpriteManifestEntrySchema).min(1).describe("Manifest of all generated sprites with categorization"),
+  animation_sets: z.array(Task8AnimationSetSchema).default([]),
+  background_sets: z.array(Task8BackgroundSetSchema).default([]),
   iteration_phases_completed: z.array(z.string()).default([]).describe("Phases completed: concept, base_sprites, polish, cohesion_check"),
   notes: z.array(z.string()),
 });
 
 export type Task8Asset = z.infer<typeof Task8AssetSchema>;
+export type Task8AnimationSet = z.infer<typeof Task8AnimationSetSchema>;
+export type Task8BackgroundSet = z.infer<typeof Task8BackgroundSetSchema>;
 export type Task8Output = z.infer<typeof Task8OutputSchema>;
 
 // =============================================================================
@@ -428,6 +522,15 @@ export type AgentName = "jarvis" | "forge" | "pixel" | "checker";
 
 export type HeartbeatStatus = "idle" | "working" | "error" | "timeout";
 
+export interface WarRoomVisualReference {
+  id: string;
+  prompt: string;
+  style: string | null;
+  image_url: string;
+  created_at: string | null;
+  is_public: boolean;
+}
+
 export interface WarRoom {
   id: string;
   game_id: string;
@@ -437,6 +540,7 @@ export interface WarRoom {
   game_format: "2d" | "3d" | null;
   status: WarRoomStatus;
   scope: Record<string, unknown> | null;
+  visual_references: WarRoomVisualReference[];
   suggested_prompts: string[] | null;
   final_build_id: string | null;
   created_at: string;
@@ -474,6 +578,35 @@ export interface AgentHeartbeat {
   status: HeartbeatStatus;
   last_ping: string;
   metadata: Record<string, unknown>;
+}
+
+export interface WarRoomGeneratedAsset {
+  id: string;
+  war_room_id: string;
+  task_number: 7 | 8;
+  stable_asset_id: string;
+  asset_kind:
+    | "ui_asset"
+    | "character_seed"
+    | "animation_pack"
+    | "sprite_sheet"
+    | "background_layer"
+    | "background_plate"
+    | "texture_asset"
+    | "effect_asset"
+    | "pixel_manifest";
+  variant: string;
+  storage_path: string | null;
+  public_url: string | null;
+  width: number | null;
+  height: number | null;
+  layout_version: number;
+  runtime_ready: boolean;
+  editor_only: boolean;
+  source_service: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface WarRoomWithTasks extends WarRoom {

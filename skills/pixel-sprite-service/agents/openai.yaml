@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pixel Sprite Service"
+  short_description: "Use sprite-sheet-creator for Atomic 2D sprite packs"
+  default_prompt: "Use $pixel-sprite-service to route Atomic Pixel 2D character sprites and parallax backgrounds through the external sprite-sheet-creator service."

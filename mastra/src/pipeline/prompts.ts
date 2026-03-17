@@ -26,6 +26,7 @@ const DEP_FIELD_ALLOWLIST: Record<number, Record<string, string[]>> = {
   11: {
     task_6: ["status", "atoms_created", "atoms_modified", "notes"],
     task_10: ["status", "atoms_fixed", "atoms_created", "failures_remaining", "notes"],
+    task_8: ["status", "sprite_manifest", "animation_sets", "background_sets", "notes"],
   },
 };
 
@@ -64,6 +65,22 @@ function sanitizeDependencyOutput(
     };
   }
 
+  if (Array.isArray(filtered.animation_sets)) {
+    const count = (filtered.animation_sets as unknown[]).length;
+    filtered = {
+      ...filtered,
+      animation_sets: `[${count} animation set${count === 1 ? "" : "s"} — detailed sheet URLs omitted from context]`,
+    };
+  }
+
+  if (Array.isArray(filtered.background_sets)) {
+    const count = (filtered.background_sets as unknown[]).length;
+    filtered = {
+      ...filtered,
+      background_sets: `[${count} background set${count === 1 ? "" : "s"} — detailed layer URLs omitted from context]`,
+    };
+  }
+
   return filtered;
 }
 
@@ -79,7 +96,7 @@ function getRuntimeLabel(gameFormat: GameFormat): string {
 
 function getRuntimeSceneInstruction(gameFormat: GameFormat): string {
   return getRuntimeName(gameFormat) === "phaser"
-    ? "- `create_scene` should initialize a Phaser.Game that uses `canvas: window.GAME.canvas`, then expose scene/state hooks the rest of the atoms can drive."
+    ? "- `create_scene` should initialize a Phaser.Game that uses `canvas: window.GAME.canvas` and an explicit render type (`Phaser.CANVAS` by default, never `Phaser.AUTO`), then expose scene/state hooks the rest of the atoms can drive."
     : "- `create_scene` should initialize the Three.js scene, camera, renderer, and call feature init functions.";
 }
 
@@ -91,7 +108,7 @@ function getRuntimeLoopInstruction(gameFormat: GameFormat): string {
 
 function getRuntimeValidationInstruction(gameFormat: GameFormat): string {
   return getRuntimeName(gameFormat) === "phaser"
-    ? "   - create_scene boots Phaser on window.GAME.canvas and game_loop hooks do not fight Phaser's internal step loop"
+    ? "   - create_scene boots Phaser on window.GAME.canvas with an explicit render type (not Phaser.AUTO) and game_loop hooks do not fight Phaser's internal step loop"
     : "   - create_scene sets up Three.js scene/camera/renderer";
 }
 
@@ -211,6 +228,24 @@ export function buildTaskPrompt(
     "## User Request",
     String(context.prompt ?? ""),
   ];
+
+  const visualReferences = Array.isArray(context.visual_references)
+    ? (context.visual_references as Array<Record<string, unknown>>)
+    : [];
+  if (visualReferences.length > 0 && [1, 7, 8].includes(task.task_number)) {
+    lines.push(
+      "",
+      "## Structured Visual References",
+      JSON.stringify(
+        visualReferences.slice(0, 6).map((reference) => ({
+          id: reference.id,
+          prompt: reference.prompt,
+          style: reference.style ?? null,
+          image_url: reference.image_url,
+        })),
+      ),
+    );
+  }
 
   // Inject active externals so every agent knows which libraries are installed
   const installedExternals = context.installed_externals as ExternalEntry[] | undefined;
@@ -543,6 +578,9 @@ export function buildTaskPrompt(
       "- `game_loop` MUST depend on `create_scene` and `score_tracker` (at minimum).",
       getRuntimeLoopInstruction(gameFormat),
       getRuntimeSceneInstruction(gameFormat),
+      gameFormat === "2d"
+        ? "- For 2D games, use window.PIXEL_ASSETS only: preload via PIXEL_ASSETS.preloadPhaser(scene, requests) and create animations via PIXEL_ASSETS.createPhaserAnimations(scene, stableAssetId, animations?). Do NOT hardcode generated image URLs or assets/*.png paths."
+        : "- For 3D games, reference model/world IDs through BUU and atomic asset loaders rather than hardcoded transient URLs.",
       "- Core atoms are the TOP of the dependency graph — they depend on features, which depend on utils.",
       "",
       "## Boundaries",
@@ -882,30 +920,28 @@ export function buildTaskPrompt(
       `The target runtime is ${runtimeLabel}. Favor assets that are immediately usable inside that runtime.`,
       "",
       "### Phase 1: Context & Concept (iteration: concept)",
-      "1. Call get-code-structure with the game_id to understand the game's atoms and mechanics.",
-      "2. Call read-atoms on key feature atoms (from Task 5) to understand what visual entities they reference in code.",
-      "3. Read the scope's sprite_requirements (characters, environment, effects).",
-      "4. If Task 7 design system is in your dependency outputs, EXTRACT its palette, style, and art direction.",
-      "5. Define sprite art direction: color palette, line weight, lighting direction (top-left default), and scale rules.",
-      "6. Build a sprite manifest: every character, environment piece, and effect with category, dimensions hint, and animation readiness.",
+      "1. Read the scope's sprite_requirements with stable IDs, prompt briefs, delivery kinds, and required animations.",
+      "2. If structured visual references are present, use them to decide prompt_only vs image_to_image generation for character packs.",
+      "3. If Task 7 design system is in your dependency outputs, EXTRACT its palette, style, and art direction.",
+      "4. Define sprite art direction: color palette, line weight, lighting direction (top-left default), and scale rules.",
+      "5. Build a sprite manifest: every character, environment piece, and effect with category, dimensions hint, and animation readiness.",
       "",
-      "### Phase 2: Character Sprites (iteration: base_sprites)",
-      "7. Generate character sprites FIRST — these define the visual identity of the game.",
-      "   - Delivery kind: isolated_sprite.",
-      "   - Transparent backgrounds requested in the generation call, 1:1 aspect ratio.",
-      "   - Neutral poses suitable as base animation frames (idle/action-ready).",
-      "   - Briefs must reference gameplay mechanics (e.g., 'player character with sword for melee combat platformer').",
-      "   - Clear silhouettes that read at 32x32 thumbnail size.",
-      "   - Consistent lighting direction across all characters.",
-      "   - Center the subject, keep the full silhouette in frame, use a plain high-contrast backdrop, and do not include scenery or floor shadows.",
-      "8. Call generate-polished-visual-pack with characters. Pass Task 7 palette as reference_notes.",
+      "### Phase 2: Character Animation Packs (iteration: base_sprites)",
+      "6. For each character in scope.sprite_requirements.characters, call generate-sprite-animation-pack.",
+      "   - Pass stable_asset_id exactly from the scope.",
+      "   - Pass prompt_brief as the brief.",
+      "   - Pass required_animations exactly from the scope.",
+      "   - If uses_visual_reference is true and a matching visual reference exists, pass reference_image_url.",
+      "   - Only enable generate_background_layers when an environment/background requirement explicitly calls for parallax layers.",
+      "7. Copy the returned character_seed, processed animation sheets, default frame layouts, and Phaser descriptor URLs into animation_sets/background_sets in your output.",
       "",
       "### Phase 3: Environment & Textures (iteration: environment)",
-      "9. Generate environment/texture assets that complement character style.",
+      "8. Generate environment/texture assets that complement character style.",
       "   - Tileable textures: delivery kind tile_texture and mention 'seamless tiling' in the brief.",
       "   - Background scenes: delivery kind background_plate, 16:9 aspect ratio, no transparency.",
       "   - Platform tiles, ground, walls: match game genre visual language.",
-      "10. Use the SAME style_direction and genre as character sprites for cohesion.",
+      "9. Use the SAME style_direction and genre as character sprites for cohesion.",
+      "10. Use generate-polished-visual-pack for environment, texture, and effect assets that are not character animation packs.",
       "",
       "### Phase 4: Effects (iteration: effects)",
       "11. Generate effect sprites (particles, projectiles, explosions, sparkles).",
@@ -916,7 +952,7 @@ export function buildTaskPrompt(
       "",
       "### Phase 5: Background Removal Prep (iteration: background_removal)",
       "12. For every isolated sprite/effect asset, record delivery_kind as isolated_sprite and processing_steps with at least ['generated'].",
-      "13. Do not mark background_removed=true yet unless you actually produced a transparent isolated cutout yourself.",
+      "13. For animation-pack outputs from generate-sprite-animation-pack, mark background_removed=true because the external service already returned processed transparent sheets.",
       "",
       "### Phase 6: Cohesion Validation (iteration: cohesion_check)",
       "14. Review all generated sprites for cohesion:",
@@ -940,8 +976,10 @@ export function buildTaskPrompt(
       '  "status": "completed",',
       '  "art_direction": "Pixel art, 32x32 base grid, warm palette, black outlines, top-left lighting",',
       '  "assets_created": [{ "name": "player_idle", "type": "sprite", "url_or_base64": "...", "processed_url": null, "background_removed": false, "delivery_kind": "isolated_sprite", "processing_steps": ["generated"], "prompt_used": "...", "revised_prompt": null, "aspect_ratio": "1:1", "image_size": "1K", "polish_notes": ["clear silhouette", "animation-ready neutral pose"], "source_model": "google/gemini-3.1-flash-image-preview" }],',
-      '  "generation_model": "google/gemini-3.1-flash-image-preview",',
+      '  "generation_model": "sprite-sheet-creator + google-vertex/gemini-3.1-flash-image-preview",',
       '  "sprite_manifest": [{ "name": "player_idle", "category": "character", "dimensions_hint": "32x32 base", "animation_ready": true }],',
+      '  "animation_sets": [{ "stable_asset_id": "player", "character_prompt": "Agile platform hero with scarf", "reference_mode": "image_to_image", "reference_image_url": "https://...", "character_seed_url": "https://...", "animations": [{ "animation": "idle", "raw_sheet_url": "https://...", "processed_sheet_url": "https://...", "frame_manifest_url": "https://...", "phaser_descriptor_url": "https://...", "cols": 2, "rows": 2, "vertical_dividers": [50], "horizontal_dividers": [50], "frames": [{ "index": 0, "x": 0, "y": 0, "width": 256, "height": 256, "bounds": { "x": 32, "y": 28, "width": 148, "height": 196 } }] }] }],',
+      '  "background_sets": [{ "stable_asset_id": "forest_backdrop", "layers": [{ "variant": "layer_1", "url": "https://...", "width": 1792, "height": 768 }] }],',
       '  "iteration_phases_completed": ["concept", "base_sprites", "environment", "effects", "background_removal", "cohesion_check"],',
       '  "notes": ["Generated 3 character sprites, 2 environment tiles, 1 effect sprite"]',
       "}",
@@ -1029,7 +1067,7 @@ export function getAgentSystemPrompt(
   switch (agent) {
     case "forge": {
       const coreTaskContext = getRuntimeName(gameFormat ?? null) === "phaser"
-        ? "## Current Task: Implement Core Atoms\nYou are implementing ONLY core-type atoms (game_loop, create_scene). These wire everything together. For 2D Phaser games, create_scene should boot Phaser on window.GAME.canvas and any game_loop helper must not fight Phaser's internal scene step loop. Ensure score_tracker is depended upon by at least one core or feature atom."
+        ? "## Current Task: Implement Core Atoms\nYou are implementing ONLY core-type atoms (game_loop, create_scene). These wire everything together. For 2D Phaser games, create_scene should boot Phaser on window.GAME.canvas with an explicit render type (`Phaser.CANVAS` by default, never `Phaser.AUTO`) and any game_loop helper must not fight Phaser's internal scene step loop. Never inject runtime `<script>` tags, dynamic imports, SES, or lockdown bootstraps. Ensure score_tracker is depended upon by at least one core or feature atom."
         : "## Current Task: Implement Core Atoms\nYou are implementing ONLY core-type atoms (game_loop, create_scene). These wire everything together. game_loop MUST call window.GAME.tick() and use requestAnimationFrame. Ensure score_tracker is depended upon by at least one core atom.";
       const forgeTaskContext: Record<number, string> = {
         2: "## Current Task: Load Boilerplate\nYou are loading and customizing boilerplate atoms. Do NOT implement new gameplay atoms beyond what the boilerplate provides. Focus on verifying and adjusting the seeded atoms to match the game scope.",
@@ -1096,15 +1134,17 @@ export function getAgentSystemPrompt(
         "## Task 8: Generate Game Sprites (Deep Iteration Pipeline)",
         "This is a reinforced, complex task split into 6 iteration phases:",
         "1. **Concept** — inspect game atoms, extract design system from Task 7, build sprite manifest.",
-        "2. **Base Sprites (Characters)** — generate character sprites first, they define visual identity.",
+        "2. **Base Sprites (Characters)** — generate character animation packs first, they define visual identity.",
         "3. **Environment** — environment/textures complement characters, same style_direction.",
         "4. **Effects** — particles, projectiles, explosions — high-contrast, clean alpha.",
         "5. **Background Removal Prep** — classify delivery_kind and prepare isolated assets for background removal.",
         "6. **Cohesion Check** — verify all sprites share palette, lighting, scale; cross-ref manifest vs scope.",
         "",
+        "- Use generate-sprite-animation-pack for 2D character animation sets and parallax background layers.",
+        "- Keep using generate-polished-visual-pack for UI, environment, texture, and effect assets outside the sprite-service flow.",
         "- Reference Task 7's design_system from dependency outputs for palette and style coherence.",
         "- Categorize each sprite in sprite_manifest (character, environment, effect, texture) with dimensions_hint and animation_ready.",
-        "- Include art_direction, generation_model, assets_created, sprite_manifest, iteration_phases_completed, and notes.",
+        "- Include art_direction, generation_model, assets_created, sprite_manifest, animation_sets, background_sets, iteration_phases_completed, and notes.",
         "- Every Task 8 asset must include delivery_kind, processed_url, background_removed, and processing_steps fields.",
         "",
         "## Sprite-Specific Principles",
@@ -1257,8 +1297,11 @@ export function getAgentSystemPrompt(
               "- 3D games load models via BUU.loadModel() and BUU.loadWorldSplat() — no 2D sprites needed.",
             ]
           : [
-              "- Sprite/texture needs (characters, environment pieces, projectiles, effects)",
+              "- Structured sprite requirements with stable IDs, prompt briefs, and required animations for characters",
+              "- Environment/background needs with delivery_kind (tile_texture/background_plate/environment_sprite) and whether parallax layers are required",
+              "- Effect needs with stable IDs and delivery kind",
             ]),
+        "- If structured visual references are attached, reflect whether each character uses them via uses_visual_reference",
         "- Art style hints if the user mentioned any",
         "- color_palette: { primary, secondary, accent, background } — hex values matching the game mood",
         "- typography_style: describe the text feel (e.g. 'pixel-art retro', 'clean sans-serif', 'sci-fi monospace')",
@@ -1294,7 +1337,7 @@ export function getAgentSystemPrompt(
             ]
           : [
               "    \"ui_requirements\": { \"hud_elements\": [\"score_display\", \"health_bar\"], \"menus\": [\"start_screen\"], \"art_style_hints\": \"pixel art retro\", \"color_palette\": { \"primary\": \"#4A90D9\", \"secondary\": \"#2C3E50\", \"accent\": \"#F39C12\", \"background\": \"#1A1A2E\" }, \"typography_style\": \"pixel-art retro\", \"component_inventory\": [{ \"name\": \"health_bar\", \"category\": \"hud\", \"needs_states\": [\"idle\", \"damage\"] }, { \"name\": \"start_button\", \"category\": \"button\", \"needs_states\": [\"idle\", \"hover\", \"pressed\"] }], \"layout_zones\": [{ \"zone\": \"top-left\", \"elements\": [\"health_bar\", \"score_display\"] }, { \"zone\": \"center\", \"elements\": [\"start_screen\"] }] },",
-              "    \"sprite_requirements\": { \"characters\": [\"player\", \"enemy_slime\"], \"environment\": [\"platform_tile\", \"background_sky\"], \"effects\": [\"coin_sparkle\"] }",
+              "    \"sprite_requirements\": { \"characters\": [{ \"stable_id\": \"player\", \"label\": \"player hero\", \"prompt_brief\": \"Agile platform hero with a scarf and sword\", \"required_animations\": [\"idle\", \"walk\", \"jump\", \"attack\"], \"uses_visual_reference\": true, \"dimensions_hint\": \"32x32 base\" }, { \"stable_id\": \"enemy_slime\", \"label\": \"enemy slime\", \"prompt_brief\": \"Rounded toxic slime enemy\", \"required_animations\": [\"idle\", \"walk\"], \"uses_visual_reference\": false, \"dimensions_hint\": \"24x24 base\" }], \"environment\": [{ \"stable_id\": \"platform_tile\", \"label\": \"platform tile\", \"prompt_brief\": \"Tileable grassy platform top\", \"delivery_kind\": \"tile_texture\", \"generate_parallax_layers\": false, \"dimensions_hint\": \"32x32 tile\" }, { \"stable_id\": \"forest_backdrop\", \"label\": \"forest backdrop\", \"prompt_brief\": \"Cozy forest side-scroller backdrop\", \"delivery_kind\": \"background_plate\", \"generate_parallax_layers\": true, \"dimensions_hint\": \"16:9\" }], \"effects\": [{ \"stable_id\": \"coin_sparkle\", \"label\": \"coin sparkle\", \"prompt_brief\": \"Bright pickup sparkle effect\", \"delivery_kind\": \"isolated_sprite\", \"required_animations\": [], \"dimensions_hint\": \"16x16\" }] }",
             ]),
         "  }",
         "}",

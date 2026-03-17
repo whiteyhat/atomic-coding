@@ -58,6 +58,19 @@ const toolSaveMessagesSchema = z.object({
 const toolCreateWarRoomSchema = z.object({
   prompt: z.string().min(1).max(2000),
   genre: z.string().max(50).optional(),
+  visual_references: z
+    .array(
+      z.object({
+        id: z.string().min(1).max(200),
+        prompt: z.string().min(1).max(500),
+        style: z.string().max(200).nullable().optional(),
+        image_url: z.string().url().max(1000),
+        created_at: z.string().max(100).optional(),
+        is_public: z.boolean().optional(),
+      }),
+    )
+    .max(12)
+    .optional(),
 });
 
 const toolTokenSchema = z.object({
@@ -711,6 +724,7 @@ openClawRouter.post("/openclaw/tools/games/:name/warrooms", async (c) =>
       body.prompt,
       body.genre ?? owned.genre,
       owned.game_format,
+      body.visual_references ?? [],
     );
     return room;
   }),

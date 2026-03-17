@@ -1,4 +1,17 @@
-import { DashboardShell } from "@/components/dashboard/dashboard-shell";
+import dynamic from "next/dynamic";
+
+const DashboardShell = dynamic(
+  () =>
+    import("@/components/dashboard/dashboard-shell").then((module) => ({
+      default: module.DashboardShell,
+    })),
+  {
+    ssr: process.env.NODE_ENV === "production",
+    loading: () => (
+      <div className="min-h-screen bg-[radial-gradient(circle_at_top,#3a1a1f_0%,#1b0b0f_48%,#0f0508_100%)]" />
+    ),
+  },
+);
 
 interface DashboardPageProps {
   searchParams: Promise<{ aid?: string }>;

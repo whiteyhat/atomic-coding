@@ -1,5 +1,7 @@
 # Dependencies
 node_modules/
+node_modules_old/
+web/node_modules_old/
 
 # Environment
 .env

@@ -1,4 +1,5 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import type { NextFetchEvent, NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { isDevAuthBypassEnabled } from "@/lib/dev-auth";
 
@@ -12,11 +13,7 @@ const isPublicRoute = createRouteMatcher([
   "/architecture",
 ]);
 
-export default clerkMiddleware(async (auth, request) => {
-  if (isDevAuthBypassEnabled(request.nextUrl.hostname)) {
-    return NextResponse.next();
-  }
-
+const clerkProxy = clerkMiddleware(async (auth, request) => {
   if (!isPublicRoute(request)) {
     const { userId } = await auth();
     if (!userId) {
@@ -29,6 +26,14 @@ export default clerkMiddleware(async (auth, request) => {
     }
   }
 });
+
+export default function proxy(request: NextRequest, event: NextFetchEvent) {
+  if (isDevAuthBypassEnabled(request.nextUrl.hostname)) {
+    return NextResponse.next();
+  }
+
+  return clerkProxy(request, event);
+}
 
 export const config = {
   matcher: [

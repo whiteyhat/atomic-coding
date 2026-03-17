@@ -36,6 +36,7 @@ function makeWarRoom(
     game_format: game_format ?? "3d",
     status: "completed",
     scope: null,
+    visual_references: [],
     suggested_prompts: null,
     final_build_id: null,
     created_at: "2026-03-10T10:00:00.000Z",

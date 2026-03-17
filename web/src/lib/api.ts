@@ -1,4 +1,5 @@
 import { API_BASE } from "./constants";
+import { getAuthTokenGetter } from "./auth-token-registry";
 import type { GameFormat } from "./game-genres";
 import type {
   AppHealthStatus,
@@ -27,6 +28,8 @@ import type {
   TokenLaunch,
   UserProfile,
   WarRoom,
+  WarRoomGeneratedAsset,
+  WarRoomGeneratedAssetResponse,
   WarRoomWithFeed,
   WarRoomWithTasks,
 } from "./types";
@@ -34,9 +37,8 @@ import type {
   WarRoomPreflightResult,
 } from "./war-room-preflight";
 
-// ── Auth token helper ────────────────────────────────────────────────────────
+export { registerAuthTokenGetter } from "./auth-token-registry";
 
-let getAuthTokenFn: (() => Promise<string | null>) | null = null;
 const DEV_AUTH_BYPASS =
   process.env.NEXT_PUBLIC_DEV_AUTH_BYPASS === "true" ||
   process.env.DEV_AUTH_BYPASS === "true";
@@ -46,14 +48,6 @@ const DEV_AUTH_BYPASS_TOKEN =
   "dev-bypass";
 const DEV_AUTH_BYPASS_ORIGIN =
   process.env.DEV_AUTH_BYPASS_ORIGIN ?? "http://127.0.0.1:3000";
-
-/**
- * Called once from the AuthProvider to register a function that returns
- * the current auth token. This avoids importing Clerk in the API module.
- */
-export function registerAuthTokenGetter(fn: () => Promise<string | null>) {
-  getAuthTokenFn = fn;
-}
 
 export class ApiError extends Error {
   status: number;
@@ -71,14 +65,10 @@ export function isApiErrorStatus(error: unknown, status: number): error is ApiEr
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-async function apiFetch<T>(
-  path: string,
-  init?: RequestInit
-): Promise<T> {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...(init?.headers as Record<string, string>),
-  };
+async function resolveAuthHeaders(
+  headers: Record<string, string>,
+): Promise<void> {
+  const getAuthTokenFn = getAuthTokenGetter();
 
   // Attach auth token — bail early if unavailable to avoid 401 noise
   if (getAuthTokenFn) {
@@ -112,6 +102,18 @@ async function apiFetch<T>(
       headers.Origin = DEV_AUTH_BYPASS_ORIGIN;
     }
   }
+}
+
+async function apiFetch<T>(
+  path: string,
+  init?: RequestInit
+): Promise<T> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(init?.headers as Record<string, string>),
+  };
+
+  await resolveAuthHeaders(headers);
 
   if (!headers.Authorization) {
     throw new ApiError("Not authenticated", 401);
@@ -121,6 +123,25 @@ async function apiFetch<T>(
     ...init,
     headers,
   });
+
+  // On 401, force a fresh token and retry once — Clerk JWTs are short-lived
+  // and can expire between fetch and server verification.
+  if (res.status === 401) {
+    delete headers.Authorization;
+    await resolveAuthHeaders(headers);
+    if (headers.Authorization) {
+      const retry = await fetch(`${API_BASE}${path}`, {
+        ...init,
+        headers,
+      });
+      if (!retry.ok) {
+        const body = await retry.json().catch(() => ({}));
+        throw new ApiError(body.error ?? `API error ${retry.status}`, retry.status);
+      }
+      return retry.json();
+    }
+  }
+
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new ApiError(body.error ?? `API error ${res.status}`, res.status);
@@ -136,6 +157,7 @@ async function publicApiFetch<T>(
     "Content-Type": "application/json",
     ...(init?.headers as Record<string, string>),
   };
+  const getAuthTokenFn = getAuthTokenGetter();
 
   if (getAuthTokenFn) {
     try {
@@ -166,14 +188,10 @@ async function publicApiFetch<T>(
   return res.json();
 }
 
-async function appFetch<T>(
-  path: string,
-  init?: RequestInit,
-): Promise<T> {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...(init?.headers as Record<string, string>),
-  };
+async function resolveAppAuthHeaders(
+  headers: Record<string, string>,
+): Promise<void> {
+  const getAuthTokenFn = getAuthTokenGetter();
 
   if (getAuthTokenFn) {
     try {
@@ -189,6 +207,18 @@ async function appFetch<T>(
   if (!headers.Authorization && DEV_AUTH_BYPASS) {
     headers.Authorization = `Bearer ${DEV_AUTH_BYPASS_TOKEN}`;
   }
+}
+
+async function appFetch<T>(
+  path: string,
+  init?: RequestInit,
+): Promise<T> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(init?.headers as Record<string, string>),
+  };
+
+  await resolveAppAuthHeaders(headers);
 
   if (!headers.Authorization) {
     throw new ApiError("Not authenticated", 401);
@@ -198,6 +228,23 @@ async function appFetch<T>(
     ...init,
     headers,
   });
+
+  // On 401, force a fresh token and retry once
+  if (res.status === 401) {
+    delete headers.Authorization;
+    await resolveAppAuthHeaders(headers);
+    if (headers.Authorization) {
+      const retry = await fetch(path, {
+        ...init,
+        headers,
+      });
+      if (!retry.ok) {
+        const body = await retry.json().catch(() => ({}));
+        throw new ApiError(body.error ?? `App route error ${retry.status}`, retry.status);
+      }
+      return retry.json();
+    }
+  }
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -482,11 +529,25 @@ export async function createWarRoom(
   userId?: string,
   genre?: string,
   gameFormat?: GameFormat | null,
+  visualReferences?: Array<{
+    id: string;
+    prompt: string;
+    style: string | null;
+    image_url: string;
+    created_at?: string | null;
+    is_public?: boolean;
+  }>,
   authToken?: string,
 ): Promise<WarRoomWithTasks> {
   return apiFetch(`/games/${encodeURIComponent(gameName)}/warrooms`, {
     method: "POST",
-    body: JSON.stringify({ prompt, user_id: userId, genre, game_format: gameFormat }),
+    body: JSON.stringify({
+      prompt,
+      user_id: userId,
+      genre,
+      game_format: gameFormat,
+      visual_references: visualReferences,
+    }),
     ...(authToken
       ? { headers: { Authorization: `Bearer ${authToken}` } }
       : {}),
@@ -529,6 +590,45 @@ export async function retryWarRoomTask(
   await apiFetch(
     `/games/${encodeURIComponent(gameName)}/warrooms/${warRoomId}/tasks/${taskNumber}/retry`,
     { method: "POST" },
+  );
+}
+
+export async function getWarRoomAssets(
+  gameName: string,
+  warRoomId: string,
+): Promise<WarRoomGeneratedAsset[]> {
+  const result = await apiFetch<WarRoomGeneratedAssetResponse>(
+    `/games/${encodeURIComponent(gameName)}/warrooms/${warRoomId}/assets`,
+  );
+  return result.items;
+}
+
+export async function patchWarRoomAssetLayout(
+  gameName: string,
+  warRoomId: string,
+  assetId: string,
+  body: {
+    animation: string;
+    cols: number;
+    rows: number;
+    vertical_dividers: number[];
+    horizontal_dividers: number[];
+    frames: Array<{
+      index: number;
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      bounds?: { x: number; y: number; width: number; height: number } | null;
+    }>;
+  },
+): Promise<WarRoomGeneratedAsset> {
+  return apiFetch(
+    `/games/${encodeURIComponent(gameName)}/warrooms/${warRoomId}/assets/${assetId}/layout`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    },
   );
 }
 

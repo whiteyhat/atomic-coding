@@ -39,11 +39,16 @@ export interface BoilerplateSummary {
   template_prompts: string[];
 }
 
+function normalizeBoilerplateCode(code: string): string {
+  if (!code) return code;
+  return code.replace(/\bPhaser\s*\.\s*AUTO\b/g, "Phaser.CANVAS");
+}
+
 function normalizeBoilerplateAtoms(atoms: BoilerplateAtom[]): BoilerplateAtom[] {
   return atoms.map((atom) =>
     atom.name === "score_tracker"
-      ? { ...atom, type: "feature" }
-      : atom
+      ? { ...atom, type: "feature", code: normalizeBoilerplateCode(atom.code) }
+      : { ...atom, code: normalizeBoilerplateCode(atom.code) }
   );
 }
 

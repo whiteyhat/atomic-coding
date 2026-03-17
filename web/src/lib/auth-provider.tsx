@@ -1,10 +1,26 @@
 "use client";
 
-import { createContext, useContext, useEffect, useRef } from "react";
-import { ClerkProvider, useUser, useAuth, useClerk } from "@clerk/nextjs";
-import { dark } from "@clerk/themes";
-import { registerAuthTokenGetter } from "./api";
+import dynamic from "next/dynamic";
+import { useEffect } from "react";
+import { registerAuthTokenGetter } from "./auth-token-registry";
+import {
+  AppAuthProvider,
+  defaultAuthValue,
+  type AppAuthUser,
+  useAppAuth,
+} from "./app-auth-context";
 import { ensureUserProfile } from "./user-profile";
+
+const ClerkAuthProvider = dynamic(
+  () =>
+    import("./clerk-auth-provider").then((module) => ({
+      default: module.ClerkAuthProvider,
+    })),
+  {
+    ssr: false,
+    loading: () => null,
+  },
+);
 
 const CLERK_PUBLISHABLE_KEY =
   process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ?? "";
@@ -13,70 +29,7 @@ const DEV_AUTH_BYPASS_USER_ID =
   process.env.NEXT_PUBLIC_DEV_AUTH_BYPASS_USER_ID ?? "did:dev:local-user";
 const DEV_AUTH_BYPASS_TOKEN =
   process.env.NEXT_PUBLIC_DEV_AUTH_BYPASS_TOKEN ?? "dev-bypass";
-
-type AppAuthUser = {
-  id: string;
-  email?: { address: string };
-};
-
-type AppAuthContextValue = {
-  authenticated: boolean;
-  ready: boolean;
-  user: AppAuthUser | null;
-  login: () => void | Promise<void>;
-  logout: () => void | Promise<void>;
-  getAccessToken: () => Promise<string | null>;
-  isDevBypass: boolean;
-};
-
 const noop = () => {};
-const defaultAuthValue: AppAuthContextValue = {
-  authenticated: false,
-  ready: true,
-  user: null,
-  login: noop,
-  logout: noop,
-  getAccessToken: async () => null,
-  isDevBypass: false,
-};
-
-const AppAuthContext = createContext<AppAuthContextValue>(defaultAuthValue);
-
-function AppAuthProvider({
-  children,
-  value,
-}: {
-  children: React.ReactNode;
-  value: AppAuthContextValue;
-}) {
-  return (
-    <AppAuthContext.Provider value={value}>{children}</AppAuthContext.Provider>
-  );
-}
-
-function AuthTokenRegistrar({ children }: { children: React.ReactNode }) {
-  const { getToken, isSignedIn, userId } = useAuth();
-  const { user } = useUser();
-  const getTokenRef = useRef(getToken);
-  getTokenRef.current = getToken;
-
-  // Register synchronously so the getter is available before child effects
-  // (SWR fetches) fire. The ref ensures we always call the latest getToken.
-  registerAuthTokenGetter(() => getTokenRef.current());
-
-  useEffect(() => {
-    if (!isSignedIn || !userId || !user) return;
-
-    const email = user.primaryEmailAddress?.emailAddress;
-    const displayName = email ?? user.fullName ?? undefined;
-
-    ensureUserProfile(userId, email ?? undefined, displayName).catch(() => {
-      // Profile sync is best-effort and should not block auth.
-    });
-  }, [isSignedIn, userId, user]);
-
-  return <>{children}</>;
-}
 
 function DevAuthBootstrap({ children }: { children: React.ReactNode }) {
   useEffect(() => {
@@ -94,38 +47,6 @@ function DevAuthBootstrap({ children }: { children: React.ReactNode }) {
   }, []);
 
   return <>{children}</>;
-}
-
-function ClerkAuthBridge({ children }: { children: React.ReactNode }) {
-  const { isSignedIn, isLoaded, getToken } = useAuth();
-  const { user } = useUser();
-  const clerk = useClerk();
-
-  const appUser: AppAuthUser | null =
-    user
-      ? {
-          id: user.id,
-          email: user.primaryEmailAddress
-            ? { address: user.primaryEmailAddress.emailAddress }
-            : undefined,
-        }
-      : null;
-
-  return (
-    <AppAuthProvider
-      value={{
-        authenticated: !!isSignedIn,
-        ready: isLoaded,
-        user: appUser,
-        login: () => clerk.openSignIn({ forceRedirectUrl: "/dashboard" }),
-        logout: () => clerk.signOut(),
-        getAccessToken: () => getToken(),
-        isDevBypass: false,
-      }}
-    >
-      <AuthTokenRegistrar>{children}</AuthTokenRegistrar>
-    </AppAuthProvider>
-  );
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -160,25 +81,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <ClerkProvider
-      publishableKey={CLERK_PUBLISHABLE_KEY}
-      appearance={{
-        baseTheme: dark,
-        variables: { colorPrimary: "#fff", colorTextOnPrimaryBackground: "#000" },
-        elements: {
-          formButtonPrimary: { color: "#000" },
-          footerActionLink: { color: "#a5b4fc" },
-          formFieldAction: { color: "#a5b4fc" },
-          identityPreviewEditButton: { color: "#a5b4fc" },
-          alternativeMethodsBlockButton: { color: "#a5b4fc" },
-        },
-      }}
-    >
-      <ClerkAuthBridge>{children}</ClerkAuthBridge>
-    </ClerkProvider>
+    <ClerkAuthProvider publishableKey={CLERK_PUBLISHABLE_KEY}>
+      {children}
+    </ClerkAuthProvider>
   );
 }
 
-export function useAppAuth() {
-  return useContext(AppAuthContext);
-}
+export { useAppAuth } from "./app-auth-context";

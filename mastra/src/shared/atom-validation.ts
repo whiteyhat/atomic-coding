@@ -40,6 +40,13 @@ const MAX_TOTAL_CODE_SIZE = 40_000;
 const ABSOLUTE_MAX_ATOMS = 30;
 const SNAKE_CASE_RE = /^[a-z][a-z0-9]*(_[a-z0-9]+)*$/;
 const SCORE_POST_RE = /window\s*\.\s*parent\s*\.\s*postMessage\s*\(\s*\{[^}]*type\s*:\s*["']SCORE_UPDATE["'][^}]*score\s*:/s;
+const PHASER_AUTO_RE = /\bPhaser\s*\.\s*AUTO\b/;
+const PHASER_DIRECT_LOAD_RE =
+  /\b(?:this|scene)\s*\.\s*load\s*\.\s*(?:image|spritesheet|atlas|atlasjsonhash|atlasjsonarray)\s*\(/i;
+const DIRECT_ASSET_PATH_RE =
+  /(?:assets\/[^\s"'`]+\.(?:png|jpg|jpeg|gif|webp|json)|https?:\/\/[^\s"'`]+\.(?:png|jpg|jpeg|gif|webp|json))/i;
+const SCRIPT_INJECTION_RE = /document\s*\.\s*createElement\s*\(\s*["']script["']\s*\)/;
+const LOCKDOWN_RE = /lockdown-install\.js|lockdown\s*\(|\bCompartment\b|\bharden\s*\(/;
 const PRIMITIVE_TYPES = new Set([
   "number",
   "string",
@@ -625,6 +632,47 @@ export function validateCodeQuality(
         message: `Atom code is effectively empty (${stripped.length} chars after stripping)`,
         severity: "warning",
         fix_hint: "Implement the atom's logic as described in its description.",
+      });
+    }
+
+    if (PHASER_AUTO_RE.test(code)) {
+      failures.push({
+        atom: atom.name,
+        rule: "phaser_explicit_render_type",
+        message: "Phaser atoms must use an explicit render type. Phaser.AUTO breaks in Atomic's custom iframe runtime.",
+        severity: "error",
+        fix_hint: "Set `type: Phaser.CANVAS` (or another explicit Phaser render type) instead of `Phaser.AUTO`.",
+      });
+    }
+
+    if (PHASER_DIRECT_LOAD_RE.test(code) && DIRECT_ASSET_PATH_RE.test(code) && !/\bPIXEL_ASSETS\b/.test(code)) {
+      failures.push({
+        atom: atom.name,
+        rule: "phaser_pixel_assets_required",
+        message: "2D Phaser atoms must load runtime art through window.PIXEL_ASSETS instead of direct asset paths.",
+        severity: "error",
+        fix_hint:
+          "Replace direct this.load.image/spritesheet/atlas calls that use assets/*.png or raw URLs with PIXEL_ASSETS.preloadPhaser(...) and PIXEL_ASSETS.createPhaserAnimations(...).",
+      });
+    }
+
+    if (SCRIPT_INJECTION_RE.test(code)) {
+      failures.push({
+        atom: atom.name,
+        rule: "runtime_script_injection",
+        message: "Atoms must not inject `<script>` tags at runtime. External libraries are loaded by the platform.",
+        severity: "error",
+        fix_hint: "Remove runtime script loading and use installed externals from `window.*` globals instead.",
+      });
+    }
+
+    if (LOCKDOWN_RE.test(code)) {
+      failures.push({
+        atom: atom.name,
+        rule: "runtime_lockdown_forbidden",
+        message: "SES/lockdown bootstraps are not allowed in game atoms and will break the browser runtime.",
+        severity: "error",
+        fix_hint: "Remove `lockdown`, `Compartment`, `harden`, and any `lockdown-install.js` references from atom code.",
       });
     }
 

@@ -4,6 +4,7 @@ import { ReactFlowProvider } from "@xyflow/react";
 import { cn } from "@/lib/utils";
 import type { LastEditedGame } from "@/lib/analytics";
 import { ArchitectureCanvas } from "./ArchitectureCanvas";
+import "@xyflow/react/dist/style.css";
 
 interface ArchitectureViewProps {
   lastEditedGame: LastEditedGame | null;

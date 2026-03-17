@@ -166,6 +166,7 @@ describe("hydrateWarRoomFeed", () => {
       game_format: "3d",
       status: "running",
       scope: null,
+      visual_references: [],
       suggested_prompts: null,
       final_build_id: null,
       created_at: "2026-03-10T12:00:00.000Z",

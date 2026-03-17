@@ -18,6 +18,7 @@ import { publishWithRetry } from "../_shared/qstash.ts";
 import { streamPlatformAidChatResponse } from "../_shared/platform-aid.ts";
 import * as schemas from "../_shared/schemas.ts";
 import { openClawRouter } from "../_shared/openclaw-router.ts";
+import { getSupabaseClient } from "../_shared/supabase-client.ts";
 import { ZodError } from "npm:zod@^3.23.0";
 
 // =============================================================================
@@ -25,6 +26,279 @@ import { ZodError } from "npm:zod@^3.23.0";
 // =============================================================================
 
 const app = new Hono();
+
+function buildPixelRuntimeIndex(
+  generatedAssets: Awaited<ReturnType<typeof warrooms.listGeneratedAssets>>,
+) {
+  const runtimeRows = generatedAssets.filter(
+    (row) => row.asset_kind !== "pixel_manifest" && row.runtime_ready && !row.editor_only,
+  );
+
+  const animations = runtimeRows
+    .filter((row) => row.asset_kind === "animation_pack")
+    .map((row) => {
+      const metadata = row.metadata as Record<string, unknown>;
+      return {
+        stable_asset_id: row.stable_asset_id,
+        character_seed_url:
+          typeof metadata.character_seed_url === "string" ? metadata.character_seed_url : row.public_url,
+        animations: Array.isArray(metadata.animations)
+          ? (metadata.animations as Array<Record<string, unknown>>).map((entry) => ({
+              animation: entry.animation,
+              processed_sheet_url: entry.processed_sheet_url,
+              raw_sheet_url: entry.raw_sheet_url,
+              frame_manifest_url: entry.frame_manifest_url,
+              phaser_descriptor_url: entry.phaser_descriptor_url,
+              cols: entry.cols,
+              rows: entry.rows,
+              width: entry.width,
+              height: entry.height,
+            }))
+          : [],
+      };
+    })
+    .sort((a, b) => String(a.stable_asset_id).localeCompare(String(b.stable_asset_id)));
+
+  const backgrounds = Array.from(
+    runtimeRows
+      .filter((row) => row.asset_kind === "background_layer")
+      .reduce((map, row) => {
+        const existing = map.get(row.stable_asset_id) ?? [];
+        existing.push({
+          variant: row.variant,
+          url: row.public_url,
+          width: row.width,
+          height: row.height,
+        });
+        map.set(row.stable_asset_id, existing);
+        return map;
+      }, new Map<string, Array<Record<string, unknown>>>()),
+  )
+    .map(([stableAssetId, layers]) => ({
+      stable_asset_id: stableAssetId,
+      layers: layers.sort((a, b) => String(a.variant).localeCompare(String(b.variant))),
+    }))
+    .sort((a, b) => String(a.stable_asset_id).localeCompare(String(b.stable_asset_id)));
+
+  const ui = runtimeRows
+    .filter((row) => row.asset_kind === "ui_asset")
+    .map((row) => ({
+      stable_asset_id: row.stable_asset_id,
+      variant: row.variant,
+      url: row.public_url,
+      width: row.width,
+      height: row.height,
+    }))
+    .sort((a, b) => String(a.stable_asset_id).localeCompare(String(b.stable_asset_id)));
+
+  return { animations, backgrounds, ui };
+}
+
+function buildPixelManifestPayload(
+  room: Awaited<ReturnType<typeof warrooms.getWarRoom>>,
+  generatedAssets: Awaited<ReturnType<typeof warrooms.listGeneratedAssets>>,
+) {
+  const task7Output = room?.tasks.find((task) => task.task_number === 7)?.output ?? null;
+  const task8Output = room?.tasks.find((task) => task.task_number === 8)?.output ?? null;
+  const rows = generatedAssets.filter((row) => row.asset_kind !== "pixel_manifest");
+  const uiAssets = rows
+    .filter((row) => row.task_number === 7 && row.asset_kind === "ui_asset")
+    .map((row) => ({
+      stable_asset_id: row.stable_asset_id,
+      variant: row.variant,
+      url: row.public_url,
+      width: row.width,
+      height: row.height,
+      metadata: row.metadata,
+    }));
+  const animationSets = rows
+    .filter((row) => row.asset_kind === "animation_pack")
+    .map((row) => ({
+      stable_asset_id: row.stable_asset_id,
+      ...(row.metadata as Record<string, unknown>),
+    }));
+  const backgroundSets = Array.from(
+    rows
+      .filter((row) => row.asset_kind === "background_layer")
+      .reduce((map, row) => {
+        const existing = map.get(row.stable_asset_id) ?? [];
+        existing.push({
+          variant: row.variant,
+          url: row.public_url,
+          width: row.width,
+          height: row.height,
+          metadata: row.metadata,
+        });
+        map.set(row.stable_asset_id, existing);
+        return map;
+      }, new Map<string, Array<Record<string, unknown>>>()),
+  ).map(([stableAssetId, layers]) => ({
+    stable_asset_id: stableAssetId,
+    layers: layers.sort((a, b) => String(a.variant).localeCompare(String(b.variant))),
+  }));
+  const auxiliaryAssets = rows
+    .filter((row) =>
+      row.task_number === 8 &&
+      ["texture_asset", "effect_asset", "ui_asset", "background_plate"].includes(row.asset_kind),
+    )
+    .map((row) => ({
+      stable_asset_id: row.stable_asset_id,
+      asset_kind: row.asset_kind,
+      variant: row.variant,
+      url: row.public_url,
+      width: row.width,
+      height: row.height,
+      metadata: row.metadata,
+    }));
+
+  const runtimeIndex = buildPixelRuntimeIndex(generatedAssets);
+
+  return {
+    version: 2,
+    asset_contract_version: 2,
+    war_room_id: room?.id ?? null,
+    game_id: room?.game_id ?? null,
+    game_format: room?.game_format ?? null,
+    runtime: room?.game_format === "2d" ? "phaser" : "three",
+    generated_at: new Date().toISOString(),
+    task_7: task7Output
+      ? {
+          design_system: task7Output.design_system ?? null,
+          art_direction: task7Output.art_direction ?? null,
+          generation_model: task7Output.generation_model ?? null,
+          ui_assets: uiAssets,
+        }
+      : null,
+    task_8: {
+      art_direction: task8Output?.art_direction ?? null,
+      generation_model: task8Output?.generation_model ?? null,
+      sprite_manifest: task8Output?.sprite_manifest ?? [],
+      animation_sets: animationSets,
+      background_sets: backgroundSets,
+      auxiliary_assets: auxiliaryAssets,
+      runtime_index: runtimeIndex,
+      notes: task8Output?.notes ?? [],
+    },
+  };
+}
+
+async function publishRuntimeManifest(args: {
+  gameName: string;
+  room: NonNullable<Awaited<ReturnType<typeof warrooms.getWarRoom>>>;
+  pixelManifestUrl: string | null;
+  pixelAssetsRevision: number;
+  pixelIndex: ReturnType<typeof buildPixelRuntimeIndex>;
+}) {
+  const installed = await externals.getInstalledExternals(args.room.game_id);
+  const manifest = {
+    runtime: args.room.game_format === "2d" ? "phaser" : "three",
+    externals: installed.map((ext) => ({
+      name: ext.name,
+      cdn_url: ext.cdn_url,
+      global_name: ext.global_name,
+      load_type: ext.load_type || "script",
+      ...(ext.module_imports ? { module_imports: ext.module_imports } : {}),
+    })),
+    bundle_url: "latest.js",
+    built_at: new Date().toISOString(),
+    asset_contract_version: 2,
+    pixel_manifest_url: args.pixelManifestUrl,
+    pixel_assets_revision: args.pixelAssetsRevision,
+    runtime_asset_mode:
+      args.room.game_format === "2d" && !args.pixelManifestUrl ? "progressive" : "final",
+    pixel_index: args.pixelIndex,
+  };
+
+  const path = `${args.gameName}/manifest.json`;
+  const bytes = new TextEncoder().encode(`${JSON.stringify(manifest, null, 2)}\n`);
+  const supabase = getSupabaseClient();
+  const { error } = await supabase.storage
+    .from("bundles")
+    .upload(path, new Blob([bytes], { type: "application/json" }), {
+      cacheControl: "0",
+      upsert: true,
+      contentType: "application/json",
+    });
+  if (error) {
+    throw new Error(`Failed to publish runtime manifest: ${error.message}`);
+  }
+}
+
+async function publishPixelManifest(
+  gameName: string,
+  room: NonNullable<Awaited<ReturnType<typeof warrooms.getWarRoom>>>,
+) {
+  const generatedAssets = await warrooms.listGeneratedAssets(room.id);
+  const payload = buildPixelManifestPayload(room, generatedAssets);
+  const runtimeIndex = buildPixelRuntimeIndex(generatedAssets);
+  const path = `${gameName}/pixel/${room.id}/pixel-manifest.json`;
+  const bytes = new TextEncoder().encode(`${JSON.stringify(payload, null, 2)}\n`);
+  const supabase = getSupabaseClient();
+  const { error } = await supabase.storage
+    .from("bundles")
+    .upload(path, new Blob([bytes], { type: "application/json" }), {
+      cacheControl: "3600",
+      upsert: true,
+      contentType: "application/json",
+    });
+  if (error) {
+    throw new Error(`Failed to publish pixel manifest: ${error.message}`);
+  }
+
+  const { data } = supabase.storage.from("bundles").getPublicUrl(path);
+  if (!data?.publicUrl) {
+    throw new Error("Failed to resolve public URL for pixel manifest");
+  }
+
+  await warrooms.upsertGeneratedAsset({
+    war_room_id: room.id,
+    task_number: 8,
+    stable_asset_id: "pixel_manifest",
+    asset_kind: "pixel_manifest",
+    variant: "",
+    storage_path: path,
+    public_url: data.publicUrl,
+    source_service: "atomic-pixel-manifest",
+    metadata: {
+      version: 2,
+      animation_set_count: payload.task_8.animation_sets.length,
+      background_set_count: payload.task_8.background_sets.length,
+      sprite_manifest_count: payload.task_8.sprite_manifest.length,
+      task7_ui_asset_count: payload.task_7?.ui_assets.length ?? 0,
+    },
+  });
+
+  const { data: gameData, error: gameError } = await supabase
+    .from("games")
+    .select("pixel_assets_revision")
+    .eq("id", room.game_id)
+    .single();
+  if (gameError || !gameData) {
+    throw new Error(`Failed to load game for pixel manifest update: ${gameError?.message ?? "missing game"}`);
+  }
+
+  const nextRevision = Number(gameData.pixel_assets_revision ?? 0) + 1;
+  const { error: updateGameError } = await supabase
+    .from("games")
+    .update({
+      pixel_assets_revision: nextRevision,
+      pixel_manifest_url: data.publicUrl,
+    })
+    .eq("id", room.game_id);
+  if (updateGameError) {
+    throw new Error(`Failed to update game pixel runtime state: ${updateGameError.message}`);
+  }
+
+  await publishRuntimeManifest({
+    gameName,
+    room,
+    pixelManifestUrl: data.publicUrl,
+    pixelAssetsRevision: nextRevision,
+    pixelIndex: runtimeIndex,
+  });
+
+  return payload;
+}
 
 // =============================================================================
 // Middleware: request logging
@@ -610,7 +884,6 @@ app.get("/games/:name/token", async (c) => {
   try {
     const gameId = c.get("gameId") as string;
     const launch = await tokens.getTokenLaunch(gameId);
-    if (!launch) return c.json({ error: "No token launch found" }, 404);
     return c.json(launch);
   } catch (err) {
     return c.json({ error: (err as Error).message }, 500);
@@ -769,6 +1042,7 @@ app.post("/games/:name/warrooms", requireAuth(), async (c) => {
       body.prompt,
       genre,
       gameFormat,
+      body.visual_references ?? [],
     );
 
     // Trigger orchestrator pipeline in background (don't block the response)
@@ -805,6 +1079,59 @@ app.get("/games/:name/warrooms/:id", async (c) => {
     return c.json(room);
   } catch (err) {
     return c.json({ error: (err as Error).message }, 500);
+  }
+});
+
+/** GET /games/:name/warrooms/:id/assets -- list Pixel-generated assets */
+app.get("/games/:name/warrooms/:id/assets", async (c) => {
+  try {
+    const gameId = c.get("gameId") as string;
+    const room = await warrooms.getWarRoom(c.req.param("id"));
+    if (!room || room.game_id !== gameId) {
+      return c.json({ error: "War room not found" }, 404);
+    }
+
+    const assets = await warrooms.listGeneratedAssets(room.id);
+    return c.json({ items: assets });
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 500);
+  }
+});
+
+/** PATCH /games/:name/warrooms/:id/assets/:assetId/layout -- persist edited animation layout */
+app.patch("/games/:name/warrooms/:id/assets/:assetId/layout", requireAuth(), async (c) => {
+  try {
+    const gameId = c.get("gameId") as string;
+    const room = await warrooms.getWarRoom(c.req.param("id"));
+    if (!room || room.game_id !== gameId) {
+      return c.json({ error: "War room not found" }, 404);
+    }
+
+    const body = schemas.patchGeneratedAssetLayoutSchema.parse(await c.req.json());
+    const asset = await warrooms.updateGeneratedAssetLayout({
+      warRoomId: room.id,
+      assetId: c.req.param("assetId"),
+      animation: body.animation,
+      layout: {
+        cols: body.cols,
+        rows: body.rows,
+        vertical_dividers: body.vertical_dividers,
+        horizontal_dividers: body.horizontal_dividers,
+        frames: body.frames,
+      },
+    });
+    await publishPixelManifest(c.req.param("name"), room);
+
+    await warrooms.recordEvent(room.id, "pixel_asset_layout_updated", "pixel", 8, {
+      asset_id: asset.id,
+      stable_asset_id: asset.stable_asset_id,
+      animation: body.animation,
+      frame_count: body.frames.length,
+    });
+
+    return c.json(asset);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 400);
   }
 });
 

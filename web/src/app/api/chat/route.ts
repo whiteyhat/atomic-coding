@@ -308,6 +308,7 @@ async function handleWarRoomCreation(
       userId,
       genre ?? undefined,
       gameFormat,
+      undefined,
       authToken,
     );
 

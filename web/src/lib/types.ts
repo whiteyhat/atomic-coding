@@ -5,6 +5,8 @@ export interface Game {
   name: string;
   description: string | null;
   active_build_id: string | null;
+  pixel_assets_revision?: number;
+  pixel_manifest_url?: string | null;
   user_id: string | null;
   genre: string | null;
   game_format: "2d" | "3d" | null;
@@ -368,10 +370,20 @@ export interface WarRoom {
   game_format: "2d" | "3d" | null;
   status: WarRoomStatus;
   scope: Record<string, unknown> | null;
+  visual_references: WarRoomVisualReference[];
   suggested_prompts: string[] | null;
   final_build_id: string | null;
   created_at: string;
   completed_at: string | null;
+}
+
+export interface WarRoomVisualReference {
+  id: string;
+  prompt: string;
+  style: string | null;
+  image_url: string;
+  created_at: string | null;
+  is_public: boolean;
 }
 
 export interface WarRoomTask {
@@ -414,6 +426,61 @@ export interface AgentHeartbeat {
   status: "idle" | "working" | "error" | "timeout";
   last_ping: string;
   metadata: Record<string, unknown>;
+}
+
+export interface PixelFrameLayoutEntry {
+  index: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  bounds?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null;
+}
+
+export interface PixelAnimationLayout {
+  cols: number;
+  rows: number;
+  vertical_dividers: number[];
+  horizontal_dividers: number[];
+  frames: PixelFrameLayoutEntry[];
+}
+
+export interface WarRoomGeneratedAsset {
+  id: string;
+  war_room_id: string;
+  task_number: 7 | 8;
+  stable_asset_id: string;
+  asset_kind:
+    | "ui_asset"
+    | "character_seed"
+    | "animation_pack"
+    | "sprite_sheet"
+    | "background_layer"
+    | "background_plate"
+    | "texture_asset"
+    | "effect_asset"
+    | "pixel_manifest";
+  variant: string;
+  storage_path: string | null;
+  public_url: string | null;
+  width: number | null;
+  height: number | null;
+  layout_version: number;
+  runtime_ready: boolean;
+  editor_only: boolean;
+  source_service: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WarRoomGeneratedAssetResponse {
+  items: WarRoomGeneratedAsset[];
 }
 
 // ── 3D Model Assets ─────────────────────────────────────────────────────────

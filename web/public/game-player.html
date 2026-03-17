@@ -146,6 +146,339 @@
       statusText.textContent = message;
     }
 
+    function createPixelAssetsRuntime() {
+      var listeners = new Set();
+      var registeredRequests = new Map();
+      var state = {
+        pixelManifestUrl: null,
+        pixelAssetsRevision: 0,
+        runtimeAssetMode: 'progressive',
+        pixelIndex: { animations: [], backgrounds: [], ui: [] },
+      };
+
+      function emit() {
+        listeners.forEach(function(listener) {
+          try {
+            listener({
+              pixelManifestUrl: state.pixelManifestUrl,
+              pixelAssetsRevision: state.pixelAssetsRevision,
+              runtimeAssetMode: state.runtimeAssetMode,
+              pixelIndex: state.pixelIndex,
+            });
+          } catch (error) {
+            console.warn('PIXEL_ASSETS listener failed:', error);
+          }
+        });
+      }
+
+      function makeDataUrl(mimeType, body) {
+        return 'data:' + mimeType + ';charset=utf-8,' + encodeURIComponent(body);
+      }
+
+      function makePlaceholderImage(label, width, height, background, foreground) {
+        var safeWidth = Math.max(16, width || 64);
+        var safeHeight = Math.max(16, height || 64);
+        var svg = [
+          '<svg xmlns="http://www.w3.org/2000/svg" width="' + safeWidth + '" height="' + safeHeight + '" viewBox="0 0 ' + safeWidth + ' ' + safeHeight + '">',
+          '<rect width="100%" height="100%" fill="' + background + '"/>',
+          '<rect x="1" y="1" width="' + (safeWidth - 2) + '" height="' + (safeHeight - 2) + '" fill="none" stroke="' + foreground + '" stroke-width="2"/>',
+          '<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="' + foreground + '" font-size="' + Math.max(8, Math.floor(Math.min(safeWidth, safeHeight) / 5)) + '" font-family="monospace">' + label + '</text>',
+          '</svg>',
+        ].join('');
+        return makeDataUrl('image/svg+xml', svg);
+      }
+
+      function makeJsonDataUrl(payload) {
+        return makeDataUrl('application/json', JSON.stringify(payload));
+      }
+
+      function normalizePixelIndex(pixelIndex) {
+        if (!pixelIndex || typeof pixelIndex !== 'object') {
+          return { animations: [], backgrounds: [], ui: [] };
+        }
+        return {
+          animations: Array.isArray(pixelIndex.animations) ? pixelIndex.animations : [],
+          backgrounds: Array.isArray(pixelIndex.backgrounds) ? pixelIndex.backgrounds : [],
+          ui: Array.isArray(pixelIndex.ui) ? pixelIndex.ui : [],
+        };
+      }
+
+      function findAnimationSet(stableAssetId) {
+        return state.pixelIndex.animations.find(function(entry) {
+          return entry && entry.stable_asset_id === stableAssetId;
+        }) || null;
+      }
+
+      function findBackgroundSet(stableAssetId) {
+        return state.pixelIndex.backgrounds.find(function(entry) {
+          return entry && entry.stable_asset_id === stableAssetId;
+        }) || null;
+      }
+
+      function findUiAsset(stableAssetId, variant) {
+        return state.pixelIndex.ui.find(function(entry) {
+          return entry && entry.stable_asset_id === stableAssetId && (variant ? entry.variant === variant : true);
+        }) || null;
+      }
+
+      function buildPlaceholderAnimation(stableAssetId, animation, key) {
+        var textureUrl = makePlaceholderImage(stableAssetId + ':' + animation, 96, 96, '#1f2937', '#fbbf24');
+        var frameName = stableAssetId + '_' + animation + '_00';
+        return {
+          stableAssetId: stableAssetId,
+          animation: animation,
+          key: key,
+          textureUrl: textureUrl,
+          atlasUrl: makeJsonDataUrl({
+            frames: {
+              [frameName]: {
+                frame: { x: 0, y: 0, w: 96, h: 96 },
+                rotated: false,
+                trimmed: false,
+                spriteSourceSize: { x: 0, y: 0, w: 96, h: 96 },
+                sourceSize: { w: 96, h: 96 },
+              },
+            },
+            meta: {
+              app: 'atomic-pixel-placeholder',
+              version: 2,
+              image: textureUrl,
+              size: { w: 96, h: 96 },
+              scale: '1',
+            },
+          }),
+          placeholder: true,
+          cacheKey: textureUrl + '|placeholder|' + animation,
+        };
+      }
+
+      function resolveAnimation(stableAssetId, animation, keyOverride) {
+        var key = keyOverride || (stableAssetId + '__' + animation);
+        var animationSet = findAnimationSet(stableAssetId);
+        var animationEntry = animationSet && Array.isArray(animationSet.animations)
+          ? animationSet.animations.find(function(entry) { return entry && entry.animation === animation; })
+          : null;
+
+        if (!animationEntry || !animationEntry.processed_sheet_url || !animationEntry.phaser_descriptor_url) {
+          return buildPlaceholderAnimation(stableAssetId, animation, key);
+        }
+
+        return {
+          stableAssetId: stableAssetId,
+          animation: animation,
+          key: key,
+          textureUrl: animationEntry.processed_sheet_url,
+          atlasUrl: animationEntry.phaser_descriptor_url,
+          placeholder: false,
+          cacheKey: animationEntry.processed_sheet_url + '|' + animationEntry.phaser_descriptor_url,
+        };
+      }
+
+      function resolveBackground(stableAssetId, layerVariant, keyOverride) {
+        var key = keyOverride || (stableAssetId + '__' + (layerVariant || 'layer_1'));
+        var backgroundSet = findBackgroundSet(stableAssetId);
+        var layer = backgroundSet && Array.isArray(backgroundSet.layers)
+          ? backgroundSet.layers.find(function(entry) { return entry && entry.variant === (layerVariant || 'layer_1'); })
+          : null;
+        if (!layer || !layer.url) {
+          var textureUrl = makePlaceholderImage(stableAssetId + ':' + (layerVariant || 'layer_1'), 512, 256, '#111827', '#60a5fa');
+          return {
+            stableAssetId: stableAssetId,
+            variant: layerVariant || 'layer_1',
+            key: key,
+            url: textureUrl,
+            placeholder: true,
+            cacheKey: textureUrl + '|placeholder|' + (layerVariant || 'layer_1'),
+          };
+        }
+        return {
+          stableAssetId: stableAssetId,
+          variant: layer.variant,
+          key: key,
+          url: layer.url,
+          placeholder: false,
+          cacheKey: String(layer.url),
+        };
+      }
+
+      function resolveImage(stableAssetId, variant, keyOverride) {
+        var key = keyOverride || (stableAssetId + '__' + (variant || 'default'));
+        var uiAsset = findUiAsset(stableAssetId, variant || '');
+        if (!uiAsset || !uiAsset.url) {
+          var textureUrl = makePlaceholderImage(stableAssetId, 96, 96, '#111827', '#f8fafc');
+          return {
+            stableAssetId: stableAssetId,
+            variant: variant || '',
+            key: key,
+            url: textureUrl,
+            placeholder: true,
+            cacheKey: textureUrl + '|placeholder|' + (variant || ''),
+          };
+        }
+        return {
+          stableAssetId: stableAssetId,
+          variant: uiAsset.variant || variant || '',
+          key: key,
+          url: uiAsset.url,
+          placeholder: false,
+          cacheKey: String(uiAsset.url),
+        };
+      }
+
+      function resolveRequest(request) {
+        if (!request || typeof request !== 'object') return null;
+        var stableAssetId = request.stableAssetId || request.stable_asset_id;
+        if (request.type === 'animation') {
+          return resolveAnimation(stableAssetId, request.animation || 'idle', request.key);
+        }
+        if (request.type === 'background') {
+          return resolveBackground(stableAssetId, request.variant || request.layer || 'layer_1', request.key);
+        }
+        return resolveImage(stableAssetId, request.variant || '', request.key);
+      }
+
+      function preloadPhaser(scene, requests) {
+        if (!scene || !scene.load || !Array.isArray(requests)) return [];
+        return requests.map(function(request) {
+          var resolved = resolveRequest(request);
+          if (!resolved) return null;
+          registeredRequests.set(resolved.key, {
+            request: {
+              type: request.type || 'image',
+              stableAssetId: request.stableAssetId || request.stable_asset_id,
+              animation: request.animation || null,
+              variant: request.variant || null,
+              key: resolved.key,
+            },
+            cacheKey: resolved.cacheKey,
+          });
+          if (request.type === 'animation') {
+            scene.load.atlas(resolved.key, resolved.textureUrl, resolved.atlasUrl);
+          } else {
+            scene.load.image(resolved.key, resolved.url);
+          }
+          return resolved;
+        }).filter(Boolean);
+      }
+
+      function createPhaserAnimations(scene, stableAssetId, animations) {
+        if (!scene || !scene.textures || !scene.anims) return [];
+        var animationSet = findAnimationSet(stableAssetId);
+        var availableAnimations = Array.isArray(animations) && animations.length > 0
+          ? animations
+          : animationSet && Array.isArray(animationSet.animations)
+            ? animationSet.animations.map(function(entry) { return entry.animation; })
+            : ['idle'];
+        var created = [];
+
+        availableAnimations.forEach(function(animationName) {
+          var textureKey = stableAssetId + '__' + animationName;
+          if (!scene.textures.exists(textureKey)) return;
+          var texture = scene.textures.get(textureKey);
+          var frameNames = texture.getFrameNames()
+            .filter(function(frameName) { return frameName !== '__BASE'; })
+            .sort();
+          if (!frameNames.length) return;
+          var animKey = stableAssetId + ':' + animationName;
+          if (scene.anims.exists(animKey)) {
+            scene.anims.remove(animKey);
+          }
+          scene.anims.create({
+            key: animKey,
+            frames: frameNames.map(function(frameName) {
+              return { key: textureKey, frame: frameName };
+            }),
+            frameRate: 10,
+            repeat: -1,
+          });
+          created.push(animKey);
+        });
+
+        return created;
+      }
+
+      function findActiveScene() {
+        var game = window.__PHASER_GAME__;
+        if (!game || !game.scene || !Array.isArray(game.scene.scenes)) return null;
+        return game.scene.scenes[0] || null;
+      }
+
+      function refreshRegisteredAssets() {
+        var scene = findActiveScene();
+        if (!scene || !scene.load || !scene.textures) return;
+        var pendingAnimationCreates = [];
+        var reloadCount = 0;
+
+        registeredRequests.forEach(function(record, textureKey) {
+          var resolved = resolveRequest(record.request);
+          if (!resolved || resolved.cacheKey === record.cacheKey) return;
+          registeredRequests.set(textureKey, {
+            request: record.request,
+            cacheKey: resolved.cacheKey,
+          });
+          if (scene.textures.exists(resolved.key)) {
+            scene.textures.remove(resolved.key);
+          }
+          if (record.request.type === 'animation') {
+            scene.load.atlas(resolved.key, resolved.textureUrl, resolved.atlasUrl);
+            pendingAnimationCreates.push({
+              stableAssetId: record.request.stableAssetId,
+              animation: record.request.animation || 'idle',
+            });
+          } else {
+            scene.load.image(resolved.key, resolved.url);
+          }
+          reloadCount++;
+        });
+
+        if (!reloadCount) return;
+        scene.load.once('complete', function() {
+          pendingAnimationCreates.forEach(function(entry) {
+            createPhaserAnimations(scene, entry.stableAssetId, [entry.animation]);
+          });
+        });
+        scene.load.start();
+      }
+
+      function setManifest(manifest) {
+        state.pixelManifestUrl = manifest && manifest.pixel_manifest_url ? manifest.pixel_manifest_url : null;
+        state.pixelAssetsRevision = Number((manifest && manifest.pixel_assets_revision) || 0);
+        state.runtimeAssetMode = manifest && manifest.runtime_asset_mode ? manifest.runtime_asset_mode : 'progressive';
+        state.pixelIndex = normalizePixelIndex(manifest && manifest.pixel_index);
+        emit();
+        refreshRegisteredAssets();
+      }
+
+      return {
+        init: function(manifest) {
+          setManifest(manifest || null);
+        },
+        setManifest: setManifest,
+        resolveImage: resolveImage,
+        resolveAnimation: resolveAnimation,
+        resolveBackground: resolveBackground,
+        preloadPhaser: preloadPhaser,
+        createPhaserAnimations: createPhaserAnimations,
+        subscribe: function(listener) {
+          listeners.add(listener);
+          return function unsubscribe() {
+            listeners.delete(listener);
+          };
+        },
+        getState: function() {
+          return {
+            pixelManifestUrl: state.pixelManifestUrl,
+            pixelAssetsRevision: state.pixelAssetsRevision,
+            runtimeAssetMode: state.runtimeAssetMode,
+            pixelIndex: state.pixelIndex,
+          };
+        },
+      };
+    }
+
+    window.PIXEL_ASSETS = createPixelAssetsRuntime();
+    var PIXEL_ASSETS = window.PIXEL_ASSETS;
+
     const loadedExternals = new Set();
     const externalScripts = [];
     const externalObjectUrls = [];
@@ -343,6 +676,53 @@
 
     let currentScript = null;
 
+    function sanitizePhaserConfig(config) {
+      if (!config || typeof config !== 'object' || !window.Phaser) return config;
+
+      const autoType = window.Phaser.AUTO;
+      const canvasType = window.Phaser.CANVAS;
+      const nextConfig = Array.isArray(config) ? config.slice() : { ...config };
+      const hasCanvas = !!nextConfig.canvas;
+      const usesAutoType = nextConfig.type == null || nextConfig.type === autoType;
+      const usesAutoRenderType =
+        nextConfig.renderType == null || nextConfig.renderType === autoType;
+
+      // Atomic always boots Phaser against a provided canvas inside the iframe.
+      // Phaser 3.90 requires an explicit renderer in that environment.
+      if (hasCanvas && canvasType != null && (usesAutoType || usesAutoRenderType)) {
+        nextConfig.type = canvasType;
+        nextConfig.renderType = canvasType;
+        return nextConfig;
+      }
+
+      if (nextConfig.type != null && nextConfig.renderType == null) {
+        nextConfig.renderType = nextConfig.type;
+      }
+
+      return nextConfig;
+    }
+
+    function patchPhaserRuntime() {
+      if (!window.Phaser || !window.Phaser.Game || window.Phaser.Game.__atomicPatched) {
+        return;
+      }
+
+      const OriginalGame = window.Phaser.Game;
+      const PatchedGame = new Proxy(OriginalGame, {
+        construct(target, args, newTarget) {
+          const [config, ...rest] = args;
+          return Reflect.construct(
+            target,
+            [sanitizePhaserConfig(config), ...rest],
+            newTarget,
+          );
+        },
+      });
+
+      Object.defineProperty(PatchedGame, '__atomicPatched', { value: true });
+      window.Phaser.Game = PatchedGame;
+    }
+
     function resolveRuntime(manifest) {
       if (manifest && (manifest.runtime === 'phaser' || manifest.runtime === 'three')) {
         return manifest.runtime;
@@ -363,6 +743,21 @@
         }
       }
       window.__PHASER_GAME__ = null;
+    }
+
+    async function refreshPixelAssetsFromManifest() {
+      try {
+        const manifestRes = await fetch(`${MANIFEST_URL}?t=${Date.now()}`);
+        if (!manifestRes.ok) return null;
+        const manifest = await manifestRes.json();
+        if (window.PIXEL_ASSETS) {
+          window.PIXEL_ASSETS.setManifest(manifest);
+        }
+        return manifest;
+      } catch (error) {
+        console.warn('Failed to refresh Pixel assets from manifest:', error);
+        return null;
+      }
     }
 
     async function loadBundle() {
@@ -387,6 +782,9 @@
         const nextExternalSignature = getExternalSignature(manifestExternals);
         const runtime = resolveRuntime(manifest);
         const runtimeLabel = getRuntimeLabel(runtime);
+        if (window.PIXEL_ASSETS) {
+          window.PIXEL_ASSETS.init(manifest);
+        }
         window.GAME.runtime = runtime;
         window.GAME.format = runtime === 'phaser' ? '2d' : '3d';
         setStatus('loading', `Loading ${runtimeLabel} bundle...`);
@@ -401,6 +799,10 @@
           clearExternals();
           await loadExternals(manifestExternals);
           currentExternalSignature = nextExternalSignature;
+        }
+
+        if (runtime === 'phaser') {
+          patchPhaserRuntime();
         }
 
         const response = await fetch(`${BUNDLE_URL}?t=${Date.now()}`);
@@ -440,10 +842,26 @@
           if (nextStatus === 'success' && previousStatus !== 'success') {
             loadBundle();
           }
-        })
-        .subscribe((status) => {
-          if (status === 'SUBSCRIBED') setStatus('connected', 'Watching for builds...');
         });
+
+      if (GAME_ID) {
+        realtimeChannel.on('postgres_changes', {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'games',
+          filter: `id=eq.${GAME_ID}`,
+        }, (payload) => {
+          var previousRevision = Number(payload.old && payload.old.pixel_assets_revision || 0);
+          var nextRevision = Number(payload.new && payload.new.pixel_assets_revision || 0);
+          if (nextRevision !== previousRevision) {
+            refreshPixelAssetsFromManifest();
+          }
+        });
+      }
+
+      realtimeChannel.subscribe((status) => {
+        if (status === 'SUBSCRIBED') setStatus('connected', 'Watching for builds...');
+      });
     }
 
     setupRealtime();

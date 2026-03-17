@@ -1,6 +1,7 @@
 "use client";
 
-import { lazy, Suspense, useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -39,11 +40,19 @@ import {
 } from "@/components/dashboard/dashboard-animations";
 import { useAppAuth } from "@/lib/auth-provider";
 
-const LazyArchitectureView = lazy(
+const LazyArchitectureView = dynamic(
   () =>
     import("@/components/architecture-view").then((m) => ({
       default: m.ArchitectureView,
-    }))
+    })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-full items-center justify-center text-sm text-white/40">
+        Loading architecture view...
+      </div>
+    ),
+  }
 );
 
 const VIDEO_URL =
@@ -1286,20 +1295,12 @@ export function HomeLandingPage() {
             </DialogTitle>
           </DialogHeader>
           <div className="min-h-0 flex-1 px-4 pb-4">
-            <Suspense
-              fallback={
-                <div className="flex h-full items-center justify-center text-sm text-white/40">
-                  Loading architecture view...
-                </div>
-              }
-            >
-              {swarmOpen && (
-                <LazyArchitectureView
-                  lastEditedGame={null}
-                  className="h-full min-h-0 rounded-2xl"
-                />
-              )}
-            </Suspense>
+            {swarmOpen && (
+              <LazyArchitectureView
+                lastEditedGame={null}
+                className="h-full min-h-0 rounded-2xl"
+              />
+            )}
           </div>
         </DialogContent>
       </Dialog>

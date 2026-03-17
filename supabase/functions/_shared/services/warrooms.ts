@@ -34,10 +34,20 @@ export interface WarRoom {
   game_format: "2d" | "3d" | null;
   status: WarRoomStatus;
   scope: Record<string, unknown> | null;
+  visual_references: WarRoomVisualReference[];
   suggested_prompts: string[] | null;
   final_build_id: string | null;
   created_at: string;
   completed_at: string | null;
+}
+
+export interface WarRoomVisualReference {
+  id: string;
+  prompt: string;
+  style: string | null;
+  image_url: string;
+  created_at: string | null;
+  is_public: boolean;
 }
 
 export interface WarRoomTask {
@@ -52,6 +62,35 @@ export interface WarRoomTask {
   output: Record<string, unknown> | null;
   started_at: string | null;
   completed_at: string | null;
+}
+
+export interface WarRoomGeneratedAsset {
+  id: string;
+  war_room_id: string;
+  task_number: 7 | 8;
+  stable_asset_id: string;
+  asset_kind:
+    | "ui_asset"
+    | "character_seed"
+    | "animation_pack"
+    | "sprite_sheet"
+    | "background_layer"
+    | "background_plate"
+    | "texture_asset"
+    | "effect_asset"
+    | "pixel_manifest";
+  variant: string;
+  storage_path: string | null;
+  public_url: string | null;
+  width: number | null;
+  height: number | null;
+  layout_version: number;
+  runtime_ready: boolean;
+  editor_only: boolean;
+  source_service: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface WarRoomEvent {
@@ -141,7 +180,7 @@ const PIPELINE_TASKS: Omit<WarRoomTask, "id" | "war_room_id" | "status" | "outpu
     title: "Generate game sprites",
     description: "Generate character sprites, textures, and environment assets aligned with the Task 7 design system for visual coherence.",
     assigned_agent: "pixel",
-    depends_on: [1, 5, 7],
+    depends_on: [1, 7],
   },
   {
     task_number: 9,
@@ -187,10 +226,24 @@ function mapWarRoom(row: any): WarRoom {
     game_format: row.game_format || null,
     status: row.status,
     scope: row.scope || null,
+    visual_references: Array.isArray(row.visual_references)
+      ? row.visual_references.map(mapVisualReference)
+      : [],
     suggested_prompts: row.suggested_prompts || null,
     final_build_id: row.final_build_id || null,
     created_at: row.created_at,
     completed_at: row.completed_at || null,
+  };
+}
+
+function mapVisualReference(value: any): WarRoomVisualReference {
+  return {
+    id: String(value?.id ?? ""),
+    prompt: String(value?.prompt ?? ""),
+    style: value?.style ? String(value.style) : null,
+    image_url: String(value?.image_url ?? ""),
+    created_at: value?.created_at ? String(value.created_at) : null,
+    is_public: Boolean(value?.is_public),
   };
 }
 
@@ -219,6 +272,28 @@ function mapEvent(row: any): WarRoomEvent {
     task_number: row.task_number ?? null,
     payload: row.payload || {},
     created_at: row.created_at,
+  };
+}
+
+function mapGeneratedAsset(row: any): WarRoomGeneratedAsset {
+  return {
+    id: row.id,
+    war_room_id: row.war_room_id,
+    task_number: row.task_number,
+    stable_asset_id: row.stable_asset_id,
+    asset_kind: row.asset_kind,
+    variant: row.variant || "",
+    storage_path: row.storage_path || null,
+    public_url: row.public_url || null,
+    width: typeof row.width === "number" ? row.width : null,
+    height: typeof row.height === "number" ? row.height : null,
+    layout_version: typeof row.layout_version === "number" ? row.layout_version : 1,
+    runtime_ready: Boolean(row.runtime_ready),
+    editor_only: Boolean(row.editor_only),
+    source_service: row.source_service,
+    metadata: row.metadata || {},
+    created_at: row.created_at,
+    updated_at: row.updated_at,
   };
 }
 
@@ -282,6 +357,7 @@ export async function createWarRoom(
   prompt: string,
   genre: string | null,
   gameFormat: "2d" | "3d" | null,
+  visualReferences: WarRoomVisualReference[] = [],
 ): Promise<WarRoomWithTasks> {
   const supabase = getSupabaseClient();
 
@@ -305,6 +381,7 @@ export async function createWarRoom(
       prompt,
       genre: genre || null,
       game_format: gameFormat || null,
+      visual_references: visualReferences,
     })
     .select("*")
     .single();
@@ -335,6 +412,7 @@ export async function createWarRoom(
     prompt,
     genre,
     game_format: gameFormat,
+    visual_reference_count: visualReferences.length,
     task_count: taskRows.length,
   });
 
@@ -352,6 +430,7 @@ export async function createWarRoom(
       game_id: room.game_id,
       status: room.status,
       prompt: room.prompt,
+      visual_reference_count: visualReferences.length,
     });
   }
 
@@ -359,6 +438,149 @@ export async function createWarRoom(
     ...mapWarRoom(room),
     tasks: (tasks || []).map(mapTask),
   };
+}
+
+export async function listGeneratedAssets(
+  warRoomId: string,
+): Promise<WarRoomGeneratedAsset[]> {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from("war_room_generated_assets")
+    .select("*")
+    .eq("war_room_id", warRoomId)
+    .order("task_number", { ascending: true })
+    .order("stable_asset_id", { ascending: true })
+    .order("asset_kind", { ascending: true })
+    .order("variant", { ascending: true });
+
+  if (error) {
+    throw new Error(`Failed to list generated assets: ${error.message}`);
+  }
+
+  return (data || []).map(mapGeneratedAsset);
+}
+
+export async function getGeneratedAsset(
+  warRoomId: string,
+  assetId: string,
+): Promise<WarRoomGeneratedAsset | null> {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from("war_room_generated_assets")
+    .select("*")
+    .eq("war_room_id", warRoomId)
+    .eq("id", assetId)
+    .single();
+
+  if (error) {
+    if (error.code === "PGRST116") return null;
+    throw new Error(`Failed to load generated asset: ${error.message}`);
+  }
+
+  return mapGeneratedAsset(data);
+}
+
+export async function upsertGeneratedAsset(input: {
+  war_room_id: string;
+  task_number: 7 | 8;
+  stable_asset_id: string;
+  asset_kind: WarRoomGeneratedAsset["asset_kind"];
+  variant?: string | null;
+  storage_path?: string | null;
+  public_url?: string | null;
+  width?: number | null;
+  height?: number | null;
+  layout_version?: number | null;
+  runtime_ready?: boolean | null;
+  editor_only?: boolean | null;
+  source_service?: string;
+  metadata?: Record<string, unknown>;
+}): Promise<WarRoomGeneratedAsset> {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from("war_room_generated_assets")
+    .upsert(
+      {
+        war_room_id: input.war_room_id,
+        task_number: input.task_number,
+        stable_asset_id: input.stable_asset_id,
+        asset_kind: input.asset_kind,
+        variant: input.variant ?? "",
+        storage_path: input.storage_path ?? null,
+        public_url: input.public_url ?? null,
+        width: input.width ?? null,
+        height: input.height ?? null,
+        layout_version: input.layout_version ?? 1,
+        runtime_ready: input.runtime_ready ?? false,
+        editor_only: input.editor_only ?? false,
+        source_service: input.source_service ?? "unknown",
+        metadata: input.metadata ?? {},
+      },
+      {
+        onConflict: "war_room_id,task_number,stable_asset_id,asset_kind,variant",
+      },
+    )
+    .select("*")
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to upsert generated asset: ${error.message}`);
+  }
+
+  return mapGeneratedAsset(data);
+}
+
+export async function updateGeneratedAssetLayout(input: {
+  warRoomId: string;
+  assetId: string;
+  animation: string;
+  layout: Record<string, unknown>;
+}): Promise<WarRoomGeneratedAsset> {
+  const asset = await getGeneratedAsset(input.warRoomId, input.assetId);
+  if (!asset) {
+    throw new Error("Generated asset not found");
+  }
+
+  const animationLayouts = {
+    ...(((asset.metadata.animation_layouts as Record<string, unknown> | undefined) ?? {})),
+    [input.animation]: input.layout,
+  };
+  const animations = Array.isArray(asset.metadata.animations)
+    ? (asset.metadata.animations as Array<Record<string, unknown>>).map((entry) =>
+        entry.animation === input.animation
+          ? {
+              ...entry,
+              cols: input.layout.cols ?? entry.cols,
+              rows: input.layout.rows ?? entry.rows,
+              vertical_dividers: input.layout.vertical_dividers ?? entry.vertical_dividers,
+              horizontal_dividers: input.layout.horizontal_dividers ?? entry.horizontal_dividers,
+              frames: input.layout.frames ?? entry.frames,
+            }
+          : entry,
+      )
+    : asset.metadata.animations;
+
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from("war_room_generated_assets")
+    .update({
+      layout_version: asset.layout_version + 1,
+      metadata: {
+        ...asset.metadata,
+        ...(animations ? { animations } : {}),
+        animation_layouts: animationLayouts,
+      },
+    })
+    .eq("id", input.assetId)
+    .eq("war_room_id", input.warRoomId)
+    .select("*")
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to update generated asset layout: ${error.message}`);
+  }
+
+  return mapGeneratedAsset(data);
 }
 
 /** Get a war room with its tasks. */
